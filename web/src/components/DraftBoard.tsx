@@ -22,6 +22,9 @@ const ATTRS: { key: Attr; label: string; color: string }[] = [
   { key: "all", label: "Универсал", color: "bg-gradient-to-r from-[#ec3d06] via-[#26e030] to-[#00d9ff]" },
 ];
 const POOL_KEY = "draft.poolOverride.v1";
+const AUTO_KEY = "draft.auto.v1";
+const PICKS_KEY = "draft.picks.v1";
+const PICKS_TTL = 2 * 3600 * 1000; // драфт восстанавливаем, если ему меньше 2 часов
 const EMPTY: PoolOverride = { add: [], remove: [] };
 
 function loadOverride(): PoolOverride {
@@ -59,7 +62,16 @@ export default function DraftBoard({ heroes, poolIds, familiarIds, aliases }: { 
     if (r?.ok) { setSaved(byId.get(heroId)?.name ?? ""); setTimeout(() => setSaved(null), 4000); }
   };
 
-  useEffect(() => { setOverride(loadOverride()); }, []);
+  useEffect(() => {
+    setOverride(loadOverride());
+    try { if (localStorage.getItem(AUTO_KEY) === "1") setAuto(true); } catch {}
+    try {
+      const raw = localStorage.getItem(PICKS_KEY);
+      if (raw) { const o = JSON.parse(raw); if (o && Date.now() - (o.at ?? 0) < PICKS_TTL && o.picks) setPicks(o.picks); }
+    } catch {}
+  }, []);
+  useEffect(() => { try { localStorage.setItem(AUTO_KEY, auto ? "1" : "0"); } catch {} }, [auto]);
+  useEffect(() => { try { localStorage.setItem(PICKS_KEY, JSON.stringify({ at: Date.now(), picks })); } catch {} }, [picks]);
   const saveOverride = (o: PoolOverride) => { setOverride(o); try { localStorage.setItem(POOL_KEY, JSON.stringify(o)); } catch {} };
 
   const byId = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes]);

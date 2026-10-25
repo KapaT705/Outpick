@@ -17,7 +17,7 @@ export default function HistoryView({ items: initial, heroes }: { items: DraftLo
     setBusy(true); setMsg(null);
     const r = await fetch("/api/log/sync", { method: "POST" }).then((x) => x.json()).catch(() => null);
     if (r?.ok) {
-      setMsg(`обновлено ${r.updated}, без результата ${r.pending}`);
+      setMsg(r.updated > 0 ? `Готово: результат найден у ${r.updated} ${r.updated === 1 ? "записи" : "записей"}${r.pending ? `, ещё ${r.pending} без результата` : ""}` : r.pending > 0 ? `Пока без результата: ${r.pending}. Stratz получает матч через 5–15 минут после игры, попробуй позже.` : "Нечего обновлять: все записи уже с результатом или история пуста.");
       const fresh = await fetch("/api/log").then((x) => x.json()).catch(() => null);
       if (fresh?.items) setItems(fresh.items);
     } else setMsg(r?.error ?? "ошибка синхронизации");
@@ -45,11 +45,12 @@ export default function HistoryView({ items: initial, heroes }: { items: DraftLo
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-2xl font-semibold">История драфтов <span className="text-muted text-base font-normal">{items.length} записей · с результатом {done.length}</span></h1>
         <div className="flex items-center gap-3 text-sm">
-          {msg && <span className="text-muted text-xs">{msg}</span>}
           <button onClick={sync} disabled={busy} className="rounded-md border border-border px-3 py-1 hover:border-accent disabled:opacity-50">{busy ? "ищу матчи…" : "Подтянуть результаты из Stratz"}</button>
           <a href="/" className="text-muted underline hover:text-foreground">К пикеру</a>
         </div>
       </header>
+
+      {msg && <div className={`rounded-lg border px-3 py-2 text-sm ${msg.startsWith("Готово") ? "border-good/40 bg-good/10 text-good" : "border-border bg-panel text-foreground"}`}>{msg}</div>}
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat title="Взял лучшего по совету" s={top1} />
