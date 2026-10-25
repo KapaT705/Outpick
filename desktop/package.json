@@ -1,0 +1,83 @@
+{
+  "name": "dota-mid-helper",
+  "productName": "Dota Mid Helper",
+  "version": "0.1.0",
+  "description": "Драфт-помощник для мида: пикер, роли, история драфтов",
+  "author": "KapaT",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "prepare-app": "node scripts/prepare-app.mjs",
+    "start": "electron .",
+    "build:mac": "npm run prepare-app && electron-builder --mac",
+    "build:win": "npm run prepare-app && electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "ru.kapat.dotamidhelper",
+    "productName": "Dota Mid Helper",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "icon.png"
+    ],
+    "extraResources": [
+      {
+        "from": "next-app",
+        "to": "next-app"
+      },
+      {
+        "from": "../data",
+        "to": "data",
+        "filter": [
+          "*.json",
+          "!draft-log.json",
+          "!config.json"
+        ]
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "DotaMidHelper-${version}-portable.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "DotaMidHelper-${version}-setup.exe"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.games",
+      "identity": null
+    },
+    "publish": { "provider": "github", "owner": "KapaT705", "repo": "dota-mid-helper" }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  }
+}

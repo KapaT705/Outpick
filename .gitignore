@@ -1,0 +1,8 @@
+.env
+web/.env.local
+node_modules/
+web/node_modules/
+web/.next/
+.DS_Store
+data/draft-log.json
+data/config.json

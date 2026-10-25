@@ -1,0 +1,1145 @@
+[
+  {
+    "heroId": 74,
+    "midGames": 290519,
+    "midWins": 152138,
+    "name": "Invoker",
+    "allGames": 411151,
+    "midRate": 0.7065992786105348,
+    "midWinrate": 0.5236765925808639
+  },
+  {
+    "heroId": 25,
+    "midGames": 257357,
+    "midWins": 125138,
+    "name": "Lina",
+    "allGames": 326890,
+    "midRate": 0.7872893022117532,
+    "midWinrate": 0.48624284554140745
+  },
+  {
+    "heroId": 76,
+    "midGames": 231274,
+    "midWins": 126107,
+    "name": "Outworld Destroyer",
+    "allGames": 251690,
+    "midRate": 0.9188843418491001,
+    "midWinrate": 0.5452709772823577
+  },
+  {
+    "heroId": 106,
+    "midGames": 192515,
+    "midWins": 97394,
+    "name": "Ember Spirit",
+    "allGames": 211051,
+    "midRate": 0.91217288712207,
+    "midWinrate": 0.5059034360958886
+  },
+  {
+    "heroId": 35,
+    "midGames": 134929,
+    "midWins": 65124,
+    "name": "Sniper",
+    "allGames": 229097,
+    "midRate": 0.588960134790067,
+    "midWinrate": 0.48265384016779195
+  },
+  {
+    "heroId": 39,
+    "midGames": 129618,
+    "midWins": 61285,
+    "name": "Queen of Pain",
+    "allGames": 170043,
+    "midRate": 0.7622660150667773,
+    "midWinrate": 0.47281241802836027
+  },
+  {
+    "heroId": 17,
+    "midGames": 113733,
+    "midWins": 54004,
+    "name": "Storm Spirit",
+    "allGames": 126784,
+    "midRate": 0.8970611433619384,
+    "midWinrate": 0.47483140337457025
+  },
+  {
+    "heroId": 36,
+    "midGames": 104167,
+    "midWins": 49837,
+    "name": "Necrophos",
+    "allGames": 265357,
+    "midRate": 0.3925541817249969,
+    "midWinrate": 0.47843366901225914
+  },
+  {
+    "heroId": 49,
+    "midGames": 93729,
+    "midWins": 50022,
+    "name": "Dragon Knight",
+    "allGames": 234329,
+    "midRate": 0.3999889044889877,
+    "midWinrate": 0.5336875460103063
+  },
+  {
+    "heroId": 126,
+    "midGames": 91996,
+    "midWins": 45864,
+    "name": "Void Spirit",
+    "allGames": 117886,
+    "midRate": 0.7803810460953803,
+    "midWinrate": 0.49854341493108395
+  },
+  {
+    "heroId": 11,
+    "midGames": 89387,
+    "midWins": 37123,
+    "name": "Shadow Fiend",
+    "allGames": 251103,
+    "midRate": 0.35597742758947526,
+    "midWinrate": 0.4153064763332476
+  },
+  {
+    "heroId": 7,
+    "midGames": 84720,
+    "midWins": 44043,
+    "name": "Earthshaker",
+    "allGames": 290032,
+    "midRate": 0.2921056986815248,
+    "midWinrate": 0.5198654390934844
+  },
+  {
+    "heroId": 34,
+    "midGames": 83715,
+    "midWins": 42234,
+    "name": "Tinker",
+    "allGames": 95614,
+    "midRate": 0.8755516974501643,
+    "midWinrate": 0.5044974018993011
+  },
+  {
+    "heroId": 13,
+    "midGames": 71961,
+    "midWins": 35496,
+    "name": "Puck",
+    "allGames": 78971,
+    "midRate": 0.9112332375175698,
+    "midWinrate": 0.49326718639262934
+  },
+  {
+    "heroId": 120,
+    "midGames": 66704,
+    "midWins": 32109,
+    "name": "Pangolier",
+    "allGames": 105468,
+    "midRate": 0.6324572382144347,
+    "midWinrate": 0.4813654353562005
+  },
+  {
+    "heroId": 107,
+    "midGames": 66638,
+    "midWins": 35171,
+    "name": "Earth Spirit",
+    "allGames": 153589,
+    "midRate": 0.43387221741140314,
+    "midWinrate": 0.5277919505387316
+  },
+  {
+    "heroId": 86,
+    "midGames": 66366,
+    "midWins": 33005,
+    "name": "Rubick",
+    "allGames": 507609,
+    "midRate": 0.13074236272406517,
+    "midWinrate": 0.49731790374589396
+  },
+  {
+    "heroId": 128,
+    "midGames": 66068,
+    "midWins": 33613,
+    "name": "Snapfire",
+    "allGames": 252302,
+    "midRate": 0.26186078588358397,
+    "midWinrate": 0.5087636980081128
+  },
+  {
+    "heroId": 113,
+    "midGames": 65324,
+    "midWins": 35045,
+    "name": "Arc Warden",
+    "allGames": 76294,
+    "midRate": 0.8562141190657194,
+    "midWinrate": 0.5364797011818014
+  },
+  {
+    "heroId": 22,
+    "midGames": 62510,
+    "midWins": 29223,
+    "name": "Zeus",
+    "allGames": 223377,
+    "midRate": 0.2798408072451506,
+    "midWinrate": 0.46749320108782594
+  },
+  {
+    "heroId": 90,
+    "midGames": 62038,
+    "midWins": 32930,
+    "name": "Keeper of the Light",
+    "allGames": 107195,
+    "midRate": 0.5787396800223891,
+    "midWinrate": 0.5308037009574776
+  },
+  {
+    "heroId": 21,
+    "midGames": 59774,
+    "midWins": 29523,
+    "name": "Windranger",
+    "allGames": 357993,
+    "midRate": 0.16696974521848193,
+    "midWinrate": 0.49391039582427143
+  },
+  {
+    "heroId": 97,
+    "midGames": 48787,
+    "midWins": 24659,
+    "name": "Magnus",
+    "allGames": 252361,
+    "midRate": 0.19332226453374332,
+    "midWinrate": 0.5054420234898641
+  },
+  {
+    "heroId": 14,
+    "midGames": 46565,
+    "midWins": 23792,
+    "name": "Pudge",
+    "allGames": 533358,
+    "midRate": 0.08730533712815783,
+    "midWinrate": 0.5109416944056695
+  },
+  {
+    "heroId": 26,
+    "midGames": 45342,
+    "midWins": 22029,
+    "name": "Lion",
+    "allGames": 406871,
+    "midRate": 0.11144072691344431,
+    "midWinrate": 0.4858409421728199
+  },
+  {
+    "heroId": 47,
+    "midGames": 41109,
+    "midWins": 20365,
+    "name": "Viper",
+    "allGames": 95057,
+    "midRate": 0.4324668356880608,
+    "midWinrate": 0.4953903038264127
+  },
+  {
+    "heroId": 59,
+    "midGames": 40004,
+    "midWins": 19087,
+    "name": "Huskar",
+    "allGames": 63398,
+    "midRate": 0.6309978232751822,
+    "midWinrate": 0.47712728727127285
+  },
+  {
+    "heroId": 52,
+    "midGames": 33861,
+    "midWins": 17645,
+    "name": "Leshrac",
+    "allGames": 51552,
+    "midRate": 0.6568319366852886,
+    "midWinrate": 0.521100971619267
+  },
+  {
+    "heroId": 43,
+    "midGames": 32116,
+    "midWins": 15850,
+    "name": "Death Prophet",
+    "allGames": 69247,
+    "midRate": 0.46378904501278034,
+    "midWinrate": 0.49352347739444513
+  },
+  {
+    "heroId": 93,
+    "midGames": 31968,
+    "midWins": 16639,
+    "name": "Slark",
+    "allGames": 244004,
+    "midRate": 0.1310142456681038,
+    "midWinrate": 0.5204892392392393
+  },
+  {
+    "heroId": 53,
+    "midGames": 29351,
+    "midWins": 13195,
+    "name": "Nature's Prophet",
+    "allGames": 153135,
+    "midRate": 0.19166748293988964,
+    "midWinrate": 0.4495587884569521
+  },
+  {
+    "heroId": 136,
+    "midGames": 28785,
+    "midWins": 16122,
+    "name": "Marci",
+    "allGames": 77905,
+    "midRate": 0.36948847955843656,
+    "midWinrate": 0.5600833767587285
+  },
+  {
+    "heroId": 145,
+    "midGames": 28610,
+    "midWins": 13393,
+    "name": "Kez",
+    "allGames": 100225,
+    "midRate": 0.28545772012970816,
+    "midWinrate": 0.46812303390422927
+  },
+  {
+    "heroId": 88,
+    "midGames": 27456,
+    "midWins": 14496,
+    "name": "Nyx Assassin",
+    "allGames": 161080,
+    "midRate": 0.17044946610379935,
+    "midWinrate": 0.527972027972028
+  },
+  {
+    "heroId": 32,
+    "midGames": 26464,
+    "midWins": 14295,
+    "name": "Riki",
+    "allGames": 72215,
+    "midRate": 0.36646126151076647,
+    "midWinrate": 0.5401677750906893
+  },
+  {
+    "heroId": 101,
+    "midGames": 26154,
+    "midWins": 13036,
+    "name": "Skywrath Mage",
+    "allGames": 189124,
+    "midRate": 0.13829022228802268,
+    "midWinrate": 0.4984323621625755
+  },
+  {
+    "heroId": 114,
+    "midGames": 25431,
+    "midWins": 12354,
+    "name": "Monkey King",
+    "allGames": 94181,
+    "midRate": 0.2700226160265871,
+    "midWinrate": 0.4857850654712752
+  },
+  {
+    "heroId": 23,
+    "midGames": 25205,
+    "midWins": 12500,
+    "name": "Kunkka",
+    "allGames": 77627,
+    "midRate": 0.3246937276978371,
+    "midWinrate": 0.4959333465582226
+  },
+  {
+    "heroId": 110,
+    "midGames": 23059,
+    "midWins": 12431,
+    "name": "Phoenix",
+    "allGames": 130112,
+    "midRate": 0.17722423757993114,
+    "midWinrate": 0.5390953640660914
+  },
+  {
+    "heroId": 91,
+    "midGames": 21604,
+    "midWins": 10356,
+    "name": "Io",
+    "allGames": 93070,
+    "midRate": 0.2321263565058558,
+    "midWinrate": 0.4793556748750231
+  },
+  {
+    "heroId": 82,
+    "midGames": 19628,
+    "midWins": 10886,
+    "name": "Meepo",
+    "allGames": 27005,
+    "midRate": 0.7268283651175709,
+    "midWinrate": 0.5546158549011616
+  },
+  {
+    "heroId": 84,
+    "midGames": 18825,
+    "midWins": 9217,
+    "name": "Ogre Magi",
+    "allGames": 224984,
+    "midRate": 0.08367261671941116,
+    "midWinrate": 0.4896148738379814
+  },
+  {
+    "heroId": 19,
+    "midGames": 18536,
+    "midWins": 8389,
+    "name": "Tiny",
+    "allGames": 107891,
+    "midRate": 0.1718030234217868,
+    "midWinrate": 0.4525787656452309
+  },
+  {
+    "heroId": 15,
+    "midGames": 17797,
+    "midWins": 8726,
+    "name": "Razor",
+    "allGames": 109856,
+    "midRate": 0.16200298572676958,
+    "midWinrate": 0.49030735517222
+  },
+  {
+    "heroId": 137,
+    "midGames": 17501,
+    "midWins": 9775,
+    "name": "Primal Beast",
+    "allGames": 67991,
+    "midRate": 0.25740171493285874,
+    "midWinrate": 0.5585395120278841
+  },
+  {
+    "heroId": 56,
+    "midGames": 17237,
+    "midWins": 8674,
+    "name": "Clinkz",
+    "allGames": 76978,
+    "midRate": 0.22392112032009145,
+    "midWinrate": 0.5032198178337298
+  },
+  {
+    "heroId": 16,
+    "midGames": 15928,
+    "midWins": 7668,
+    "name": "Sand King",
+    "allGames": 55312,
+    "midRate": 0.28796644489441714,
+    "midWinrate": 0.48141637368156703
+  },
+  {
+    "heroId": 28,
+    "midGames": 14733,
+    "midWins": 7369,
+    "name": "Slardar",
+    "allGames": 118174,
+    "midRate": 0.12467209369235195,
+    "midWinrate": 0.5001696870969932
+  },
+  {
+    "heroId": 61,
+    "midGames": 14581,
+    "midWins": 7420,
+    "name": "Broodmother",
+    "allGames": 24860,
+    "midRate": 0.5865245374094932,
+    "midWinrate": 0.5088814210273643
+  },
+  {
+    "heroId": 105,
+    "midGames": 13909,
+    "midWins": 6410,
+    "name": "Techies",
+    "allGames": 220347,
+    "midRate": 0.06312316482638747,
+    "midWinrate": 0.46085268531166873
+  },
+  {
+    "heroId": 46,
+    "midGames": 12524,
+    "midWins": 5454,
+    "name": "Templar Assassin",
+    "allGames": 86933,
+    "midRate": 0.14406496957426984,
+    "midWinrate": 0.43548387096774194
+  },
+  {
+    "heroId": 98,
+    "midGames": 11852,
+    "midWins": 5495,
+    "name": "Timbersaw",
+    "allGames": 108875,
+    "midRate": 0.10885878300803674,
+    "midWinrate": 0.4636348295646304
+  },
+  {
+    "heroId": 45,
+    "midGames": 11620,
+    "midWins": 5706,
+    "name": "Pugna",
+    "allGames": 72922,
+    "midRate": 0.15934834480677984,
+    "midWinrate": 0.49104991394148023
+  },
+  {
+    "heroId": 80,
+    "midGames": 10920,
+    "midWins": 5389,
+    "name": "Lone Druid",
+    "allGames": 66229,
+    "midRate": 0.16488245330595358,
+    "midWinrate": 0.4934981684981685
+  },
+  {
+    "heroId": 92,
+    "midGames": 10426,
+    "midWins": 6066,
+    "name": "Visage",
+    "allGames": 36667,
+    "midRate": 0.28434286961027627,
+    "midWinrate": 0.5818146940341454
+  },
+  {
+    "heroId": 75,
+    "midGames": 10314,
+    "midWins": 4811,
+    "name": "Silencer",
+    "allGames": 147979,
+    "midRate": 0.06969907892336075,
+    "midWinrate": 0.46645336435912355
+  },
+  {
+    "heroId": 135,
+    "midGames": 10132,
+    "midWins": 5195,
+    "name": "Dawnbreaker",
+    "allGames": 225588,
+    "midRate": 0.04491373654627019,
+    "midWinrate": 0.5127319384129491
+  },
+  {
+    "heroId": 9,
+    "midGames": 9838,
+    "midWins": 4647,
+    "name": "Mirana",
+    "allGames": 323248,
+    "midRate": 0.030434836410434093,
+    "midWinrate": 0.4723521040861964
+  },
+  {
+    "heroId": 100,
+    "midGames": 8938,
+    "midWins": 4505,
+    "name": "Tusk",
+    "allGames": 169199,
+    "midRate": 0.052825371308341064,
+    "midWinrate": 0.5040277466994854
+  },
+  {
+    "heroId": 20,
+    "midGames": 8728,
+    "midWins": 4446,
+    "name": "Vengeful Spirit",
+    "allGames": 168278,
+    "midRate": 0.051866554154434925,
+    "midWinrate": 0.5093950504124656
+  },
+  {
+    "heroId": 104,
+    "midGames": 8049,
+    "midWins": 3819,
+    "name": "Legion Commander",
+    "allGames": 197775,
+    "midRate": 0.040697762609025405,
+    "midWinrate": 0.4744688781215058
+  },
+  {
+    "heroId": 71,
+    "midGames": 7945,
+    "midWins": 3718,
+    "name": "Spirit Breaker",
+    "allGames": 305203,
+    "midRate": 0.0260318542085104,
+    "midWinrate": 0.46796727501573315
+  },
+  {
+    "heroId": 73,
+    "midGames": 7833,
+    "midWins": 3664,
+    "name": "Alchemist",
+    "allGames": 41992,
+    "midRate": 0.1865355305772528,
+    "midWinrate": 0.4677645857270522
+  },
+  {
+    "heroId": 1,
+    "midGames": 7029,
+    "midWins": 3385,
+    "name": "Anti-Mage",
+    "allGames": 172992,
+    "midRate": 0.04063193673695893,
+    "midWinrate": 0.4815763266467492
+  },
+  {
+    "heroId": 60,
+    "midGames": 6824,
+    "midWins": 3477,
+    "name": "Night Stalker",
+    "allGames": 188923,
+    "midRate": 0.03612053587969702,
+    "midWinrate": 0.5095252051582649
+  },
+  {
+    "heroId": 38,
+    "midGames": 6621,
+    "midWins": 3053,
+    "name": "Beastmaster",
+    "allGames": 39347,
+    "midRate": 0.16827204107047553,
+    "midWinrate": 0.4611085938679958
+  },
+  {
+    "heroId": 65,
+    "midGames": 6098,
+    "midWins": 2958,
+    "name": "Batrider",
+    "allGames": 21219,
+    "midRate": 0.28738394834817854,
+    "midWinrate": 0.4850770744506396
+  },
+  {
+    "heroId": 64,
+    "midGames": 5323,
+    "midWins": 2492,
+    "name": "Jakiro",
+    "allGames": 116124,
+    "midRate": 0.04583893079811236,
+    "midWinrate": 0.4681570542926921
+  },
+  {
+    "heroId": 129,
+    "midGames": 4971,
+    "midWins": 2435,
+    "name": "Mars",
+    "allGames": 109656,
+    "midRate": 0.04533267673451521,
+    "midWinrate": 0.48984107825387246
+  },
+  {
+    "heroId": 4,
+    "midGames": 4713,
+    "midWins": 2429,
+    "name": "Bloodseeker",
+    "allGames": 33321,
+    "midRate": 0.1414423336634555,
+    "midWinrate": 0.5153829832378527
+  },
+  {
+    "heroId": 2,
+    "midGames": 4670,
+    "midWins": 2006,
+    "name": "Axe",
+    "allGames": 288743,
+    "midRate": 0.01617355225927555,
+    "midWinrate": 0.4295503211991435
+  },
+  {
+    "heroId": 70,
+    "midGames": 4586,
+    "midWins": 2322,
+    "name": "Ursa",
+    "allGames": 116813,
+    "midRate": 0.039259329013037934,
+    "midWinrate": 0.5063235935455734
+  },
+  {
+    "heroId": 58,
+    "midGames": 4579,
+    "midWins": 2376,
+    "name": "Enchantress",
+    "allGames": 53712,
+    "midRate": 0.08525096812630324,
+    "midWinrate": 0.5188905874645119
+  },
+  {
+    "heroId": 69,
+    "midGames": 4308,
+    "midWins": 2028,
+    "name": "Doom",
+    "allGames": 150619,
+    "midRate": 0.02860196920707215,
+    "midWinrate": 0.47075208913649025
+  },
+  {
+    "heroId": 138,
+    "midGames": 4089,
+    "midWins": 1893,
+    "name": "Muerta",
+    "allGames": 52820,
+    "midRate": 0.07741385838697463,
+    "midWinrate": 0.462949376375642
+  },
+  {
+    "heroId": 121,
+    "midGames": 3791,
+    "midWins": 2010,
+    "name": "Grimstroke",
+    "allGames": 152568,
+    "midRate": 0.02484793665775261,
+    "midWinrate": 0.5302031126351886
+  },
+  {
+    "heroId": 112,
+    "midGames": 3781,
+    "midWins": 1986,
+    "name": "Winter Wyvern",
+    "allGames": 176948,
+    "midRate": 0.021367859484142233,
+    "midWinrate": 0.5252578682888125
+  },
+  {
+    "heroId": 85,
+    "midGames": 3577,
+    "midWins": 1559,
+    "name": "Undying",
+    "allGames": 243476,
+    "midRate": 0.014691386420016756,
+    "midWinrate": 0.4358400894604417
+  },
+  {
+    "heroId": 77,
+    "midGames": 3562,
+    "midWins": 1955,
+    "name": "Lycan",
+    "allGames": 29106,
+    "midRate": 0.1223802652374081,
+    "midWinrate": 0.5488489612577204
+  },
+  {
+    "heroId": 5,
+    "midGames": 3547,
+    "midWins": 1866,
+    "name": "Crystal Maiden",
+    "allGames": 216807,
+    "midRate": 0.0163601728726471,
+    "midWinrate": 0.5260783760924725
+  },
+  {
+    "heroId": 55,
+    "midGames": 3476,
+    "midWins": 1771,
+    "name": "Dark Seer",
+    "allGames": 172086,
+    "midRate": 0.020199202724219285,
+    "midWinrate": 0.509493670886076
+  },
+  {
+    "heroId": 33,
+    "midGames": 3453,
+    "midWins": 1926,
+    "name": "Enigma",
+    "allGames": 96675,
+    "midRate": 0.035717610550814585,
+    "midWinrate": 0.5577758470894874
+  },
+  {
+    "heroId": 155,
+    "midGames": 3339,
+    "midWins": 1741,
+    "name": "Largo",
+    "allGames": 53053,
+    "midRate": 0.06293706293706294,
+    "midWinrate": 0.521413596885295
+  },
+  {
+    "heroId": 44,
+    "midGames": 3197,
+    "midWins": 1593,
+    "name": "Phantom Assassin",
+    "allGames": 146109,
+    "midRate": 0.021880924515259154,
+    "midWinrate": 0.49827963715983736
+  },
+  {
+    "heroId": 63,
+    "midGames": 3041,
+    "midWins": 1415,
+    "name": "Weaver",
+    "allGames": 80751,
+    "midRate": 0.03765897635942589,
+    "midWinrate": 0.46530746464978623
+  },
+  {
+    "heroId": 10,
+    "midGames": 3040,
+    "midWins": 1323,
+    "name": "Morphling",
+    "allGames": 87091,
+    "midRate": 0.03490601784340518,
+    "midWinrate": 0.4351973684210526
+  },
+  {
+    "heroId": 48,
+    "midGames": 2952,
+    "midWins": 1365,
+    "name": "Luna",
+    "allGames": 257312,
+    "midRate": 0.011472453674916056,
+    "midWinrate": 0.46239837398373984
+  },
+  {
+    "heroId": 68,
+    "midGames": 2939,
+    "midWins": 1386,
+    "name": "Ancient Apparition",
+    "allGames": 104198,
+    "midRate": 0.028205915660569302,
+    "midWinrate": 0.47158897584212317
+  },
+  {
+    "heroId": 123,
+    "midGames": 2839,
+    "midWins": 1091,
+    "name": "Hoodwink",
+    "allGames": 250159,
+    "midRate": 0.011348782174536994,
+    "midWinrate": 0.3842902430433251
+  },
+  {
+    "heroId": 72,
+    "midGames": 2744,
+    "midWins": 1214,
+    "name": "Gyrocopter",
+    "allGames": 60517,
+    "midRate": 0.04534263099624899,
+    "midWinrate": 0.4424198250728863
+  },
+  {
+    "heroId": 119,
+    "midGames": 2693,
+    "midWins": 1252,
+    "name": "Dark Willow",
+    "allGames": 160740,
+    "midRate": 0.016753763842229687,
+    "midWinrate": 0.4649090233939844
+  },
+  {
+    "heroId": 3,
+    "midGames": 2691,
+    "midWins": 1288,
+    "name": "Bane",
+    "allGames": 79176,
+    "midRate": 0.03398757199151258,
+    "midWinrate": 0.47863247863247865
+  },
+  {
+    "heroId": 108,
+    "midGames": 2666,
+    "midWins": 1147,
+    "name": "Underlord",
+    "allGames": 159492,
+    "midRate": 0.0167155719409124,
+    "midWinrate": 0.43023255813953487
+  },
+  {
+    "heroId": 78,
+    "midGames": 2606,
+    "midWins": 1356,
+    "name": "Brewmaster",
+    "allGames": 57838,
+    "midRate": 0.045056883018085,
+    "midWinrate": 0.5203376822716808
+  },
+  {
+    "heroId": 42,
+    "midGames": 2512,
+    "midWins": 1302,
+    "name": "Wraith King",
+    "allGames": 160715,
+    "midRate": 0.015630152754876645,
+    "midWinrate": 0.518312101910828
+  },
+  {
+    "heroId": 6,
+    "midGames": 2349,
+    "midWins": 1052,
+    "name": "Drow Ranger",
+    "allGames": 134405,
+    "midRate": 0.0174770283843607,
+    "midWinrate": 0.44785014899957426
+  },
+  {
+    "heroId": 62,
+    "midGames": 2272,
+    "midWins": 928,
+    "name": "Bounty Hunter",
+    "allGames": 213673,
+    "midRate": 0.010633070158606843,
+    "midWinrate": 0.4084507042253521
+  },
+  {
+    "heroId": 96,
+    "midGames": 2264,
+    "midWins": 1096,
+    "name": "Centaur Warrunner",
+    "allGames": 126160,
+    "midRate": 0.017945466074825618,
+    "midWinrate": 0.4840989399293286
+  },
+  {
+    "heroId": 8,
+    "midGames": 2247,
+    "midWins": 980,
+    "name": "Juggernaut",
+    "allGames": 327096,
+    "midRate": 0.006869542886492039,
+    "midWinrate": 0.43613707165109034
+  },
+  {
+    "heroId": 29,
+    "midGames": 2191,
+    "midWins": 965,
+    "name": "Tidehunter",
+    "allGames": 125151,
+    "midRate": 0.01750685172311847,
+    "midWinrate": 0.44043815609310816
+  },
+  {
+    "heroId": 99,
+    "midGames": 2128,
+    "midWins": 958,
+    "name": "Bristleback",
+    "allGames": 55201,
+    "midRate": 0.03855002626764008,
+    "midWinrate": 0.450187969924812
+  },
+  {
+    "heroId": 111,
+    "midGames": 2103,
+    "midWins": 939,
+    "name": "Oracle",
+    "allGames": 93254,
+    "midRate": 0.022551311471893966,
+    "midWinrate": 0.44650499286733236
+  },
+  {
+    "heroId": 41,
+    "midGames": 1957,
+    "midWins": 964,
+    "name": "Faceless Void",
+    "allGames": 134296,
+    "midRate": 0.014572288080061953,
+    "midWinrate": 0.4925907000510986
+  },
+  {
+    "heroId": 81,
+    "midGames": 1931,
+    "midWins": 1072,
+    "name": "Chaos Knight",
+    "allGames": 53355,
+    "midRate": 0.036191547183956514,
+    "midWinrate": 0.555152770585189
+  },
+  {
+    "heroId": 95,
+    "midGames": 1789,
+    "midWins": 840,
+    "name": "Troll Warlord",
+    "allGames": 37616,
+    "midRate": 0.04755954912803063,
+    "midWinrate": 0.4695360536612633
+  },
+  {
+    "heroId": 94,
+    "midGames": 1589,
+    "midWins": 688,
+    "name": "Medusa",
+    "allGames": 37554,
+    "midRate": 0.04231240347233317,
+    "midWinrate": 0.4329767149150409
+  },
+  {
+    "heroId": 57,
+    "midGames": 1559,
+    "midWins": 788,
+    "name": "Omniknight",
+    "allGames": 43471,
+    "midRate": 0.035862989119182904,
+    "midWinrate": 0.5054522129570237
+  },
+  {
+    "heroId": 67,
+    "midGames": 1541,
+    "midWins": 772,
+    "name": "Spectre",
+    "allGames": 169108,
+    "midRate": 0.009112519809825673,
+    "midWinrate": 0.5009733939000649
+  },
+  {
+    "heroId": 40,
+    "midGames": 1490,
+    "midWins": 569,
+    "name": "Venomancer",
+    "allGames": 85617,
+    "midRate": 0.017403085835756917,
+    "midWinrate": 0.3818791946308725
+  },
+  {
+    "heroId": 18,
+    "midGames": 1487,
+    "midWins": 708,
+    "name": "Sven",
+    "allGames": 210876,
+    "midRate": 0.007051537396384605,
+    "midWinrate": 0.4761264290517821
+  },
+  {
+    "heroId": 27,
+    "midGames": 1349,
+    "midWins": 609,
+    "name": "Shadow Shaman",
+    "allGames": 193681,
+    "midRate": 0.0069650611056324575,
+    "midWinrate": 0.4514455151964418
+  },
+  {
+    "heroId": 12,
+    "midGames": 1316,
+    "midWins": 655,
+    "name": "Phantom Lancer",
+    "allGames": 230112,
+    "midRate": 0.005718954248366013,
+    "midWinrate": 0.49772036474164133
+  },
+  {
+    "heroId": 50,
+    "midGames": 1257,
+    "midWins": 571,
+    "name": "Dazzle",
+    "allGames": 78165,
+    "midRate": 0.0160813663404337,
+    "midWinrate": 0.45425616547334924
+  },
+  {
+    "heroId": 54,
+    "midGames": 1206,
+    "midWins": 561,
+    "name": "Lifestealer",
+    "allGames": 329701,
+    "midRate": 0.0036578596971195113,
+    "midWinrate": 0.4651741293532338
+  },
+  {
+    "heroId": 30,
+    "midGames": 1101,
+    "midWins": 489,
+    "name": "Witch Doctor",
+    "allGames": 209360,
+    "midRate": 0.005258884218570883,
+    "midWinrate": 0.444141689373297
+  },
+  {
+    "heroId": 51,
+    "midGames": 1078,
+    "midWins": 492,
+    "name": "Clockwerk",
+    "allGames": 93064,
+    "midRate": 0.011583426459210866,
+    "midWinrate": 0.45640074211502785
+  },
+  {
+    "heroId": 31,
+    "midGames": 1037,
+    "midWins": 493,
+    "name": "Lich",
+    "allGames": 223593,
+    "midRate": 0.004637891168328167,
+    "midWinrate": 0.47540983606557374
+  },
+  {
+    "heroId": 79,
+    "midGames": 975,
+    "midWins": 393,
+    "name": "Shadow Demon",
+    "allGames": 50982,
+    "midRate": 0.019124396845945628,
+    "midWinrate": 0.40307692307692305
+  },
+  {
+    "heroId": 87,
+    "midGames": 948,
+    "midWins": 435,
+    "name": "Disruptor",
+    "allGames": 196829,
+    "midRate": 0.004816363442378918,
+    "midWinrate": 0.4588607594936709
+  },
+  {
+    "heroId": 103,
+    "midGames": 613,
+    "midWins": 291,
+    "name": "Elder Titan",
+    "allGames": 24128,
+    "midRate": 0.025406167108753316,
+    "midWinrate": 0.47471451876019577
+  },
+  {
+    "heroId": 109,
+    "midGames": 541,
+    "midWins": 249,
+    "name": "Terrorblade",
+    "allGames": 111947,
+    "midRate": 0.004832644019044726,
+    "midWinrate": 0.4602587800369686
+  },
+  {
+    "heroId": 89,
+    "midGames": 540,
+    "midWins": 274,
+    "name": "Naga Siren",
+    "allGames": 17664,
+    "midRate": 0.030570652173913044,
+    "midWinrate": 0.5074074074074074
+  },
+  {
+    "heroId": 37,
+    "midGames": 462,
+    "midWins": 175,
+    "name": "Warlock",
+    "allGames": 79553,
+    "midRate": 0.005807449121969002,
+    "midWinrate": 0.3787878787878788
+  },
+  {
+    "heroId": 131,
+    "midGames": 442,
+    "midWins": 178,
+    "name": "Ringmaster",
+    "allGames": 137355,
+    "midRate": 0.0032179389174038075,
+    "midWinrate": 0.40271493212669685
+  },
+  {
+    "heroId": 102,
+    "midGames": 410,
+    "midWins": 185,
+    "name": "Abaddon",
+    "allGames": 49786,
+    "midRate": 0.008235246856546016,
+    "midWinrate": 0.45121951219512196
+  },
+  {
+    "heroId": 83,
+    "midGames": 347,
+    "midWins": 130,
+    "name": "Treant Protector",
+    "allGames": 68744,
+    "midRate": 0.00504771325497498,
+    "midWinrate": 0.3746397694524496
+  },
+  {
+    "heroId": 66,
+    "midGames": 135,
+    "midWins": 40,
+    "name": "Chen",
+    "allGames": 9914,
+    "midRate": 0.013617107121242688,
+    "midWinrate": 0.2962962962962963
+  }
+]
