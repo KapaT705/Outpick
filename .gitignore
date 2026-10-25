@@ -6,3 +6,4 @@ web/.next/
 .DS_Store
 data/draft-log.json
 data/config.json
+data/data/
