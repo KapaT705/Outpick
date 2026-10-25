@@ -10,6 +10,7 @@ export default function SettingsForm() {
   const [gsiMsg, setGsiMsg] = useState<string | null>(null);
   const [dotaDir, setDotaDir] = useState("");
   const [raw, setRaw] = useState<string | null>(null);
+  const [updMsg, setUpdMsg] = useState<string | null>(null);
   const [rawMsg, setRawMsg] = useState<string | null>(null);
   const [info, setInfo] = useState<{ steamAccountId: number | null; hasToken: boolean; tokenTail: string; hasGithubToken?: boolean } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -44,7 +45,6 @@ export default function SettingsForm() {
     <main className="mx-auto w-full max-w-xl px-4 py-5 flex flex-col gap-4">
       <header className="flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold">Настройки</h1>
-        <a href="/" className="text-sm text-muted underline hover:text-foreground">К пикеру</a>
       </header>
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-3 text-sm">
         <label className="flex flex-col gap-1">
@@ -71,8 +71,17 @@ export default function SettingsForm() {
       </div>
 
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
+        <div className="font-semibold">Обновления программы</div>
+        <div className="flex items-center gap-3">
+          <button onClick={async () => { const d = (window as unknown as { desktop?: { checkForUpdates: () => Promise<{ ok: boolean; reason?: string }> } }).desktop; if (!d) { setUpdMsg("Проверка работает только в приложении"); return; } setUpdMsg("проверяю…"); const r = await d.checkForUpdates(); setUpdMsg(r.ok ? "запросил GitHub, результат появится полосой сверху" : r.reason === "no-token" ? "нужен токен GitHub (поле выше), затем перезапусти программу" : r.reason === "dev" ? "в режиме разработки не проверяется" : `ошибка: ${r.reason}`); }}
+            className="rounded-md border border-border px-3 py-1.5 hover:border-accent">Проверить обновления</button>
+          {updMsg && <span className="text-xs text-muted">{updMsg}</span>}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
         <div className="font-semibold">Автоподхват драфта из Доты (GSI)</div>
-        <p className="text-xs text-muted">Дота умеет отправлять состояние матча программе. Для этого в папку игры кладётся один файл конфига, это официальная функция Valve, в игру она не вмешивается. После установки файла перезапусти Доту и включи «Авто» в пикере.</p>
+        <p className="text-xs text-muted">Дота умеет отправлять программе состояние матча: это официальная функция Valve, в игру она не вмешивается. Важно: обычному игроку Дота отдаёт только твоего выбранного героя и номер матча, состав драфта она показывает только зрителям. Поэтому врагов ты вводишь сам, а программа в режиме «Авто» дописывает твоего героя и сама сохраняет драфт в историю. Для этого в папку игры кладётся один файл конфига, после установки перезапусти Доту.</p>
         {gsi && gsi.dotaDirs.length > 0 && <div className="text-xs text-muted">Нашёл Доту: {gsi.dotaDirs[0]}</div>}
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={async () => { setGsiMsg("ставлю…"); const r = await fetch("/api/gsi/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dotaDir: dotaDir || undefined }) }).then((x) => x.json()).catch(() => null); setGsiMsg(r?.ok ? `готово: ${r.file}` : r?.error ?? "ошибка"); }}

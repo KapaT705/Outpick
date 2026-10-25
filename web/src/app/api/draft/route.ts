@@ -16,6 +16,7 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as Partial<DraftInput>;
   const po = body.pool as Partial<PoolOverride> | undefined;
   const pool: PoolOverride = { add: ids(po?.add).slice(0, 60), remove: ids(po?.remove).slice(0, 60) };
-  const input: DraftInput = { bans: ids(body.bans), enemies: picks(body.enemies), allies: picks(body.allies), pool };
+  const role = [1, 2, 3, 4, 5].includes(Number(body.role)) ? (Number(body.role) as Role) : 2;
+  const input: DraftInput = { bans: ids(body.bans), enemies: picks(body.enemies), allies: picks(body.allies), pool, role };
   return NextResponse.json(evaluateDraft(input));
 }

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, utilityProcess, shell, Menu, dialog } = require("electron");
+const { app, BrowserWindow, utilityProcess, shell, Menu, ipcMain } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("node:path");
 const net = require("node:net");
@@ -55,6 +55,7 @@ async function createWindow() {
     width: 1280, height: 860, minWidth: 900, minHeight: 600,
     backgroundColor: "#0f1115",
     title: "Dota Mid Helper",
+    autoHideMenuBar: true, // на Windows меню скрыто, Alt показывает
     icon: path.join(__dirname, "icon.png"),
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true },
   });
@@ -63,13 +64,14 @@ async function createWindow() {
   try {
     const url = await startServer();
     await win.loadURL(url);
+    if (isDev) win.webContents.executeJavaScript("typeof window.desktop + ':' + Object.keys(window.desktop||{}).join(',')").then((v) => console.log(`[app] bridge: ${v}`)).catch((e) => console.log(`[app] bridge error: ${e}`));
   } catch (err) {
     await win.loadURL(`data:text/html;charset=utf-8,<body style="font-family:sans-serif;background:#0f1115;color:#eee;padding:24px"><h2>Не удалось запустить сервер</h2><pre>${String(err.message)}</pre></body>`);
   }
 }
 
-// --- обновления через GitHub Releases ---
-let updateState = { checking: false, available: null, downloaded: false };
+// --- обновления через GitHub Releases: события уходят в окно, интерфейс рисует сама страница ---
+const send = (data) => { try { win?.webContents.send("update:event", data); } catch {} };
 function readUserConfig() {
   try { return JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "config.json"), "utf8")); } catch { return {}; }
 }
@@ -80,38 +82,36 @@ function configureFeed() {
   return true;
 }
 function setupUpdater() {
-  if (isDev) return;
   autoUpdater.autoDownload = false;
-  if (!configureFeed()) return; // без токена GitHub обновления не проверяем
-  autoUpdater.on("update-available", async (info) => {
-    updateState.available = info.version;
-    const { response } = await dialog.showMessageBox(win, { type: "info", title: "Обновление", message: `Доступна версия ${info.version} (у тебя ${app.getVersion()}).`, detail: "Скачать сейчас? Установится после перезапуска.", buttons: ["Скачать", "Позже"], defaultId: 0, cancelId: 1 });
-    if (response === 0) autoUpdater.downloadUpdate();
+  autoUpdater.on("checking-for-update", () => send({ type: "checking" }));
+  autoUpdater.on("update-available", (info) => send({ type: "available", version: info.version, current: app.getVersion() }));
+  autoUpdater.on("update-not-available", () => send({ type: "none", current: app.getVersion() }));
+  autoUpdater.on("download-progress", (p) => send({ type: "progress", percent: Math.round(p.percent) }));
+  autoUpdater.on("update-downloaded", (info) => send({ type: "downloaded", version: info.version }));
+  autoUpdater.on("error", (e) => send({ type: "error", message: String(e?.message ?? e) }));
+  ipcMain.handle("app:version", () => app.getVersion());
+  ipcMain.handle("update:check", async () => {
+    if (isDev) return { ok: false, reason: "dev" };
+    if (!configureFeed()) return { ok: false, reason: "no-token" };
+    try { await autoUpdater.checkForUpdates(); return { ok: true }; } catch (e) { return { ok: false, reason: String(e?.message ?? e) }; }
   });
-  autoUpdater.on("update-not-available", () => { if (updateState.checking) dialog.showMessageBox(win, { type: "info", message: `У тебя последняя версия (${app.getVersion()}).` }); updateState.checking = false; });
-  autoUpdater.on("update-downloaded", async () => {
-    updateState.downloaded = true;
-    const { response } = await dialog.showMessageBox(win, { type: "info", title: "Обновление скачано", message: "Перезапустить и установить сейчас?", buttons: ["Перезапустить", "Позже"], defaultId: 0, cancelId: 1 });
-    if (response === 0) autoUpdater.quitAndInstall();
-  });
-  autoUpdater.on("error", (e) => { if (updateState.checking) dialog.showMessageBox(win, { type: "warning", message: "Не удалось проверить обновления", detail: String(e?.message ?? e) }); updateState.checking = false; });
-  autoUpdater.checkForUpdates().catch(() => {});
-}
-function checkUpdatesManually() {
-  if (isDev) { dialog.showMessageBox(win, { type: "info", message: "В режиме разработки обновления не проверяются." }); return; }
-  if (!configureFeed()) { dialog.showMessageBox(win, { type: "info", message: "Чтобы проверять обновления, укажи токен GitHub в Настройках и перезапусти программу." }); return; }
-  updateState.checking = true;
-  autoUpdater.checkForUpdates().catch(() => {});
+  ipcMain.handle("update:download", async () => { try { await autoUpdater.downloadUpdate(); return { ok: true }; } catch (e) { return { ok: false, reason: String(e?.message ?? e) }; } });
+  ipcMain.handle("update:install", () => { autoUpdater.quitAndInstall(); return { ok: true }; });
+  // тихая проверка при старте, если есть токен
+  if (!isDev && configureFeed()) setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 4000);
 }
 
 app.whenReady().then(() => {
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: "Dota Mid Helper", submenu: [
-      { label: `Проверить обновления (v${app.getVersion()})`, click: checkUpdatesManually },
-      { type: "separator" }, { role: "reload" }, { role: "toggleDevTools" }, { type: "separator" }, { role: "quit" }] },
-    { role: "editMenu" },
-  ]));
-  createWindow().then(setupUpdater);
+  if (process.platform === "darwin") {
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      { label: "Dota Mid Helper", submenu: [{ role: "reload" }, { role: "toggleDevTools" }, { type: "separator" }, { role: "quit" }] },
+      { role: "editMenu" },
+    ]));
+  } else {
+    Menu.setApplicationMenu(null);
+  }
+  setupUpdater();
+  createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });

@@ -55,10 +55,12 @@ export function inferRoles(picks: Pick[], exclude: Role[] = []): RoleGuess[] {
   }));
 }
 
-/** Вероятность, что герой стоит на миде (с учётом раскладки). */
-export function midProbability(guesses: RoleGuess[], id: number): number {
+/** Вероятность, что герой стоит на одной из указанных ролей (с учётом раскладки). */
+export function roleProbability(guesses: RoleGuess[], id: number, roles: Role[]): number {
   const g = guesses.find((x) => x.id === id);
   if (!g) return 0;
-  if (g.locked) return g.role === 2 ? 1 : 0;
-  return g.role === 2 ? g.prob : Math.min(0.5, 1 - g.prob) * 0.5;
+  const inSet = roles.includes(g.role);
+  if (g.locked) return inSet ? 1 : 0;
+  return inSet ? g.prob : Math.min(0.5, 1 - g.prob) * (roles.length / 5);
 }
+export const midProbability = (guesses: RoleGuess[], id: number) => roleProbability(guesses, id, [2]);

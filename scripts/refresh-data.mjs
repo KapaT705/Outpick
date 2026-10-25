@@ -45,12 +45,18 @@ save("mid-meta.json", midMeta);
 // 3b. распределение ролей по героям (последние 4 недели)
 const posRows = {};
 for (const pos of [1, 2, 3, 4, 5]) {
-  posRows[pos] = (await gql(`{ heroStats { winWeek(positionIds: [POSITION_${pos}], bracketIds: [DIVINE, IMMORTAL], take: 400) { week heroId matchCount } } }`)).heroStats.winWeek;
+  posRows[pos] = (await gql(`{ heroStats { winWeek(positionIds: [POSITION_${pos}], bracketIds: [DIVINE, IMMORTAL], take: 400) { week heroId matchCount winCount } } }`)).heroStats.winWeek;
   await sleep(200);
 }
 const posAgg = new Map();
-for (const pos of [1, 2, 3, 4, 5]) for (const r of posRows[pos]) { if (!weeks.includes(r.week)) continue; const a = posAgg.get(r.heroId) ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }; a[pos] += r.matchCount; posAgg.set(r.heroId, a); }
+const roleMeta = { 1: [], 2: [], 3: [], 4: [], 5: [] };
+for (const pos of [1, 2, 3, 4, 5]) {
+  const per = new Map();
+  for (const r of posRows[pos]) { if (!weeks.includes(r.week)) continue; const a = posAgg.get(r.heroId) ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }; a[pos] += r.matchCount; posAgg.set(r.heroId, a); const q = per.get(r.heroId) ?? { g: 0, w: 0 }; q.g += r.matchCount; q.w += r.winCount ?? 0; per.set(r.heroId, q); }
+  roleMeta[pos] = [...per].map(([heroId, q]) => ({ heroId, games: q.g, wins: q.w, winrate: q.g ? q.w / q.g : 0.5, rate: q.g / ((allA.get(heroId)?.g) || q.g) }));
+}
 save("hero-positions.json", [...posAgg].map(([heroId, a]) => { const tot = Object.values(a).reduce((x, y) => x + y, 0) || 1; return { heroId, name: names.get(heroId), games: tot, p: Object.fromEntries(Object.entries(a).map(([k, v]) => [k, v / tot])) }; }));
+save("role-meta.json", roleMeta);
 
 // 4. player's matches for the last 365 days -> pool + personal pairs
 const start = Math.floor(Date.now() / 1000) - 365 * 86400;
@@ -65,10 +71,12 @@ const pool = new Map(); const pairs = new Map();
 for (const m of matches) {
   const me = m.players.find((p) => p.steamAccountId === ME); if (!me) continue;
   const isMid = me.position === "POSITION_2" || me.position == null;
-  const p = pool.get(me.heroId) ?? { heroId: me.heroId, name: names.get(me.heroId), games: 0, wins: 0, midGames: 0, midWins: 0, lastPlayed: 0 };
+  const role = me.position ? Number(me.position.replace("POSITION_", "")) : 2; // позиция не определена: считаем мидом, как и раньше
+  const p = pool.get(me.heroId) ?? { heroId: me.heroId, name: names.get(me.heroId), games: 0, wins: 0, midGames: 0, midWins: 0, lastPlayed: 0, byRole: {} };
   p.games++; if (me.isVictory) p.wins++; if (isMid) { p.midGames++; if (me.isVictory) p.midWins++; } p.lastPlayed = Math.max(p.lastPlayed, m.startDateTime); pool.set(me.heroId, p);
-  if (!isMid) continue;
-  for (const o of m.players) { if (o.steamAccountId === ME) continue; const ally = o.isRadiant === me.isRadiant; const k = `${me.heroId}-${o.heroId}-${ally}`; const e = pairs.get(k) ?? { own: me.heroId, other: o.heroId, ally, games: 0, wins: 0 }; e.games++; if (me.isVictory) e.wins++; pairs.set(k, e); }
+  { const br = p.byRole[role] ?? { games: 0, wins: 0 }; br.games++; if (me.isVictory) br.wins++; p.byRole[role] = br; }
+  const pairRole = role;
+  for (const o of m.players) { if (o.steamAccountId === ME) continue; const ally = o.isRadiant === me.isRadiant; const k = `${pairRole}-${me.heroId}-${o.heroId}-${ally}`; const e = pairs.get(k) ?? { role: pairRole, own: me.heroId, other: o.heroId, ally, games: 0, wins: 0 }; e.games++; if (me.isVictory) e.wins++; pairs.set(k, e); }
 }
 save("player-pool.json", [...pool.values()].sort((a, b) => b.midGames - a.midGames));
 save("personal-pairs.json", [...pairs.values()]);

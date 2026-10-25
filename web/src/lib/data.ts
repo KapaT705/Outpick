@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { DATA_DIR, USER_DIR } from "./paths";
-import type { Hero, Matchup, MidMeta, PoolEntry, PersonalPair, HeroPositions } from "./types";
+import type { Hero, Matchup, MidMeta, PoolEntry, PersonalPair, HeroPositions, RoleMetaEntry } from "./types";
 import type { AliasMap } from "./aliases";
 
 const USER_DATA = path.join(USER_DIR, "data");
@@ -27,6 +27,7 @@ type Cache = {
   pairs: PersonalPair[];
   positions: Map<number, HeroPositions>;
   aliases: AliasMap;
+  roleMeta: Map<number, Map<number, RoleMetaEntry>>; // роль -> герой -> статистика за 4 недели
 };
 
 let cache: Cache | null = null;
@@ -49,6 +50,13 @@ export function loadData(): Cache {
   const pairs = readJson<PersonalPair[]>("personal-pairs.json");
   const positions = readJson<HeroPositions[]>("hero-positions.json");
   const aliases = readJson<AliasMap>("hero-aliases.json");
+  let roleMetaRaw: Record<string, RoleMetaEntry[]> = {};
+  try { roleMetaRaw = readJson<Record<string, RoleMetaEntry[]>>("role-meta.json"); } catch {
+    // старые данные без role-meta: мид берём из mid-meta, остальные роли пустые
+    roleMetaRaw = { 2: midMeta.map((m) => ({ heroId: m.heroId, games: m.midGames, wins: m.midWins, winrate: m.midWinrate, rate: m.midRate })) };
+  }
+  const roleMeta = new Map<number, Map<number, RoleMetaEntry>>();
+  for (const r of [1, 2, 3, 4, 5]) roleMeta.set(r, new Map((roleMetaRaw[String(r)] ?? []).map((e) => [e.heroId, e])));
   cache = {
     heroes,
     heroById: new Map(heroes.map((h) => [h.id, h])),
@@ -58,6 +66,7 @@ export function loadData(): Cache {
     pairs,
     positions: new Map(positions.map((p) => [p.heroId, p])),
     aliases,
+    roleMeta,
   };
   return cache;
 }

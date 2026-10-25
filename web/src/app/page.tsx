@@ -5,8 +5,13 @@ export const dynamic = "force-dynamic"; // данные читаются при 
 
 export default function Page() {
   const { heroes, pool, aliases } = loadData();
-  const poolIds = [...pool.values()].filter((p) => p.midGames >= 10).map((p) => p.heroId);
-  const familiarIds = [...pool.values()].filter((p) => p.midGames >= 3 && p.midGames < 10).map((p) => p.heroId);
+  const games = (p: { midGames: number; byRole?: Record<string, { games: number }> }, r: number) => p.byRole?.[String(r)]?.games ?? (r === 2 ? p.midGames : 0);
+  const poolByRole: Record<number, number[]> = {};
+  const familiarByRole: Record<number, number[]> = {};
+  for (const r of [1, 2, 3, 4, 5]) {
+    poolByRole[r] = [...pool.values()].filter((p) => games(p, r) >= 10).map((p) => p.heroId);
+    familiarByRole[r] = [...pool.values()].filter((p) => games(p, r) >= 3 && games(p, r) < 10).map((p) => p.heroId);
+  }
   const sorted = [...heroes].sort((a, b) => a.name.localeCompare(b.name));
-  return <DraftBoard heroes={sorted} poolIds={poolIds} familiarIds={familiarIds} aliases={aliases} />;
+  return <DraftBoard heroes={sorted} poolByRole={poolByRole} familiarByRole={familiarByRole} aliases={aliases} />;
 }

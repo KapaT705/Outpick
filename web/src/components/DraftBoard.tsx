@@ -27,16 +27,28 @@ const PICKS_KEY = "draft.picks.v1";
 const PICKS_TTL = 2 * 3600 * 1000; // драфт восстанавливаем, если ему меньше 2 часов
 const EMPTY: PoolOverride = { add: [], remove: [] };
 
-function loadOverride(): PoolOverride {
+function loadOverride(role: Role): PoolOverride {
   try {
+    const raw2 = localStorage.getItem(POOL_KEY_V2);
+    if (raw2) { const all = JSON.parse(raw2); const o = all?.[role]; if (o) return { add: Array.isArray(o.add) ? o.add.map(Number) : [], remove: Array.isArray(o.remove) ? o.remove.map(Number) : [] }; return EMPTY; }
+    // старый формат (только мид)
     const raw = localStorage.getItem(POOL_KEY);
-    if (!raw) return EMPTY;
-    const o = JSON.parse(raw);
-    return { add: Array.isArray(o.add) ? o.add.map(Number) : [], remove: Array.isArray(o.remove) ? o.remove.map(Number) : [] };
+    if (raw && role === 2) { const o = JSON.parse(raw); return { add: Array.isArray(o.add) ? o.add.map(Number) : [], remove: Array.isArray(o.remove) ? o.remove.map(Number) : [] }; }
+    return EMPTY;
   } catch { return EMPTY; }
 }
+function storeOverride(role: Role, o: PoolOverride) {
+  try { const all = JSON.parse(localStorage.getItem(POOL_KEY_V2) ?? "{}"); all[role] = o; localStorage.setItem(POOL_KEY_V2, JSON.stringify(all)); } catch {}
+}
 
-export default function DraftBoard({ heroes, poolIds, familiarIds, aliases }: { heroes: Hero[]; poolIds: number[]; familiarIds: number[]; aliases: AliasMap }) {
+const ROLE_FULL: Record<Role, string> = { 1: "Керри", 2: "Мид", 3: "Офлейн", 4: "Саппорт 4", 5: "Саппорт 5" };
+const ROLE_KEY = "draft.role.v1";
+const POOL_KEY_V2 = "draft.poolOverride.v2"; // { [role]: {add, remove} }
+
+export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases }: { heroes: Hero[]; poolByRole: Record<number, number[]>; familiarByRole: Record<number, number[]>; aliases: AliasMap }) {
+  const [role, setRoleState] = useState<Role>(2);
+  const poolIds = poolByRole[role] ?? [];
+  const familiarIds = familiarByRole[role] ?? [];
   const [zone, setZone] = useState<Zone>("enemies");
   const [picks, setPicks] = useState<Record<Zone, Pick[]>>({ bans: [], enemies: [], allies: [] });
   const [roles, setRoles] = useState<{ enemies: RoleGuess[]; allies: RoleGuess[] }>({ enemies: [], allies: [] });
@@ -57,13 +69,16 @@ export default function DraftBoard({ heroes, poolIds, familiarIds, aliases }: { 
   const lastKey = useRef<string>("");
 
   const take = async (heroId: number) => {
-    const body = { bans: picks.bans.map((p) => p.id), enemies: picks.enemies, allies: picks.allies, pool: override, chosenHeroId: heroId };
+    const body = { bans: picks.bans.map((p) => p.id), enemies: picks.enemies, allies: picks.allies, pool: override, role, chosenHeroId: heroId };
     const r = await fetch("/api/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((x) => x.json()).catch(() => null);
     if (r?.ok) { setSaved(byId.get(heroId)?.name ?? ""); setTimeout(() => setSaved(null), 4000); }
   };
 
   useEffect(() => {
-    setOverride(loadOverride());
+    let r: Role = 2;
+    try { const v = Number(localStorage.getItem(ROLE_KEY)); if ([1, 2, 3, 4, 5].includes(v)) r = v as Role; } catch {}
+    setRoleState(r);
+    setOverride(loadOverride(r));
     try { if (localStorage.getItem(AUTO_KEY) === "1") setAuto(true); } catch {}
     try {
       const raw = localStorage.getItem(PICKS_KEY);
@@ -72,7 +87,8 @@ export default function DraftBoard({ heroes, poolIds, familiarIds, aliases }: { 
   }, []);
   useEffect(() => { try { localStorage.setItem(AUTO_KEY, auto ? "1" : "0"); } catch {} }, [auto]);
   useEffect(() => { try { localStorage.setItem(PICKS_KEY, JSON.stringify({ at: Date.now(), picks })); } catch {} }, [picks]);
-  const saveOverride = (o: PoolOverride) => { setOverride(o); try { localStorage.setItem(POOL_KEY, JSON.stringify(o)); } catch {} };
+  const saveOverride = (o: PoolOverride) => { setOverride(o); storeOverride(role, o); };
+  const setRole = (r: Role) => { setRoleState(r); setOverride(loadOverride(r)); try { localStorage.setItem(ROLE_KEY, String(r)); } catch {} };
 
   const byId = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes]);
   const taken = useMemo(() => new Set([...picks.bans, ...picks.enemies, ...picks.allies].map((p) => p.id)), [picks]);
@@ -87,14 +103,14 @@ export default function DraftBoard({ heroes, poolIds, familiarIds, aliases }: { 
   useEffect(() => {
     const ctrl = new AbortController();
     setLoading(true);
-    const body = { bans: picks.bans.map((p) => p.id), enemies: picks.enemies, allies: picks.allies, pool: override };
+    const body = { bans: picks.bans.map((p) => p.id), enemies: picks.enemies, allies: picks.allies, pool: override, role };
     fetch("/api/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal })
       .then((r) => r.json())
       .then((d) => { setResult(d.candidates ?? []); setRoles({ enemies: d.enemyRoles ?? [], allies: d.allyRoles ?? [] }); })
       .catch(() => {})
       .finally(() => setLoading(false));
     return () => ctrl.abort();
-  }, [picks, override]);
+  }, [picks, override, role]);
 
   const addMany = (z: Zone, ids: number[]) => {
     const max = ZONES.find((x) => x.key === z)!.max;
@@ -108,7 +124,7 @@ export default function DraftBoard({ heroes, poolIds, familiarIds, aliases }: { 
   };
   const add = (id: number) => { addMany(zone, [id]); setQuery(""); };
   const remove = (z: Zone, id: number) => setPicks({ ...picks, [z]: picks[z].filter((x) => x.id !== id) });
-  const setRole = (z: Zone, id: number, role: Role | null) => setPicks({ ...picks, [z]: picks[z].map((x) => (x.id === id ? { ...x, role } : x)) });
+  const setPickRole = (z: Zone, id: number, r: Role | null) => setPicks({ ...picks, [z]: picks[z].map((x) => (x.id === id ? { ...x, role: r } : x)) });
   const reset = () => { setPicks({ bans: [], enemies: [], allies: [] }); setUnknown({ bans: [], enemies: [], allies: [] }); };
 
   const submitQuick = (z: Zone) => {
@@ -117,6 +133,10 @@ export default function DraftBoard({ heroes, poolIds, familiarIds, aliases }: { 
     setUnknown({ ...unknown, [z]: unk });
     setQuick({ ...quick, [z]: "" });
   };
+
+  const picksRef = useRef(picks);
+  useEffect(() => { picksRef.current = picks; }, [picks]);
+  const lastMatch = useRef<string | null>(null);
 
   useEffect(() => {
     if (!auto) return;
@@ -127,29 +147,39 @@ export default function DraftBoard({ heroes, poolIds, familiarIds, aliases }: { 
       if (r) {
         const d = r.draft;
         setGsi({ connected: r.connected, phase: d?.phase ?? "", ownHeroId: d?.ownHeroId ?? null, matchId: d?.matchId ?? null });
-        if (r.connected && d && d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION") {
-          const key = JSON.stringify([d.bans, d.enemies.map((p: Pick) => p.id), d.allies.map((p: Pick) => p.id)]);
-          if (key !== lastKey.current) {
-            lastKey.current = key;
-            setPicks((prev) => ({
-              bans: d.bans.map((id: number) => ({ id, role: null })),
-              enemies: d.enemies.map((p: Pick) => ({ id: p.id, role: prev.enemies.find((x) => x.id === p.id)?.role ?? null })),
-              allies: d.allies.map((p: Pick) => ({ id: p.id, role: prev.allies.find((x) => x.id === p.id)?.role ?? null })),
-            }));
+        if (r.connected && d) {
+          // новый матч начал стадию пиков: очищаем прошлый драфт
+          if (d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" && d.matchId && lastMatch.current !== d.matchId) {
+            lastMatch.current = d.matchId;
+            lastKey.current = "";
+            setPicks({ bans: [], enemies: [], allies: [] });
           }
-        }
-        // герой выбран и драфт закончился: записываем в историю один раз на матч
-        if (r.connected && d && d.ownHeroId && d.matchId && d.phase !== "DOTA_GAMERULES_STATE_HERO_SELECTION" && loggedMatch.current !== d.matchId && d.enemies.length > 0) {
-          loggedMatch.current = d.matchId;
-          const body = { bans: d.bans, enemies: d.enemies, allies: d.allies, pool: override, chosenHeroId: d.ownHeroId };
-          fetch("/api/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((x) => x.json()).then((j) => { if (j?.ok) { setSaved(byId.get(d.ownHeroId)?.name ?? ""); setTimeout(() => setSaved(null), 6000); } }).catch(() => {});
+          // Дота отдаёт состав драфта только зрителям; если вдруг он есть, подхватываем
+          if (d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" && d.enemies.length > 0) {
+            const key = JSON.stringify([d.bans, d.enemies.map((p: Pick) => p.id), d.allies.map((p: Pick) => p.id)]);
+            if (key !== lastKey.current) {
+              lastKey.current = key;
+              setPicks((prev) => ({
+                bans: d.bans.map((id: number) => ({ id, role: null })),
+                enemies: d.enemies.map((p: Pick) => ({ id: p.id, role: prev.enemies.find((x) => x.id === p.id)?.role ?? null })),
+                allies: d.allies.map((p: Pick) => ({ id: p.id, role: prev.allies.find((x) => x.id === p.id)?.role ?? null })),
+              }));
+            }
+          }
+          // герой выбран (strategy time и дальше): записываем драфт с врагами, которых ты ввёл, один раз на матч
+          const cur = picksRef.current;
+          if (d.ownHeroId && d.matchId && d.phase !== "DOTA_GAMERULES_STATE_HERO_SELECTION" && loggedMatch.current !== d.matchId && cur.enemies.length > 0) {
+            loggedMatch.current = d.matchId;
+            const body = { bans: cur.bans.map((p) => p.id), enemies: cur.enemies, allies: cur.allies, pool: override, role, chosenHeroId: d.ownHeroId, gsiMatchId: d.matchId };
+            fetch("/api/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((x) => x.json()).then((j) => { if (j?.ok) { setSaved(`${byId.get(d.ownHeroId)?.name ?? ""} (матч ${d.matchId})`); setTimeout(() => setSaved(null), 8000); } }).catch(() => {});
+          }
         }
       }
       if (!stop) setTimeout(tick, 1500);
     };
     tick();
     return () => { stop = true; };
-  }, [auto, override, byId]);
+  }, [auto, override, byId, role]);
 
   const togglePool = (id: number) => {
     const inPool = poolSet.has(id);
@@ -170,16 +200,21 @@ export default function DraftBoard({ heroes, poolIds, familiarIds, aliases }: { 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-5 flex flex-col gap-5">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-2xl font-semibold">Драфт-помощник <span className="text-muted text-base font-normal">мид · Divine/Immortal</span></h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-xl font-semibold">Драфт <span className="text-muted text-sm font-normal">Divine/Immortal</span></h1>
+          <div className="flex rounded-lg border border-border overflow-hidden text-xs" title="Твоя роль в этой игре: от неё зависят пул, базовые винрейты и вес матчапов по лейну">
+            {ROLES.map((r) => (
+              <button key={r} onClick={() => setRole(r)} className={`px-2.5 py-1.5 ${role === r ? "bg-accent/25 text-accent font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>{ROLE_FULL[r]}</button>
+            ))}
+          </div>
+        </div>
         <div className="flex gap-4 text-sm items-center">
           {saved && <span className="text-good text-xs">сохранил: {saved}</span>}
           <label className="flex items-center gap-1.5 cursor-pointer" title="Подхватывать драфт из Доты через GSI (настрой в Настройках)">
             <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} className="accent-[var(--accent)]" />
             <span>Авто</span>
-            {auto && <span className={`inline-block h-2 w-2 rounded-full ${gsi?.connected ? "bg-good" : "bg-bad"}`} title={gsi?.connected ? `Дота на связи${gsi.phase ? ` · ${gsi.phase.replace("DOTA_GAMERULES_STATE_", "").toLowerCase()}` : ""}` : "Дота не шлёт данные: проверь конфиг GSI и перезапусти игру"} />}
+            {auto && <span className={`inline-block h-2 w-2 rounded-full ${gsi?.connected ? "bg-good" : "bg-bad"}`} title={gsi?.connected ? `Дота на связи${gsi.phase ? ` · ${gsi.phase.replace("DOTA_GAMERULES_STATE_", "").toLowerCase()}` : ""}${gsi.ownHeroId ? ` · твой герой: ${byId.get(gsi.ownHeroId)?.name}` : ""}. Врагов введи сам: Дота не отдаёт состав драфта игроку, только твоего героя.` : "Дота не шлёт данные: проверь конфиг GSI и перезапусти игру"} />}
           </label>
-          <a href="/history" className="text-muted hover:text-foreground underline">История драфтов</a>
-          <a href="/settings" className="text-muted hover:text-foreground underline">Настройки</a>
           <button onClick={() => setPoolOpen(true)} className="text-accent hover:underline">Мой пул · {poolSet.size}</button>
           <button onClick={reset} className="text-muted hover:text-foreground underline">Сбросить драфт</button>
         </div>
@@ -203,11 +238,11 @@ export default function DraftBoard({ heroes, poolIds, familiarIds, aliases }: { 
                       <img src={icon(h.short)} alt="" className="h-7 w-7" />{h.name}
                     </button>
                     {z.key !== "bans" && (
-                      <select value={p.role ?? ""} onChange={(e) => setRole(z.key, p.id, e.target.value ? (Number(e.target.value) as Role) : null)}
+                      <select value={p.role ?? ""} onChange={(e) => setPickRole(z.key, p.id, e.target.value ? (Number(e.target.value) as Role) : null)}
                         title={p.role ? "Роль задана тобой" : guess ? `Предполагаю: ${ROLE_LABEL[guess.role]} (${Math.round(guess.prob * 100)}%)` : "Роль"}
                         className={`h-7 border-l border-border bg-panel px-1 outline-none cursor-pointer ${p.role ? "text-foreground" : "text-muted italic"}`}>
                         <option value="">{guess ? `${ROLE_LABEL[guess.role]}?` : "роль?"}</option>
-                        {ROLES.filter((r) => !(z.key === "allies" && r === 2)).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                        {ROLES.filter((r) => !(z.key === "allies" && r === role)).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                       </select>
                     )}
                   </div>
@@ -249,11 +284,11 @@ export default function DraftBoard({ heroes, poolIds, familiarIds, aliases }: { 
             })}
             {filtered.length === 0 && <span className="text-sm text-muted col-span-full">Никого не нашёл</span>}
           </div>
-          <p className="text-xs text-muted">Золотая рамка — твой пул, тонкая — знакомые герои (3–9 игр на миде за год). Пул можно править кнопкой «Мой пул». Роль со знаком «?» предсказана по статистике, выбери в списке, если знаешь точно.</p>
+          <p className="text-xs text-muted">Золотая рамка — твой пул на выбранной роли, тонкая — знакомые герои (3–9 игр). Пул можно править кнопкой «Мой пул». Роль со знаком «?» предсказана по статистике, выбери в списке, если знаешь точно.</p>
         </section>
 
         <section className="flex flex-col gap-4 min-w-0">
-          <ResultBlock title="Из твоего пула" items={inPool} loading={loading} byId={byId} onTake={take} />
+          <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role].toLowerCase()}`} items={inPool} loading={loading} byId={byId} onTake={take} />
           <ResultBlock title="Вне пула, но хороши в этот драфт" items={outside} loading={loading} byId={byId} onTake={take}
             footer={<button onClick={() => setShowAll(!showAll)} className="text-xs text-muted underline">{showAll ? "Показать меньше" : "Показать больше"}</button>} />
         </section>
@@ -263,10 +298,10 @@ export default function DraftBoard({ heroes, poolIds, familiarIds, aliases }: { 
         <div className="fixed inset-0 z-20 bg-black/60 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setPoolOpen(false)}>
           <div className="w-full max-w-2xl rounded-xl border border-border bg-panel p-4 flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold">Мой пул · {poolSet.size} героев</h2>
+              <h2 className="font-semibold">Мой пул · {ROLE_FULL[role].toLowerCase()} · {poolSet.size} героев</h2>
               <button onClick={() => setPoolOpen(false)} className="text-muted hover:text-foreground">Закрыть</button>
             </div>
-            <p className="text-xs text-muted">По умолчанию в пуле герои с 10+ играми на миде за год. Отметь тех, на ком реально играешь: они попадут в список «Из твоего пула». Правки хранятся в этом браузере.</p>
+            <p className="text-xs text-muted">Пул отдельный для каждой роли. По умолчанию в нём герои с 10+ играми на этой роли за год. Отметь тех, на ком реально играешь: они попадут в список «Из твоего пула». Правки хранятся в этом браузере.</p>
             <input value={poolQuery} onChange={(e) => setPoolQuery(e.target.value)} placeholder="Найти героя…" className="w-full rounded-lg border border-border bg-panel-2 px-3 py-2 text-sm outline-none focus:border-accent" />
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 max-h-[60vh] overflow-y-auto pr-1">
               {poolList.map((h) => {
@@ -324,7 +359,7 @@ function Row({ c, byId, onTake }: { c: Candidate; byId: Map<number, Hero>; onTak
             {c.personalWinrate !== null && <span className="text-xs text-muted">ты: {c.midWins}–{c.midGames - c.midWins} ({c.personalWinrate}%)</span>}
           </div>
           <div className="text-xs text-muted truncate">
-            {top.length === 0 ? `базовый винрейт на миде ${c.base}%` : top.map((r) => `${r.value > 0 ? "+" : ""}${r.value} ${r.kind === "vs" ? "против" : "с"} ${r.name}${r.laneOpp ? " (мид)" : ""}`).join(" · ")}
+            {top.length === 0 ? `базовый винрейт на роли ${c.base}%` : top.map((r) => `${r.value > 0 ? "+" : ""}${r.value} ${r.kind === "vs" ? "против" : "с"} ${r.name}${r.laneOpp ? " (мид)" : ""}`).join(" · ")}
           </div>
         </div>
         <div className="text-right">
@@ -336,10 +371,10 @@ function Row({ c, byId, onTake }: { c: Candidate; byId: Map<number, Hero>; onTak
       </div>
       {open && (
         <div className="mt-2 border-t border-border pt-2 text-xs text-muted grid gap-1">
-          <div>Базовый винрейт героя на миде: <b className="text-foreground">{c.base}%</b> · контрпики: <b className="text-foreground">{c.vsTotal > 0 ? "+" : ""}{c.vsTotal}</b> · синергии: <b className="text-foreground">{c.withTotal > 0 ? "+" : ""}{c.withTotal}</b> · поправка на твой опыт: <b className="text-foreground">{c.personalAdj > 0 ? "+" : ""}{c.personalAdj}</b></div>
-          {c.reasons.map((r) => <div key={`${r.kind}-${r.heroId}`}>{r.value > 0 ? "+" : ""}{r.value} {r.kind === "vs" ? "против" : "вместе с"} {r.name}{r.laneOpp ? <span className="text-enemy"> · их мидер, вес x1.75</span> : null} <span className="opacity-60">({r.games} игр в выборке)</span></div>)}
+          <div>Базовый винрейт героя на этой роли: <b className="text-foreground">{c.base}%</b> · контрпики: <b className="text-foreground">{c.vsTotal > 0 ? "+" : ""}{c.vsTotal}</b> · синергии: <b className="text-foreground">{c.withTotal > 0 ? "+" : ""}{c.withTotal}</b> · поправка на твой опыт: <b className="text-foreground">{c.personalAdj > 0 ? "+" : ""}{c.personalAdj}</b></div>
+          {c.reasons.map((r) => <div key={`${r.kind}-${r.heroId}`}>{r.value > 0 ? "+" : ""}{r.value} {r.kind === "vs" ? "против" : "вместе с"} {r.name}{r.laneOpp ? <span className="text-enemy"> · твой оппонент по лейну, вес выше</span> : null} <span className="opacity-60">({r.games} игр в выборке)</span></div>)}
           {c.personalNotes.map((n) => <div key={`${n.ally}-${n.heroId}`} className="text-accent">Твоя история {n.ally ? "вместе с" : "против"} {n.name}: {n.wins}–{n.games - n.wins}</div>)}
-          <div className="opacity-60">Доля мид-игр у героя на Divine/Immortal: {Math.round(c.midRate * 100)}%</div>
+          <div className="opacity-60">Доля игр героя на этой роли у Divine/Immortal: {Math.round(c.midRate * 100)}%</div>
         </div>
       )}
     </div>

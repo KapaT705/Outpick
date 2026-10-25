@@ -46,7 +46,6 @@ export default function HistoryView({ items: initial, heroes }: { items: DraftLo
         <h1 className="text-2xl font-semibold">История драфтов <span className="text-muted text-base font-normal">{items.length} записей · с результатом {done.length}</span></h1>
         <div className="flex items-center gap-3 text-sm">
           <button onClick={sync} disabled={busy} className="rounded-md border border-border px-3 py-1 hover:border-accent disabled:opacity-50">{busy ? "ищу матчи…" : "Подтянуть результаты из Stratz"}</button>
-          <a href="/" className="text-muted underline hover:text-foreground">К пикеру</a>
         </div>
       </header>
 

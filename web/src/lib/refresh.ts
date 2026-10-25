@@ -56,12 +56,16 @@ export async function refreshData(token: string, me: number | null, progress: Pr
 
   progress("роли героев");
   const posAgg = new Map<number, Record<string, number>>();
+  const roleMeta: Record<string, { heroId: number; games: number; wins: number; winrate: number; rate: number }[]> = { 1: [], 2: [], 3: [], 4: [], 5: [] };
   for (const pos of [1, 2, 3, 4, 5]) {
     const rows: WW[] = (await gql(token, `{ heroStats { winWeek(positionIds: [POSITION_${pos}], bracketIds: [DIVINE, IMMORTAL], take: 400) { week heroId matchCount winCount } } }`)).heroStats.winWeek;
-    for (const r of rows) { if (!weeks.includes(r.week)) continue; const a = posAgg.get(r.heroId) ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }; a[pos] += r.matchCount; posAgg.set(r.heroId, a); }
+    const per = new Map<number, { g: number; w: number }>();
+    for (const r of rows) { if (!weeks.includes(r.week)) continue; const a = posAgg.get(r.heroId) ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }; a[pos] += r.matchCount; posAgg.set(r.heroId, a); const q = per.get(r.heroId) ?? { g: 0, w: 0 }; q.g += r.matchCount; q.w += r.winCount ?? 0; per.set(r.heroId, q); }
+    roleMeta[pos] = [...per].map(([heroId, q]) => ({ heroId, games: q.g, wins: q.w, winrate: q.g ? q.w / q.g : 0.5, rate: q.g / (allA.get(heroId)?.g || q.g) }));
     await sleep(200);
   }
   save("hero-positions.json", [...posAgg].map(([heroId, a]) => { const tot = Object.values(a).reduce((x, y) => x + y, 0) || 1; return { heroId, name: names.get(heroId), games: tot, p: Object.fromEntries(Object.entries(a).map(([k, v]) => [k, v / tot])) }; }));
+  save("role-meta.json", roleMeta);
 
   if (me) {
     progress("твои матчи за год");
@@ -74,15 +78,17 @@ export async function refreshData(token: string, me: number | null, progress: Pr
       if (page.length < 100 || Math.min(...page.map((m) => m.startDateTime)) < start) break;
       await sleep(250);
     }
-    const pool = new Map<number, { heroId: number; name: string | undefined; games: number; wins: number; midGames: number; midWins: number; lastPlayed: number }>();
-    const pairs = new Map<string, { own: number; other: number; ally: boolean; games: number; wins: number }>();
+    const pool = new Map<number, { heroId: number; name: string | undefined; games: number; wins: number; midGames: number; midWins: number; lastPlayed: number; byRole: Record<string, { games: number; wins: number }> }>();
+    const pairs = new Map<string, { role: number; own: number; other: number; ally: boolean; games: number; wins: number }>();
     for (const m of matches) {
-      const self = m.players.find((p) => p.steamAccountId === me); if (!self) continue;
+      const self: MM["players"][number] | undefined = m.players.find((pl) => pl.steamAccountId === me); if (!self) continue;
       const isMid = self.position === "POSITION_2" || self.position == null;
-      const p = pool.get(self.heroId) ?? { heroId: self.heroId, name: names.get(self.heroId), games: 0, wins: 0, midGames: 0, midWins: 0, lastPlayed: 0 };
+      const role = self.position ? Number(self.position.replace("POSITION_", "")) : 2; // позиция не определена: считаем мидом
+      const p = pool.get(self.heroId) ?? { heroId: self.heroId, name: names.get(self.heroId), games: 0, wins: 0, midGames: 0, midWins: 0, lastPlayed: 0, byRole: {} as Record<string, { games: number; wins: number }> };
       p.games++; if (self.isVictory) p.wins++; if (isMid) { p.midGames++; if (self.isVictory) p.midWins++; } p.lastPlayed = Math.max(p.lastPlayed, m.startDateTime); pool.set(self.heroId, p);
-      if (!isMid) continue;
-      for (const o of m.players) { if (o.steamAccountId === me) continue; const ally = o.isRadiant === self.isRadiant; const k = `${self.heroId}-${o.heroId}-${ally}`; const e = pairs.get(k) ?? { own: self.heroId, other: o.heroId, ally, games: 0, wins: 0 }; e.games++; if (self.isVictory) e.wins++; pairs.set(k, e); }
+      { const br = p.byRole[String(role)] ?? { games: 0, wins: 0 }; br.games++; if (self.isVictory) br.wins++; p.byRole[String(role)] = br; }
+      const pairRole = role;
+      for (const o of m.players as MM["players"]) { if (o.steamAccountId === me) continue; const ally = o.isRadiant === self.isRadiant; const k = `${pairRole}-${self.heroId}-${o.heroId}-${ally}`; const e = pairs.get(k) ?? { role: pairRole, own: self.heroId, other: o.heroId, ally, games: 0, wins: 0 }; e.games++; if (self.isVictory) e.wins++; pairs.set(k, e); }
     }
     save("player-pool.json", [...pool.values()].sort((a, b) => b.midGames - a.midGames));
     save("personal-pairs.json", [...pairs.values()]);

@@ -31,7 +31,8 @@ export async function POST() {
   for (const rec of pending) {
     // матч должен начаться не раньше чем за 15 минут до сохранения драфта и не позже чем через 40 минут после
     const cands = matches.filter((m) => m.startDateTime >= rec.createdAt - 15 * 60 && m.startDateTime <= rec.createdAt + 40 * 60);
-    const hit = cands.find((m) => {
+    const byId = rec.gsiMatchId ? matches.find((m) => String(m.id) === rec.gsiMatchId) : undefined;
+    const hit = byId ?? cands.find((m) => {
       const me = m.players.find((p) => p.steamAccountId === ME);
       if (!me || me.heroId !== rec.chosenHeroId) return false;
       const enemyIds = m.players.filter((p) => p.isRadiant !== me.isRadiant).map((p) => p.heroId);

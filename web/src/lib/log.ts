@@ -20,6 +20,8 @@ export type DraftLog = {
   allies: Pick[];
   enemyRoles: { id: number; role: Role; locked: boolean }[];
   chosenHeroId: number;
+  role?: number;                  // роль игрока при оценке (1..5)
+  gsiMatchId?: string;            // id матча из Доты, если был
   chosen: LogRec | null;          // как оценивался выбранный герой
   topPool: LogRec[];              // топ-5 из пула на момент выбора
   topAll: LogRec[];               // топ-5 общий

@@ -16,11 +16,12 @@ export async function GET() {
 
 /** Сохранить драфт и выбранного героя. Оценки пересчитываются на сервере, чтобы в журнале была честная версия. */
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as Partial<DraftInput> & { chosenHeroId?: number };
+  const body = (await req.json().catch(() => ({}))) as Partial<DraftInput> & { chosenHeroId?: number; gsiMatchId?: string };
   const chosenHeroId = Number(body.chosenHeroId);
   if (!Number.isInteger(chosenHeroId) || chosenHeroId <= 0) return NextResponse.json({ error: "chosenHeroId required" }, { status: 400 });
   const po = body.pool as Partial<PoolOverride> | undefined;
-  const input: DraftInput = { bans: ids(body.bans), enemies: picks(body.enemies), allies: picks(body.allies), pool: { add: ids(po?.add), remove: ids(po?.remove) } };
+  const role = [1, 2, 3, 4, 5].includes(Number(body.role)) ? (Number(body.role) as Role) : 2;
+  const input: DraftInput = { bans: ids(body.bans), enemies: picks(body.enemies), allies: picks(body.allies), pool: { add: ids(po?.add), remove: ids(po?.remove) }, role };
   const { candidates, enemyRoles } = evaluateDraft(input);
   const rec = (i: number): LogRec => ({ heroId: candidates[i].heroId, name: candidates[i].name, finalScore: candidates[i].finalScore, draftScore: candidates[i].draftScore, rank: i + 1, poolStatus: candidates[i].poolStatus });
   const idx = candidates.findIndex((c) => c.heroId === chosenHeroId);
@@ -30,6 +31,8 @@ export async function POST(req: Request) {
     bans: input.bans, enemies: input.enemies, allies: input.allies,
     enemyRoles: enemyRoles.map((g) => ({ id: g.id, role: g.role, locked: g.locked })),
     chosenHeroId,
+    role,
+    gsiMatchId: typeof body.gsiMatchId === "string" && /^\d+$/.test(body.gsiMatchId) ? body.gsiMatchId : undefined,
     chosen: idx >= 0 ? rec(idx) : null,
     topPool: candidates.map((c, i) => ({ c, i })).filter((x) => x.c.poolStatus !== "outside").slice(0, 5).map((x) => rec(x.i)),
     topAll: candidates.slice(0, 5).map((_, i) => rec(i)),
