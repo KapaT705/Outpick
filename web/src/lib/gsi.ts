@@ -7,7 +7,7 @@ type TeamDraft = Record<string, number | string | boolean>;
 export type GsiPayload = {
   provider?: { timestamp?: number };
   map?: { matchid?: string; game_state?: string; game_time?: number; name?: string };
-  player?: { team_name?: string; steamid?: string; name?: string } & Record<string, unknown>;
+  player?: { team_name?: string; steamid?: string; name?: string; team_slot?: number } & Record<string, unknown>;
   hero?: { id?: number; name?: string } & Record<string, unknown>;
   draft?: { activeteam?: number; pick?: boolean; activeteam_time_remaining?: number; team2?: TeamDraft; team3?: TeamDraft } & Record<string, unknown>;
   auth?: { token?: string };
@@ -17,6 +17,7 @@ export type DraftState = {
   phase: string;                  // DOTA_GAMERULES_STATE_*
   matchId: string | null;
   team: "radiant" | "dire" | null;
+  teamSlot: number | null;        // твой слот в своей команде (0..4), для распознавания экрана
   ownHeroId: number | null;
   bans: number[];
   enemies: Pick[];
@@ -50,7 +51,8 @@ export function parseDraft(p: GsiPayload): DraftState | null {
   const phase = p.map?.game_state ?? "";
   const team = detectTeam(p);
   const d = p.draft;
-  if (!d || !team) return { phase, matchId: p.map?.matchid ?? null, team, ownHeroId: p.hero?.id || null, bans: [], enemies: [], allies: [], activeTeamIsOurs: null, timeRemaining: null };
+  const teamSlot = typeof p.player?.team_slot === "number" ? p.player.team_slot : null;
+  if (!d || !team) return { phase, matchId: p.map?.matchid ?? null, team, teamSlot, ownHeroId: p.hero?.id || null, bans: [], enemies: [], allies: [], activeTeamIsOurs: null, timeRemaining: null };
   const ours = team === "radiant" ? d.team2 : d.team3;
   const theirs = team === "radiant" ? d.team3 : d.team2;
   const ownHeroId = p.hero?.id || null;
@@ -60,6 +62,7 @@ export function parseDraft(p: GsiPayload): DraftState | null {
     phase,
     matchId: p.map?.matchid ?? null,
     team,
+    teamSlot,
     ownHeroId,
     bans,
     enemies: picksOf(theirs, "pick").map((id) => ({ id, role: null })),

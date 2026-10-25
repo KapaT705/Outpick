@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseHeroText, type AliasMap } from "@/lib/aliases";
 import type { Attr, Candidate, Hero, Pick, PoolOverride, Role, RoleGuess } from "@/lib/types";
+import type { RecognizedSlot } from "@/components/AppShell";
 
 type Zone = "bans" | "enemies" | "allies";
 const ZONES: { key: Zone; label: string; color: string; max: number; hint: string }[] = [
@@ -64,6 +65,8 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
   const [saved, setSaved] = useState<string | null>(null);
   const auto = true; // связь с Дотой работает всегда, когда программа открыта
   const [gsi, setGsi] = useState<{ connected: boolean; phase: string; ownHeroId: number | null; matchId: string | null } | null>(null);
+  const [screen, setScreen] = useState<{ status: string; found: number } | null>(null);
+  const lastSeen = useRef<Map<string, { heroId: number | null; n: number }>>(new Map()); // стабилизация: герой принимается после 2 кадров подряд
   const loggedMatch = useRef<string | null>(null);
   const lastKey = useRef<string>("");
 
@@ -144,11 +147,46 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
       if (r) {
         const d = r.draft;
         setGsi({ connected: r.connected, phase: d?.phase ?? "", ownHeroId: d?.ownHeroId ?? null, matchId: d?.matchId ?? null });
+        if (r.connected && d && d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" && d.team && window.desktop?.recognizeDraft) {
+          const res = await window.desktop.recognizeDraft().catch(() => null);
+          if (!stop && res) {
+            if (!res.ok) setScreen({ status: res.error ?? "ошибка захвата", found: 0 });
+            else {
+              const slots = res.slots ?? [];
+              // стабилизация: слот принимаем, если тот же герой виден два кадра подряд
+              const stable: RecognizedSlot[] = [];
+              for (const sl of slots) {
+                const key = `${sl.team}${sl.idx}`;
+                const prev = lastSeen.current.get(key);
+                const n = prev && prev.heroId === sl.heroId ? prev.n + 1 : 1;
+                lastSeen.current.set(key, { heroId: sl.heroId, n });
+                if (sl.heroId && n >= 2) stable.push(sl);
+              }
+              const mine = d.team as "radiant" | "dire";
+              const enemiesSeen = stable.filter((x) => x.team !== mine).map((x) => x.heroId as number);
+              const alliesSeen = stable.filter((x) => x.team === mine && x.idx !== d.teamSlot).map((x) => x.heroId as number);
+              const ownSeen = stable.find((x) => x.team === mine && x.idx === d.teamSlot)?.heroId ?? null;
+              setScreen({ status: `экран: ${res.source ?? ""} ${res.w}×${res.h}, ${res.ms} мс`, found: stable.length });
+              setPicks((prev) => {
+                const merge = (cur: Pick[], seen: number[]) => {
+                  const out = cur.filter((p) => seen.includes(p.id) || !slots.some((sl) => sl.heroId === p.id)); // убираем только то, чего точно нет
+                  for (const id of seen) if (!out.some((p) => p.id === id)) out.push({ id, role: null });
+                  return out.slice(0, 5);
+                };
+                const enemies = merge(prev.enemies, enemiesSeen);
+                const allies = merge(prev.allies, alliesSeen).filter((p) => p.id !== ownSeen);
+                if (JSON.stringify(enemies) === JSON.stringify(prev.enemies) && JSON.stringify(allies) === JSON.stringify(prev.allies)) return prev;
+                return { ...prev, enemies, allies };
+              });
+            }
+          }
+        }
         if (r.connected && d) {
           // новый матч начал стадию пиков: очищаем прошлый драфт
           if (d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" && d.matchId && lastMatch.current !== d.matchId) {
             lastMatch.current = d.matchId;
             lastKey.current = "";
+            lastSeen.current.clear();
             setPicks({ bans: [], enemies: [], allies: [] });
           }
           // Дота отдаёт состав драфта только зрителям; если вдруг он есть, подхватываем
@@ -210,6 +248,7 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
           <span className="flex items-center gap-1.5 text-xs text-muted cursor-default" title={gsi?.connected ? `Дота на связи${gsi.phase ? ` · ${gsi.phase.replace("DOTA_GAMERULES_STATE_", "").toLowerCase()}` : ""}${gsi.ownHeroId ? ` · твой герой: ${byId.get(gsi.ownHeroId)?.name}` : ""}. Когда ты выберешь героя, драфт с введёнными врагами запишется в историю сам.` : "Дота не на связи: запусти игру с установленным конфигом GSI (Настройки)"}>
             <span className={`inline-block h-2 w-2 rounded-full ${gsi?.connected ? "bg-good" : "bg-border"}`} />
             {gsi?.connected ? "Дота" : "Дота не на связи"}
+            {screen && gsi?.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" && <span className="ml-1 text-muted/80" title={screen.status}>· с экрана: {screen.found}</span>}
           </span>
           <button onClick={() => setPoolOpen(true)} className="text-accent hover:underline">Мой пул · {poolSet.size}</button>
           <button onClick={reset} className="text-muted hover:text-foreground underline">Сбросить драфт</button>

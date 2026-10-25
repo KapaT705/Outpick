@@ -1,4 +1,5 @@
-const { app, BrowserWindow, utilityProcess, shell, Menu, ipcMain } = require("electron");
+const { app, BrowserWindow, utilityProcess, shell, Menu, ipcMain, desktopCapturer, screen } = require("electron");
+const recog = require("./recognize.js");
 const { autoUpdater } = require("electron-updater");
 const path = require("node:path");
 const net = require("node:net");
@@ -64,7 +65,10 @@ async function createWindow() {
   try {
     const url = await startServer();
     await win.loadURL(url);
-    if (isDev) win.webContents.executeJavaScript("typeof window.desktop + ':' + Object.keys(window.desktop||{}).join(',')").then((v) => console.log(`[app] bridge: ${v}`)).catch((e) => console.log(`[app] bridge error: ${e}`));
+    if (isDev) {
+      win.webContents.executeJavaScript("typeof window.desktop + ':' + Object.keys(window.desktop||{}).join(',')").then((v) => console.log(`[app] bridge: ${v}`)).catch((e) => console.log(`[app] bridge error: ${e}`));
+      win.webContents.executeJavaScript("window.desktop.recognizeDraft()").then((v) => console.log(`[app] recognize: ${JSON.stringify(v).slice(0, 400)}`)).catch((e) => console.log(`[app] recognize error: ${e}`));
+    }
   } catch (err) {
     await win.loadURL(`data:text/html;charset=utf-8,<body style="font-family:sans-serif;background:#0f1115;color:#eee;padding:24px"><h2>Не удалось запустить сервер</h2><pre>${String(err.message)}</pre></body>`);
   }
@@ -100,6 +104,41 @@ function setupUpdater() {
   // тихая проверка при старте, если есть токен
   if (!isDev && configureFeed()) setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 4000);
 }
+
+// --- распознавание экрана пиков ---
+let templatesLoaded = false;
+function ensureTemplates() {
+  if (templatesLoaded) return true;
+  const resources = isDev ? __dirname : process.resourcesPath;
+  const dataDir = isDev ? path.join(__dirname, "..", "data") : path.join(resources, "data");
+  const assets = isDev ? path.join(__dirname, "assets") : path.join(resources, "assets");
+  try { recog.loadTemplates(path.join(dataDir, "heroes.json"), path.join(assets, "heroes"), path.join(assets, "empty-slot.json")); templatesLoaded = true; } catch (e) { console.error("[recog] templates:", e.message); }
+  return templatesLoaded;
+}
+async function captureDotaFrame() {
+  const primary = screen.getPrimaryDisplay();
+  const size = { width: Math.round(primary.size.width * primary.scaleFactor), height: Math.round(primary.size.height * primary.scaleFactor) };
+  const sources = await desktopCapturer.getSources({ types: ["window", "screen"], thumbnailSize: size, fetchWindowIcons: false });
+  const win = sources.find((s) => /dota\s*2/i.test(s.name));
+  const src = win ?? sources.find((s) => s.id.startsWith("screen:")) ?? sources[0];
+  if (!src) throw new Error("нет источников захвата");
+  const img = src.thumbnail;
+  const sz = img.getSize();
+  if (sz.width === 0 || sz.height === 0) throw new Error("пустой кадр");
+  return { name: src.name, w: sz.width, h: sz.height, data: img.toBitmap(), bgra: true };
+}
+ipcMain.handle("draft:recognize", async () => {
+  if (!ensureTemplates()) return { ok: false, error: "шаблоны героев не загружены" };
+  try {
+    const frame = await captureDotaFrame();
+    const t = Date.now();
+    const slots = recog.recognize(frame);
+    return { ok: true, source: frame.name, w: frame.w, h: frame.h, ms: Date.now() - t, slots: slots.map((s) => ({ team: s.team, idx: s.idx, heroId: s.heroId, name: s.name ?? null, score: s.score ?? null, margin: s.margin ?? null, empty: !!s.empty })) };
+  } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
+});
+ipcMain.handle("draft:sources", async () => {
+  try { const sources = await desktopCapturer.getSources({ types: ["window", "screen"], thumbnailSize: { width: 1, height: 1 } }); return sources.map((s) => ({ id: s.id, name: s.name })); } catch (e) { return [{ id: "error", name: String(e?.message ?? e) }]; }
+});
 
 app.whenReady().then(() => {
   if (process.platform === "darwin") {
