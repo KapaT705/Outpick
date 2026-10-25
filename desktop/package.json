@@ -75,7 +75,7 @@
       "category": "public.app-category.games",
       "identity": null
     },
-    "publish": { "provider": "github", "owner": "KapaT705", "repo": "dota-mid-helper" }
+    "publish": { "provider": "github", "owner": "KapaT705", "repo": "dota-mid-helper", "releaseType": "release" }
   },
   "dependencies": {
     "electron-updater": "^6.8.11"
