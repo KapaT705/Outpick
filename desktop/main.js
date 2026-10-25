@@ -8,11 +8,12 @@ const isDev = !app.isPackaged;
 let serverProc = null;
 let win = null;
 
-function freePort() {
-  return new Promise((resolve, reject) => {
+const PREFERRED_PORT = 3781; // на этот порт указывает конфиг GSI в Доте
+function freePort(preferred = 0) {
+  return new Promise((resolve) => {
     const s = net.createServer();
-    s.listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => resolve(p)); });
-    s.on("error", reject);
+    s.once("error", () => resolve(preferred ? freePort(0) : 0));
+    s.listen(preferred, "127.0.0.1", () => { const p = s.address().port; s.close(() => resolve(p)); });
   });
 }
 
@@ -27,7 +28,8 @@ function waitFor(url, tries = 100) {
 }
 
 async function startServer() {
-  const port = await freePort();
+  const port = await freePort(PREFERRED_PORT);
+  if (port !== PREFERRED_PORT) console.warn(`[app] порт ${PREFERRED_PORT} занят, использую ${port}: GSI из Доты не будет приходить`);
   const resources = isDev ? path.join(__dirname) : process.resourcesPath;
   const appDir = path.join(resources, "next-app");     // автономная сборка Next
   const dataDir = isDev ? path.join(__dirname, "..", "data") : path.join(resources, "data"); // данные Stratz (только чтение)
@@ -68,9 +70,19 @@ async function createWindow() {
 
 // --- обновления через GitHub Releases ---
 let updateState = { checking: false, available: null, downloaded: false };
+function readUserConfig() {
+  try { return JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "config.json"), "utf8")); } catch { return {}; }
+}
+function configureFeed() {
+  const token = readUserConfig().githubToken;
+  if (!token) return false;
+  autoUpdater.setFeedURL({ provider: "github", owner: "KapaT705", repo: "dota-mid-helper", private: true, token });
+  return true;
+}
 function setupUpdater() {
   if (isDev) return;
   autoUpdater.autoDownload = false;
+  if (!configureFeed()) return; // без токена GitHub обновления не проверяем
   autoUpdater.on("update-available", async (info) => {
     updateState.available = info.version;
     const { response } = await dialog.showMessageBox(win, { type: "info", title: "Обновление", message: `Доступна версия ${info.version} (у тебя ${app.getVersion()}).`, detail: "Скачать сейчас? Установится после перезапуска.", buttons: ["Скачать", "Позже"], defaultId: 0, cancelId: 1 });
@@ -87,6 +99,7 @@ function setupUpdater() {
 }
 function checkUpdatesManually() {
   if (isDev) { dialog.showMessageBox(win, { type: "info", message: "В режиме разработки обновления не проверяются." }); return; }
+  if (!configureFeed()) { dialog.showMessageBox(win, { type: "info", message: "Чтобы проверять обновления, укажи токен GitHub в Настройках и перезапусти программу." }); return; }
   updateState.checking = true;
   autoUpdater.checkForUpdates().catch(() => {});
 }

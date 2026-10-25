@@ -5,12 +5,16 @@ import { useEffect, useState } from "react";
 export default function SettingsForm() {
   const [steamId, setSteamId] = useState("");
   const [token, setToken] = useState("");
-  const [info, setInfo] = useState<{ steamAccountId: number | null; hasToken: boolean; tokenTail: string } | null>(null);
+  const [ghToken, setGhToken] = useState("");
+  const [gsi, setGsi] = useState<{ cfg: string; dotaDirs: string[]; fileName: string } | null>(null);
+  const [gsiMsg, setGsiMsg] = useState<string | null>(null);
+  const [dotaDir, setDotaDir] = useState("");
+  const [info, setInfo] = useState<{ steamAccountId: number | null; hasToken: boolean; tokenTail: string; hasGithubToken?: boolean } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [ref, setRef] = useState<{ running: boolean; message: string; error: string | null; updatedAt: number | null } | null>(null);
 
-  useEffect(() => { fetch("/api/settings").then((r) => r.json()).then(setInfo).catch(() => {}); }, []);
+  useEffect(() => { fetch("/api/settings").then((r) => r.json()).then(setInfo).catch(() => {}); fetch("/api/gsi/install").then((r) => r.json()).then(setGsi).catch(() => {}); }, []);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
@@ -29,8 +33,8 @@ export default function SettingsForm() {
 
   const save = async () => {
     setBusy(true); setMsg(null);
-    const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stratzToken: token, steamAccountId: steamId }) }).then((x) => x.json()).catch(() => null);
-    if (r?.ok) { setMsg("Сохранено"); setToken(""); setInfo({ steamAccountId: r.steamAccountId, hasToken: r.hasToken, tokenTail: "" }); } else setMsg(r?.error ?? "Ошибка");
+    const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stratzToken: token, steamAccountId: steamId, githubToken: ghToken }) }).then((x) => x.json()).catch(() => null);
+    if (r?.ok) { setMsg("Сохранено"); setToken(""); setGhToken(""); setInfo({ steamAccountId: r.steamAccountId, hasToken: r.hasToken, tokenTail: "", hasGithubToken: r.hasGithubToken }); } else setMsg(r?.error ?? "Ошибка");
     setBusy(false);
   };
 
@@ -52,10 +56,29 @@ export default function SettingsForm() {
             className="rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent" />
           <span className="text-xs text-muted">Токен нужен для подтягивания результатов матчей и обновления меты. Получить: stratz.com/api, вход через Steam. Хранится только на этом компьютере.</span>
         </label>
+        <label className="flex flex-col gap-1">
+          <span>Токен GitHub для обновлений программы <span className="text-muted">({info?.hasGithubToken ? "сохранён" : "не задан"})</span></span>
+          <input value={ghToken} onChange={(e) => setGhToken(e.target.value)} type="password" placeholder="github_pat_…"
+            className="rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent" />
+          <span className="text-xs text-muted">Репозиторий закрытый, поэтому без токена программа не сможет скачивать новые версии. GitHub → Settings → Developer settings → Fine-grained tokens: доступ к репозиторию dota-mid-helper, право Contents: Read. После сохранения перезапусти программу.</span>
+        </label>
         <div className="flex items-center gap-3">
           <button onClick={save} disabled={busy} className="rounded-md bg-accent/20 px-3 py-1.5 text-accent hover:bg-accent/30 disabled:opacity-50">{busy ? "проверяю…" : "Сохранить"}</button>
           {msg && <span className="text-xs text-muted">{msg}</span>}
         </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
+        <div className="font-semibold">Автоподхват драфта из Доты (GSI)</div>
+        <p className="text-xs text-muted">Дота умеет отправлять состояние матча программе. Для этого в папку игры кладётся один файл конфига, это официальная функция Valve, в игру она не вмешивается. После установки файла перезапусти Доту и включи «Авто» в пикере.</p>
+        {gsi && gsi.dotaDirs.length > 0 && <div className="text-xs text-muted">Нашёл Доту: {gsi.dotaDirs[0]}</div>}
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={async () => { setGsiMsg("ставлю…"); const r = await fetch("/api/gsi/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dotaDir: dotaDir || undefined }) }).then((x) => x.json()).catch(() => null); setGsiMsg(r?.ok ? `готово: ${r.file}` : r?.error ?? "ошибка"); }}
+            className="rounded-md border border-border px-3 py-1.5 hover:border-accent">Установить конфиг в Доту</button>
+          <input value={dotaDir} onChange={(e) => setDotaDir(e.target.value)} placeholder="если не нашёл: путь к …\dota 2 beta\game\dota" className="flex-1 min-w-60 rounded-lg border border-border bg-panel-2 px-3 py-1.5 text-xs outline-none focus:border-accent" />
+        </div>
+        {gsiMsg && <div className="text-xs text-muted">{gsiMsg}</div>}
+        {gsi && <details className="text-xs text-muted"><summary className="cursor-pointer">Или вручную: содержимое файла {gsi.fileName}</summary><pre className="mt-1 whitespace-pre-wrap rounded bg-panel-2 p-2 text-[11px]">{gsi.cfg}</pre><div>Положи его в папку <code>dota 2 beta\game\dota\cfg\gamestate_integration\</code>.</div></details>}
       </div>
 
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">

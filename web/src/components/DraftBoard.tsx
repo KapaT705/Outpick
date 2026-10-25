@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { parseHeroText, type AliasMap } from "@/lib/aliases";
 import type { Attr, Candidate, Hero, Pick, PoolOverride, Role, RoleGuess } from "@/lib/types";
 
@@ -48,6 +48,10 @@ export default function DraftBoard({ heroes, poolIds, familiarIds, aliases }: { 
   const [poolOpen, setPoolOpen] = useState(false);
   const [poolQuery, setPoolQuery] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
+  const [auto, setAuto] = useState(false);
+  const [gsi, setGsi] = useState<{ connected: boolean; phase: string; ownHeroId: number | null; matchId: string | null } | null>(null);
+  const loggedMatch = useRef<string | null>(null);
+  const lastKey = useRef<string>("");
 
   const take = async (heroId: number) => {
     const body = { bans: picks.bans.map((p) => p.id), enemies: picks.enemies, allies: picks.allies, pool: override, chosenHeroId: heroId };
@@ -102,6 +106,39 @@ export default function DraftBoard({ heroes, poolIds, familiarIds, aliases }: { 
     setQuick({ ...quick, [z]: "" });
   };
 
+  useEffect(() => {
+    if (!auto) return;
+    let stop = false;
+    const tick = async () => {
+      const r = await fetch("/api/gsi/state").then((x) => x.json()).catch(() => null);
+      if (stop) return;
+      if (r) {
+        const d = r.draft;
+        setGsi({ connected: r.connected, phase: d?.phase ?? "", ownHeroId: d?.ownHeroId ?? null, matchId: d?.matchId ?? null });
+        if (r.connected && d && d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION") {
+          const key = JSON.stringify([d.bans, d.enemies.map((p: Pick) => p.id), d.allies.map((p: Pick) => p.id)]);
+          if (key !== lastKey.current) {
+            lastKey.current = key;
+            setPicks((prev) => ({
+              bans: d.bans.map((id: number) => ({ id, role: null })),
+              enemies: d.enemies.map((p: Pick) => ({ id: p.id, role: prev.enemies.find((x) => x.id === p.id)?.role ?? null })),
+              allies: d.allies.map((p: Pick) => ({ id: p.id, role: prev.allies.find((x) => x.id === p.id)?.role ?? null })),
+            }));
+          }
+        }
+        // герой выбран и драфт закончился: записываем в историю один раз на матч
+        if (r.connected && d && d.ownHeroId && d.matchId && d.phase !== "DOTA_GAMERULES_STATE_HERO_SELECTION" && loggedMatch.current !== d.matchId && d.enemies.length > 0) {
+          loggedMatch.current = d.matchId;
+          const body = { bans: d.bans, enemies: d.enemies, allies: d.allies, pool: override, chosenHeroId: d.ownHeroId };
+          fetch("/api/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((x) => x.json()).then((j) => { if (j?.ok) { setSaved(byId.get(d.ownHeroId)?.name ?? ""); setTimeout(() => setSaved(null), 6000); } }).catch(() => {});
+        }
+      }
+      if (!stop) setTimeout(tick, 1500);
+    };
+    tick();
+    return () => { stop = true; };
+  }, [auto, override, byId]);
+
   const togglePool = (id: number) => {
     const inPool = poolSet.has(id);
     const base = poolIds.includes(id);
@@ -124,6 +161,11 @@ export default function DraftBoard({ heroes, poolIds, familiarIds, aliases }: { 
         <h1 className="text-2xl font-semibold">Драфт-помощник <span className="text-muted text-base font-normal">мид · Divine/Immortal</span></h1>
         <div className="flex gap-4 text-sm items-center">
           {saved && <span className="text-good text-xs">сохранил: {saved}</span>}
+          <label className="flex items-center gap-1.5 cursor-pointer" title="Подхватывать драфт из Доты через GSI (настрой в Настройках)">
+            <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} className="accent-[var(--accent)]" />
+            <span>Авто</span>
+            {auto && <span className={`inline-block h-2 w-2 rounded-full ${gsi?.connected ? "bg-good" : "bg-bad"}`} title={gsi?.connected ? `Дота на связи${gsi.phase ? ` · ${gsi.phase.replace("DOTA_GAMERULES_STATE_", "").toLowerCase()}` : ""}` : "Дота не шлёт данные: проверь конфиг GSI и перезапусти игру"} />}
+          </label>
           <a href="/history" className="text-muted hover:text-foreground underline">История драфтов</a>
           <a href="/settings" className="text-muted hover:text-foreground underline">Настройки</a>
           <button onClick={() => setPoolOpen(true)} className="text-accent hover:underline">Мой пул · {poolSet.size}</button>
