@@ -54,7 +54,9 @@ function findDotaDirs(): string[] {
 
 export async function GET(req: Request) {
   const origin = new URL(req.url).origin;
-  return NextResponse.json({ cfg: cfgText(origin), dotaDirs: findDotaDirs(), fileName: "gamestate_integration_midhelper.cfg" });
+  const dirs = findDotaDirs();
+  const installed = dirs.some((d) => fs.existsSync(path.join(d, "cfg", "gamestate_integration", "gamestate_integration_midhelper.cfg")));
+  return NextResponse.json({ cfg: cfgText(origin), dotaDirs: dirs, fileName: "gamestate_integration_midhelper.cfg", installed });
 }
 
 export async function POST(req: Request) {

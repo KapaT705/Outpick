@@ -22,7 +22,6 @@ const ATTRS: { key: Attr; label: string; color: string }[] = [
   { key: "all", label: "Универсал", color: "bg-gradient-to-r from-[#ec3d06] via-[#26e030] to-[#00d9ff]" },
 ];
 const POOL_KEY = "draft.poolOverride.v1";
-const AUTO_KEY = "draft.auto.v1";
 const PICKS_KEY = "draft.picks.v1";
 const PICKS_TTL = 2 * 3600 * 1000; // драфт восстанавливаем, если ему меньше 2 часов
 const EMPTY: PoolOverride = { add: [], remove: [] };
@@ -63,7 +62,7 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
   const [poolOpen, setPoolOpen] = useState(false);
   const [poolQuery, setPoolQuery] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
-  const [auto, setAuto] = useState(false);
+  const auto = true; // связь с Дотой работает всегда, когда программа открыта
   const [gsi, setGsi] = useState<{ connected: boolean; phase: string; ownHeroId: number | null; matchId: string | null } | null>(null);
   const loggedMatch = useRef<string | null>(null);
   const lastKey = useRef<string>("");
@@ -79,13 +78,11 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
     try { const v = Number(localStorage.getItem(ROLE_KEY)); if ([1, 2, 3, 4, 5].includes(v)) r = v as Role; } catch {}
     setRoleState(r);
     setOverride(loadOverride(r));
-    try { if (localStorage.getItem(AUTO_KEY) === "1") setAuto(true); } catch {}
     try {
       const raw = localStorage.getItem(PICKS_KEY);
       if (raw) { const o = JSON.parse(raw); if (o && Date.now() - (o.at ?? 0) < PICKS_TTL && o.picks) setPicks(o.picks); }
     } catch {}
   }, []);
-  useEffect(() => { try { localStorage.setItem(AUTO_KEY, auto ? "1" : "0"); } catch {} }, [auto]);
   useEffect(() => { try { localStorage.setItem(PICKS_KEY, JSON.stringify({ at: Date.now(), picks })); } catch {} }, [picks]);
   const saveOverride = (o: PoolOverride) => { setOverride(o); storeOverride(role, o); };
   const setRole = (r: Role) => { setRoleState(r); setOverride(loadOverride(r)); try { localStorage.setItem(ROLE_KEY, String(r)); } catch {} };
@@ -210,11 +207,10 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
         </div>
         <div className="flex gap-4 text-sm items-center">
           {saved && <span className="text-good text-xs">сохранил: {saved}</span>}
-          <label className="flex items-center gap-1.5 cursor-pointer" title="Подхватывать драфт из Доты через GSI (настрой в Настройках)">
-            <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} className="accent-[var(--accent)]" />
-            <span>Авто</span>
-            {auto && <span className={`inline-block h-2 w-2 rounded-full ${gsi?.connected ? "bg-good" : "bg-bad"}`} title={gsi?.connected ? `Дота на связи${gsi.phase ? ` · ${gsi.phase.replace("DOTA_GAMERULES_STATE_", "").toLowerCase()}` : ""}${gsi.ownHeroId ? ` · твой герой: ${byId.get(gsi.ownHeroId)?.name}` : ""}. Врагов введи сам: Дота не отдаёт состав драфта игроку, только твоего героя.` : "Дота не шлёт данные: проверь конфиг GSI и перезапусти игру"} />}
-          </label>
+          <span className="flex items-center gap-1.5 text-xs text-muted cursor-default" title={gsi?.connected ? `Дота на связи${gsi.phase ? ` · ${gsi.phase.replace("DOTA_GAMERULES_STATE_", "").toLowerCase()}` : ""}${gsi.ownHeroId ? ` · твой герой: ${byId.get(gsi.ownHeroId)?.name}` : ""}. Когда ты выберешь героя, драфт с введёнными врагами запишется в историю сам.` : "Дота не на связи: запусти игру с установленным конфигом GSI (Настройки)"}>
+            <span className={`inline-block h-2 w-2 rounded-full ${gsi?.connected ? "bg-good" : "bg-border"}`} />
+            {gsi?.connected ? "Дота" : "Дота не на связи"}
+          </span>
           <button onClick={() => setPoolOpen(true)} className="text-accent hover:underline">Мой пул · {poolSet.size}</button>
           <button onClick={reset} className="text-muted hover:text-foreground underline">Сбросить драфт</button>
         </div>

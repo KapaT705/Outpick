@@ -2,11 +2,17 @@
 
 import { useEffect, useState } from "react";
 
+const Check = ({ ok, label }: { ok: boolean; label: string }) => (
+  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${ok ? "bg-good/15 text-good" : "bg-panel-2 text-muted"}`}>
+    <span>{ok ? "✓" : "○"}</span>{label}
+  </span>
+);
+
 export default function SettingsForm() {
   const [steamId, setSteamId] = useState("");
   const [token, setToken] = useState("");
   const [ghToken, setGhToken] = useState("");
-  const [gsi, setGsi] = useState<{ cfg: string; dotaDirs: string[]; fileName: string } | null>(null);
+  const [gsi, setGsi] = useState<{ cfg: string; dotaDirs: string[]; fileName: string; installed?: boolean } | null>(null);
   const [gsiMsg, setGsiMsg] = useState<string | null>(null);
   const [dotaDir, setDotaDir] = useState("");
   const [raw, setRaw] = useState<string | null>(null);
@@ -48,18 +54,19 @@ export default function SettingsForm() {
       </header>
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-3 text-sm">
         <label className="flex flex-col gap-1">
-          <span>Steam ID <span className="text-muted">(число из ссылки Dotabuff или Stratz, можно и 64-битный)</span></span>
+          <span className="flex items-center gap-2">Steam ID <Check ok={!!info?.steamAccountId} label={info?.steamAccountId ? `привязан: ${info.steamAccountId}` : "не задан"} /></span>
+          <span className="text-xs text-muted">число из ссылки Dotabuff или Stratz, можно и 64-битный. Если привязан, трогать не нужно.</span>
           <input value={steamId} onChange={(e) => setSteamId(e.target.value)} placeholder={info?.steamAccountId ? String(info.steamAccountId) : "например 401776935"}
             className="rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent" />
         </label>
         <label className="flex flex-col gap-1">
-          <span>Токен Stratz API <span className="text-muted">({info?.hasToken ? `сохранён${info.tokenTail ? `, заканчивается на …${info.tokenTail}` : ""}` : "не задан"})</span></span>
+          <span className="flex items-center gap-2">Токен Stratz API <Check ok={!!info?.hasToken} label={info?.hasToken ? `сохранён${info.tokenTail ? ` …${info.tokenTail}` : ""}` : "не задан"} /></span>
           <input value={token} onChange={(e) => setToken(e.target.value)} type="password" placeholder="вставь токен со страницы stratz.com/api"
             className="rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent" />
           <span className="text-xs text-muted">Токен нужен для подтягивания результатов матчей и обновления меты. Получить: stratz.com/api, вход через Steam. Хранится только на этом компьютере.</span>
         </label>
         <label className="flex flex-col gap-1">
-          <span>Токен GitHub для обновлений программы <span className="text-muted">({info?.hasGithubToken ? "сохранён" : "не задан"})</span></span>
+          <span className="flex items-center gap-2">Токен GitHub для обновлений программы <Check ok={!!info?.hasGithubToken} label={info?.hasGithubToken ? "сохранён" : "не задан"} /></span>
           <input value={ghToken} onChange={(e) => setGhToken(e.target.value)} type="password" placeholder="github_pat_…"
             className="rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent" />
           <span className="text-xs text-muted">Репозиторий закрытый, поэтому без токена программа не сможет скачивать новые версии. GitHub → Settings → Developer settings → Fine-grained tokens: доступ к репозиторию dota-mid-helper, право Contents: Read. После сохранения перезапусти программу.</span>
@@ -80,11 +87,11 @@ export default function SettingsForm() {
       </div>
 
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
-        <div className="font-semibold">Автоподхват драфта из Доты (GSI)</div>
+        <div className="font-semibold flex items-center gap-2">Связь с Дотой (GSI) <Check ok={!!gsi?.installed} label={gsi?.installed ? "конфиг установлен" : "конфиг не найден"} /></div>
         <p className="text-xs text-muted">Дота умеет отправлять программе состояние матча: это официальная функция Valve, в игру она не вмешивается. Важно: обычному игроку Дота отдаёт только твоего выбранного героя и номер матча, состав драфта она показывает только зрителям. Поэтому врагов ты вводишь сам, а программа в режиме «Авто» дописывает твоего героя и сама сохраняет драфт в историю. Для этого в папку игры кладётся один файл конфига, после установки перезапусти Доту.</p>
         {gsi && gsi.dotaDirs.length > 0 && <div className="text-xs text-muted">Нашёл Доту: {gsi.dotaDirs[0]}</div>}
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={async () => { setGsiMsg("ставлю…"); const r = await fetch("/api/gsi/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dotaDir: dotaDir || undefined }) }).then((x) => x.json()).catch(() => null); setGsiMsg(r?.ok ? `готово: ${r.file}` : r?.error ?? "ошибка"); }}
+          <button onClick={async () => { setGsiMsg("ставлю…"); const r = await fetch("/api/gsi/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dotaDir: dotaDir || undefined }) }).then((x) => x.json()).catch(() => null); setGsiMsg(r?.ok ? `готово: ${r.file}` : r?.error ?? "ошибка"); fetch("/api/gsi/install").then((x) => x.json()).then(setGsi).catch(() => {}); }}
             className="rounded-md border border-border px-3 py-1.5 hover:border-accent">Установить конфиг в Доту</button>
           <input value={dotaDir} onChange={(e) => setDotaDir(e.target.value)} placeholder="если не нашёл: путь к …\dota 2 beta\game\dota" className="flex-1 min-w-60 rounded-lg border border-border bg-panel-2 px-3 py-1.5 text-xs outline-none focus:border-accent" />
         </div>
@@ -100,7 +107,7 @@ export default function SettingsForm() {
       </div>
 
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
-        <div className="font-semibold">Данные меты</div>
+        <div className="font-semibold flex items-center gap-2">Данные меты <Check ok={!!ref?.updatedAt} label={ref?.updatedAt ? `обновлены ${new Date(ref.updatedAt * 1000).toLocaleDateString("ru-RU")}` : "из сборки"} /></div>
         <p className="text-xs text-muted">Матчапы, синергии, популярность героев на миде и роли за последние 4 недели на Divine/Immortal, плюс твой пул и личная история за год. Обновлять стоит раз в неделю и после патча. Занимает около минуты.</p>
         <div className="flex items-center gap-3">
           <button onClick={startRefresh} disabled={!!ref?.running} className="rounded-md border border-border px-3 py-1.5 hover:border-accent disabled:opacity-50">{ref?.running ? "обновляю…" : "Обновить мету"}</button>
