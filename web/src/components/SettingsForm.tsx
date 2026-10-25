@@ -9,6 +9,8 @@ export default function SettingsForm() {
   const [gsi, setGsi] = useState<{ cfg: string; dotaDirs: string[]; fileName: string } | null>(null);
   const [gsiMsg, setGsiMsg] = useState<string | null>(null);
   const [dotaDir, setDotaDir] = useState("");
+  const [raw, setRaw] = useState<string | null>(null);
+  const [rawMsg, setRawMsg] = useState<string | null>(null);
   const [info, setInfo] = useState<{ steamAccountId: number | null; hasToken: boolean; tokenTail: string; hasGithubToken?: boolean } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -78,6 +80,13 @@ export default function SettingsForm() {
           <input value={dotaDir} onChange={(e) => setDotaDir(e.target.value)} placeholder="если не нашёл: путь к …\dota 2 beta\game\dota" className="flex-1 min-w-60 rounded-lg border border-border bg-panel-2 px-3 py-1.5 text-xs outline-none focus:border-accent" />
         </div>
         {gsiMsg && <div className="text-xs text-muted">{gsiMsg}</div>}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button onClick={async () => { const r = await fetch("/api/gsi/raw").then((x) => x.json()).catch(() => null); const txt = r ? JSON.stringify(r, null, 1) : "нет данных"; setRaw(txt); setRawMsg(r?.receivedAt ? `последнее сообщение от Доты: ${new Date(r.receivedAt).toLocaleTimeString("ru-RU")}, сохранённых образцов драфта: ${r.samples?.length ?? 0}` : "Дота ещё ничего не присылала"); }}
+            className="rounded-md border border-border px-3 py-1.5 hover:border-accent">Диагностика GSI</button>
+          {raw && <button onClick={async () => { try { await navigator.clipboard.writeText(raw); setRawMsg("скопировано, можно вставить в чат"); } catch { setRawMsg("не удалось скопировать, выдели текст ниже вручную"); } }} className="rounded-md border border-border px-3 py-1.5 hover:border-accent">Скопировать</button>}
+          {rawMsg && <span className="text-xs text-muted">{rawMsg}</span>}
+        </div>
+        {raw && <textarea readOnly value={raw} className="h-48 w-full rounded bg-panel-2 p-2 text-[11px] font-mono text-muted" />}
         {gsi && <details className="text-xs text-muted"><summary className="cursor-pointer">Или вручную: содержимое файла {gsi.fileName}</summary><pre className="mt-1 whitespace-pre-wrap rounded bg-panel-2 p-2 text-[11px]">{gsi.cfg}</pre><div>Положи его в папку <code>dota 2 beta\game\dota\cfg\gamestate_integration\</code>.</div></details>}
       </div>
 

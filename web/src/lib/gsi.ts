@@ -7,11 +7,11 @@ type TeamDraft = Record<string, number | string | boolean>;
 export type GsiPayload = {
   provider?: { timestamp?: number };
   map?: { matchid?: string; game_state?: string; game_time?: number; name?: string };
-  player?: { team_name?: string; steamid?: string; name?: string };
-  hero?: { id?: number; name?: string };
-  draft?: { activeteam?: number; pick?: boolean; activeteam_time_remaining?: number; team2?: TeamDraft; team3?: TeamDraft };
+  player?: { team_name?: string; steamid?: string; name?: string } & Record<string, unknown>;
+  hero?: { id?: number; name?: string } & Record<string, unknown>;
+  draft?: { activeteam?: number; pick?: boolean; activeteam_time_remaining?: number; team2?: TeamDraft; team3?: TeamDraft } & Record<string, unknown>;
   auth?: { token?: string };
-};
+} & Record<string, unknown>;
 
 export type DraftState = {
   phase: string;                  // DOTA_GAMERULES_STATE_*
@@ -25,7 +25,19 @@ export type DraftState = {
   timeRemaining: number | null;
 };
 
-const state: { last: GsiPayload | null; receivedAt: number; draft: DraftState | null } = { last: null, receivedAt: 0, draft: null };
+const state: { last: GsiPayload | null; receivedAt: number; draft: DraftState | null; samples: { at: number; payload: GsiPayload }[] } = { last: null, receivedAt: 0, draft: null, samples: [] };
+
+const DRAFT_PHASES = new Set(["DOTA_GAMERULES_STATE_HERO_SELECTION", "DOTA_GAMERULES_STATE_STRATEGY_TIME", "DOTA_GAMERULES_STATE_TEAM_SHOWCASE"]);
+
+/** Команда игрока: player.team_name, иначе home_team в блоке драфта, иначе спектейтор-формат player.team2/team3. */
+function detectTeam(p: GsiPayload): "radiant" | "dire" | null {
+  const tn = String(p.player?.team_name ?? "").toLowerCase();
+  if (tn === "radiant" || tn === "dire") return tn;
+  const d = p.draft;
+  if (d?.team2?.home_team === true) return "radiant";
+  if (d?.team3?.home_team === true) return "dire";
+  return null;
+}
 
 function picksOf(t: TeamDraft | undefined, key: "pick" | "ban"): number[] {
   if (!t) return [];
@@ -36,7 +48,7 @@ function picksOf(t: TeamDraft | undefined, key: "pick" | "ban"): number[] {
 
 export function parseDraft(p: GsiPayload): DraftState | null {
   const phase = p.map?.game_state ?? "";
-  const team = p.player?.team_name === "radiant" ? "radiant" : p.player?.team_name === "dire" ? "dire" : null;
+  const team = detectTeam(p);
   const d = p.draft;
   if (!d || !team) return { phase, matchId: p.map?.matchid ?? null, team, ownHeroId: p.hero?.id || null, bans: [], enemies: [], allies: [], activeTeamIsOurs: null, timeRemaining: null };
   const ours = team === "radiant" ? d.team2 : d.team3;
@@ -61,6 +73,21 @@ export function receive(p: GsiPayload) {
   state.last = p;
   state.receivedAt = Date.now();
   state.draft = parseDraft(p);
+  // для диагностики храним несколько последних сообщений из стадии драфта (без auth)
+  const phase = p.map?.game_state ?? "";
+  if (DRAFT_PHASES.has(phase) || p.draft) {
+    const { auth: _auth, ...rest } = p; void _auth;
+    const prev = state.samples[state.samples.length - 1];
+    if (!prev || JSON.stringify(prev.payload.draft) !== JSON.stringify(rest.draft) || Date.now() - prev.at > 10_000) {
+      state.samples.push({ at: Date.now(), payload: rest as GsiPayload });
+      if (state.samples.length > 8) state.samples.shift();
+    }
+  }
+}
+
+export function rawSnapshot() {
+  const { auth: _auth, ...last } = (state.last ?? {}) as GsiPayload; void _auth;
+  return { receivedAt: state.receivedAt, last, samples: state.samples, parsed: state.draft };
 }
 
 export function snapshot() {
