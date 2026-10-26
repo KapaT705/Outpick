@@ -136,6 +136,25 @@ ipcMain.handle("draft:recognize", async () => {
     return { ok: true, source: frame.name, w: frame.w, h: frame.h, ms: Date.now() - t, slots: slots.map((s) => ({ team: s.team, idx: s.idx, heroId: s.heroId, name: s.name ?? null, score: s.score ?? null, margin: s.margin ?? null, empty: !!s.empty })) };
   } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
 });
+ipcMain.handle("draft:debug", async () => {
+  if (!ensureTemplates()) return { ok: false, error: "шаблоны героев не загружены" };
+  try {
+    const primary = screen.getPrimaryDisplay();
+    const size = { width: Math.round(primary.size.width * primary.scaleFactor), height: Math.round(primary.size.height * primary.scaleFactor) };
+    const sources = await desktopCapturer.getSources({ types: ["window", "screen"], thumbnailSize: size, fetchWindowIcons: false });
+    const win = sources.find((s) => /dota\s*2/i.test(s.name));
+    const src = win ?? sources.find((s) => s.id.startsWith("screen:")) ?? sources[0];
+    if (!src) throw new Error("нет источников захвата");
+    const img = src.thumbnail; const sz = img.getSize();
+    const frame = { w: sz.width, h: sz.height, data: img.toBitmap(), bgra: true };
+    const slots = recog.recognize(frame);
+    const stripH = Math.min(sz.height, recog.stripHeight(sz.height));
+    const strip = img.crop({ x: 0, y: 0, width: sz.width, height: stripH });
+    const scale = Math.min(1, 1600 / sz.width);
+    const small = scale < 1 ? strip.resize({ width: Math.round(sz.width * scale) }) : strip;
+    return { ok: true, source: src.name, w: sz.width, h: sz.height, stripH, scale, image: small.toDataURL(), slots, sources: sources.map((s) => s.name).slice(0, 12) };
+  } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
+});
 ipcMain.handle("draft:sources", async () => {
   try { const sources = await desktopCapturer.getSources({ types: ["window", "screen"], thumbnailSize: { width: 1, height: 1 } }); return sources.map((s) => ({ id: s.id, name: s.name })); } catch (e) { return [{ id: "error", name: String(e?.message ?? e) }]; }
 });

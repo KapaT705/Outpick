@@ -64,8 +64,16 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
   const [poolQuery, setPoolQuery] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
   const auto = true; // связь с Дотой работает всегда, когда программа открыта
-  const [gsi, setGsi] = useState<{ connected: boolean; phase: string; ownHeroId: number | null; matchId: string | null } | null>(null);
+  const [gsi, setGsi] = useState<{ connected: boolean; phase: string; ownHeroId: number | null; matchId: string | null; team: "radiant" | "dire" | null } | null>(null);
   const [screen, setScreen] = useState<{ status: string; found: number } | null>(null);
+  const [captureOn, setCaptureOn] = useState(true);
+  const [setup, setSetup] = useState<{ steam: boolean; token: boolean; gsi: boolean } | null>(null);
+  const [setupHidden, setSetupHidden] = useState(false);
+  useEffect(() => {
+    fetch("/api/settings").then((r) => r.json()).then((c) => { setCaptureOn(c.screenCapture !== false); setSetup((p) => ({ steam: !!c.steamAccountId, token: !!c.hasToken, gsi: p?.gsi ?? false })); }).catch(() => {});
+    fetch("/api/gsi/install").then((r) => r.json()).then((g) => setSetup((p) => ({ steam: p?.steam ?? false, token: p?.token ?? false, gsi: !!g.installed }))).catch(() => {});
+    try { setSetupHidden(sessionStorage.getItem("draft.setupHidden") === "1"); } catch {}
+  }, []);
   const lastSeen = useRef<Map<string, { heroId: number | null; n: number }>>(new Map()); // стабилизация: герой принимается после 2 кадров подряд
   const loggedMatch = useRef<string | null>(null);
   const lastKey = useRef<string>("");
@@ -146,8 +154,8 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
       if (stop) return;
       if (r) {
         const d = r.draft;
-        setGsi({ connected: r.connected, phase: d?.phase ?? "", ownHeroId: d?.ownHeroId ?? null, matchId: d?.matchId ?? null });
-        if (r.connected && d && d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" && d.team && window.desktop?.recognizeDraft) {
+        setGsi({ connected: r.connected, phase: d?.phase ?? "", ownHeroId: d?.ownHeroId ?? null, matchId: d?.matchId ?? null, team: d?.team ?? null });
+        if (captureOn && r.connected && d && d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" && d.team && window.desktop?.recognizeDraft) {
           const res = await window.desktop.recognizeDraft().catch(() => null);
           if (!stop && res) {
             if (!res.ok) setScreen({ status: res.error ?? "ошибка захвата", found: 0 });
@@ -214,7 +222,7 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
     };
     tick();
     return () => { stop = true; };
-  }, [auto, override, byId, role]);
+  }, [auto, override, byId, role, captureOn]);
 
   const togglePool = (id: number) => {
     const inPool = poolSet.has(id);
@@ -254,6 +262,18 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
           <button onClick={reset} className="text-muted hover:text-foreground underline">Сбросить драфт</button>
         </div>
       </header>
+
+      {setup && !setupHidden && (!setup.steam || !setup.token || !setup.gsi) && (
+        <section className="rounded-xl border border-accent/40 bg-accent/5 p-3 text-sm flex flex-wrap items-center gap-3">
+          <span className="font-semibold">Первые шаги</span>
+          <span className={setup.steam && setup.token ? "text-good" : "text-muted"}>{setup.steam && setup.token ? "✓" : "1."} Steam ID и токен Stratz</span>
+          <span className={setup.gsi ? "text-good" : "text-muted"}>{setup.gsi ? "✓" : "2."} конфиг GSI в Доту</span>
+          <a href="/settings" className="rounded-md bg-accent/20 px-2.5 py-1 text-accent hover:bg-accent/30">Открыть настройки</a>
+          <button onClick={() => { setSetupHidden(true); try { sessionStorage.setItem("draft.setupHidden", "1"); } catch {} }} className="ml-auto text-xs text-muted hover:text-foreground">Скрыть</button>
+        </section>
+      )}
+
+      <DraftBar byId={byId} allies={picks.allies} enemies={picks.enemies} ownHeroId={gsi?.ownHeroId ?? null} team={gsi?.team ?? null} role={role} />
 
       <section className="grid gap-3 md:grid-cols-3">
         {ZONES.map((z) => (
@@ -387,12 +407,13 @@ function Row({ c, byId, onTake }: { c: Candidate; byId: Map<number, Hero>; onTak
   return (
     <div className="rounded-lg bg-panel-2 p-2 cursor-pointer" onClick={() => setOpen(!open)}>
       <div className="flex items-center gap-3">
-        <img src={icon(h.short)} alt="" className="h-10 w-10 rounded-md" />
+        <img src={portrait(h.short)} alt="" className="h-10 w-[72px] rounded-md object-cover shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium">{c.name}</span>{tag}
             {c.personalWinrate !== null && <span className="text-xs text-muted">ты: {c.midWins}–{c.midGames - c.midWins} ({c.personalWinrate}%)</span>}
           </div>
+          <div className="mt-1 h-1 w-full overflow-hidden rounded bg-panel"><div className={`h-full ${c.finalScore >= 55 ? "bg-good" : c.finalScore <= 45 ? "bg-bad" : "bg-accent"}`} style={{ width: `${Math.max(4, Math.min(100, (c.finalScore - 30) * 2.5))}%` }} /></div>
           <div className="text-xs text-muted truncate">
             {top.length === 0 ? `базовый винрейт на роли ${c.base}%` : top.map((r) => `${r.value > 0 ? "+" : ""}${r.value} ${r.kind === "vs" ? "против" : "с"} ${r.name}${r.laneOpp ? " (мид)" : ""}`).join(" · ")}
           </div>
@@ -413,5 +434,38 @@ function Row({ c, byId, onTake }: { c: Candidate; byId: Map<number, Hero>; onTak
         </div>
       )}
     </div>
+  );
+}
+
+
+function DraftBar({ byId, allies, enemies, ownHeroId, team, role }: { byId: Map<number, Hero>; allies: Pick[]; enemies: Pick[]; ownHeroId: number | null; team: "radiant" | "dire" | null; role: Role }) {
+  const oursLeft = team !== "dire"; // Свет слева, как в игре; если команда неизвестна, свои слева
+  const ours: (Pick | { id: number; role: Role | null; own: true })[] = [...allies];
+  if (ownHeroId && !ours.some((p) => p.id === ownHeroId)) ours.unshift({ id: ownHeroId, role, own: true });
+  const Slot = ({ p, side }: { p?: Pick | { id: number; role: Role | null; own?: true }; side: "ours" | "theirs" }) => {
+    const h = p ? byId.get(p.id) : undefined;
+    const own = !!(p && "own" in p && p.own);
+    return (
+      <div className={`relative h-10 w-[72px] shrink-0 overflow-hidden rounded-md border ${own ? "border-accent" : side === "ours" ? "border-ally/40" : "border-enemy/40"} bg-panel-2`} title={h?.name ?? "пусто"}>
+        {h ? <img src={portrait(h.short)} alt={h.name} className="h-full w-full object-cover" /> : <div className="h-full w-full bg-gradient-to-b from-panel-2 to-panel" />}
+        {own && <div className="absolute bottom-0 inset-x-0 bg-accent/80 text-[9px] text-black text-center font-semibold">ты</div>}
+      </div>
+    );
+  };
+  const left = oursLeft ? ours : enemies, right = oursLeft ? enemies : ours;
+  const leftSide = oursLeft ? "ours" : "theirs", rightSide = oursLeft ? "theirs" : "ours";
+  const pad = (arr: unknown[]) => Array.from({ length: 5 }, (_, i) => arr[i]);
+  return (
+    <section className="rounded-xl border border-border bg-panel px-3 py-2 flex items-center justify-between gap-3 overflow-x-auto">
+      <div className="flex items-center gap-1.5">
+        <span className={`mr-1 text-[11px] font-semibold ${leftSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Свет" : "Союзники"}</span>
+        {pad(left).map((p, i) => <Slot key={`l${i}`} p={p as Pick | undefined} side={leftSide} />)}
+      </div>
+      <div className="text-xs text-muted whitespace-nowrap">{team ? (team === "radiant" ? "ты за Свет" : "ты за Тьму") : "команда неизвестна"}</div>
+      <div className="flex items-center gap-1.5">
+        {pad(right).map((p, i) => <Slot key={`r${i}`} p={p as Pick | undefined} side={rightSide} />)}
+        <span className={`ml-1 text-[11px] font-semibold ${rightSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Тьма" : "Враги"}</span>
+      </div>
+    </section>
   );
 }

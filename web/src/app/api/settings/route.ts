@@ -3,11 +3,11 @@ import { readConfig, writeConfig } from "@/lib/config";
 
 export async function GET() {
   const c = readConfig();
-  return NextResponse.json({ steamAccountId: c.steamAccountId, hasToken: !!c.stratzToken, tokenTail: c.stratzToken ? c.stratzToken.slice(-6) : "", hasGithubToken: !!c.githubToken });
+  return NextResponse.json({ steamAccountId: c.steamAccountId, hasToken: !!c.stratzToken, tokenTail: c.stratzToken ? c.stratzToken.slice(-6) : "", hasGithubToken: !!c.githubToken, screenCapture: c.screenCapture !== false });
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as { stratzToken?: string; steamAccountId?: string | number; githubToken?: string };
+  const body = (await req.json().catch(() => ({}))) as { stratzToken?: string; steamAccountId?: string | number; githubToken?: string; screenCapture?: boolean };
   const cur = readConfig();
   const token = typeof body.stratzToken === "string" && body.stratzToken.trim() ? body.stratzToken.trim() : cur.stratzToken;
   const idRaw = String(body.steamAccountId ?? "").trim();
@@ -23,6 +23,7 @@ export async function POST(req: Request) {
     if (!r || r.status !== 200) return NextResponse.json({ error: `Stratz не принял токен (HTTP ${r?.status ?? "нет ответа"})` }, { status: 400 });
   }
   const githubToken = typeof body.githubToken === "string" && body.githubToken.trim() ? body.githubToken.trim() : cur.githubToken;
-  writeConfig({ stratzToken: token, steamAccountId, githubToken });
-  return NextResponse.json({ ok: true, steamAccountId, hasToken: !!token, hasGithubToken: !!githubToken });
+  const screenCapture = typeof body.screenCapture === "boolean" ? body.screenCapture : cur.screenCapture !== false;
+  writeConfig({ stratzToken: token, steamAccountId, githubToken, screenCapture });
+  return NextResponse.json({ ok: true, steamAccountId, hasToken: !!token, hasGithubToken: !!githubToken, screenCapture });
 }

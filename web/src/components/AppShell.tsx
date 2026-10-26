@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 type UpdateEvent = { type: "checking" | "available" | "none" | "progress" | "downloaded" | "error"; version?: string; current?: string; percent?: number; message?: string };
 export type RecognizedSlot = { team: "radiant" | "dire"; idx: number; heroId: number | null; name: string | null; score: number | null; margin: number | null; empty: boolean };
 export type RecognizeResult = { ok: boolean; error?: string; source?: string; w?: number; h?: number; ms?: number; slots?: RecognizedSlot[] };
-type Desktop = { version: () => Promise<string>; checkForUpdates: () => Promise<{ ok: boolean; reason?: string }>; downloadUpdate: () => Promise<unknown>; installUpdate: () => Promise<unknown>; onUpdate: (cb: (e: UpdateEvent) => void) => () => void; recognizeDraft?: () => Promise<RecognizeResult>; captureSources?: () => Promise<{ id: string; name: string }[]> };
+type Desktop = { version: () => Promise<string>; checkForUpdates: () => Promise<{ ok: boolean; reason?: string }>; downloadUpdate: () => Promise<unknown>; installUpdate: () => Promise<unknown>; onUpdate: (cb: (e: UpdateEvent) => void) => () => void; recognizeDraft?: () => Promise<RecognizeResult>; captureSources?: () => Promise<{ id: string; name: string }[]>; debugCapture?: () => Promise<DebugCapture> };
+export type DebugCapture = { ok: boolean; error?: string; source?: string; w?: number; h?: number; stripH?: number; scale?: number; image?: string; slots?: (RecognizedSlot & { x: number; y: number; w: number; h: number })[]; sources?: string[] };
 declare global { interface Window { desktop?: Desktop } }
 
 const NAV = [

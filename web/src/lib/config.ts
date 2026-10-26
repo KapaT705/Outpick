@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { USER_DIR } from "./paths";
 
-export type AppConfig = { stratzToken: string; steamAccountId: number | null; githubToken?: string };
+export type AppConfig = { stratzToken: string; steamAccountId: number | null; githubToken?: string; screenCapture?: boolean };
 
 const FILE = path.join(USER_DIR, "config.json");
 
@@ -14,6 +14,7 @@ export function readConfig(): AppConfig {
     stratzToken: c.stratzToken || process.env.STRATZ_TOKEN || "",
     steamAccountId: c.steamAccountId ?? (process.env.STEAM_ACCOUNT_ID ? Number(process.env.STEAM_ACCOUNT_ID) : null),
     githubToken: c.githubToken || "",
+    screenCapture: c.screenCapture !== false, // по умолчанию включено
   };
 }
 

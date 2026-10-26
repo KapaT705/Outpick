@@ -8,5 +8,6 @@ contextBridge.exposeInMainWorld("desktop", {
   installUpdate: () => ipcRenderer.invoke("update:install"),
   recognizeDraft: () => ipcRenderer.invoke("draft:recognize"),
   captureSources: () => ipcRenderer.invoke("draft:sources"),
+  debugCapture: () => ipcRenderer.invoke("draft:debug"),
   onUpdate: (cb) => { const h = (_e, data) => cb(data); ipcRenderer.on("update:event", h); return () => ipcRenderer.removeListener("update:event", h); },
 });

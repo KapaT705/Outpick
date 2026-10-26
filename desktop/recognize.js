@@ -5,8 +5,11 @@ const path = require("node:path");
 const { PNG } = require("pngjs");
 
 const TW = 32, TH = 18;
-// геометрия слотов для 16:9 в долях кадра (откалибровано по скриншоту 2560x1440)
-const SLOT = { y: 6 / 1125, h: 56 / 1125, w: 94 / 2000, inset: 8 / 2000, radiantX: [0, 1, 2, 3, 4].map((i) => (234 + i * 128) / 2000), direX: [0, 1, 2, 3, 4].map((i) => (1152 + i * 128) / 2000) };
+// Геометрия слотов относительно центра экрана, в единицах высоты кадра: так HUD Доты ведёт себя при любом
+// разрешении и соотношении сторон (интерфейс масштабируется по высоте и центрируется).
+// Откалибровано по скриншоту 2000x1125 (16:9): слоты радианта x=234+i*128, диров x=1152+i*128, y=6, w=94, h=56.
+const U = 1125;
+const SLOT = { y: 6 / U, h: 56 / U, w: 94 / U, inset: 8 / U, pitch: 128 / U, radiant0: (234 - 1000) / U, dire0: (1152 - 1000) / U };
 const CROPS = [[0.1, 0, 0.8, 1], [0.2, 0, 0.6, 1], [0.15, 0.1, 0.7, 0.8]];
 const MIN_SCORE = 0.42, MIN_MARGIN = 0.05, EMPTY_NCC = 0.75;
 
@@ -47,13 +50,15 @@ function loadTemplates(heroesJson, imgDir, emptyJson) {
 }
 
 function slotRects(W, H) {
-  // панель рассчитана на 16:9; при другом соотношении берём центральную 16:9 область по ширине
+  const cx = W / 2;
   const rects = [];
-  const mk = (fx, team, idx) => ({ team, idx, x: Math.round((fx + SLOT.inset) * W), y: Math.round(SLOT.y * H + 2), w: Math.round((SLOT.w - 2 * SLOT.inset) * W), h: Math.round(SLOT.h * H - 4) });
-  SLOT.radiantX.forEach((fx, i) => rects.push(mk(fx, "radiant", i)));
-  SLOT.direX.forEach((fx, i) => rects.push(mk(fx, "dire", i)));
+  const mk = (off, team, idx) => ({ team, idx, x: Math.round(cx + (off + SLOT.inset) * H), y: Math.round(SLOT.y * H + 2), w: Math.round((SLOT.w - 2 * SLOT.inset) * H), h: Math.round(SLOT.h * H - 4) });
+  for (let i = 0; i < 5; i++) rects.push(mk(SLOT.radiant0 + i * SLOT.pitch, "radiant", i));
+  for (let i = 0; i < 5; i++) rects.push(mk(SLOT.dire0 + i * SLOT.pitch, "dire", i));
   return rects;
 }
+/** Высота верхней полосы, которую стоит показать для отладки (в пикселях кадра). */
+function stripHeight(H) { return Math.round((SLOT.y + SLOT.h) * H + 12); }
 
 /** img: {w,h,data,bgra}. Возвращает слоты с heroId или null (пусто/неуверенно). */
 function recognize(img) {
@@ -73,4 +78,4 @@ function recognize(img) {
   });
 }
 
-module.exports = { loadTemplates, recognize, slotRects, sample, normalize, TW, TH };
+module.exports = { loadTemplates, recognize, slotRects, stripHeight, sample, normalize, TW, TH };

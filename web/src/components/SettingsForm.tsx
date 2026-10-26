@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { DebugCapture } from "@/components/AppShell";
 
 const Check = ({ ok, label }: { ok: boolean; label: string }) => (
   <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${ok ? "bg-good/15 text-good" : "bg-panel-2 text-muted"}`}>
@@ -18,7 +19,9 @@ export default function SettingsForm() {
   const [raw, setRaw] = useState<string | null>(null);
   const [updMsg, setUpdMsg] = useState<string | null>(null);
   const [rawMsg, setRawMsg] = useState<string | null>(null);
-  const [info, setInfo] = useState<{ steamAccountId: number | null; hasToken: boolean; tokenTail: string; hasGithubToken?: boolean } | null>(null);
+  const [info, setInfo] = useState<{ steamAccountId: number | null; hasToken: boolean; tokenTail: string; hasGithubToken?: boolean; screenCapture?: boolean } | null>(null);
+  const [dbg, setDbg] = useState<DebugCapture | null>(null);
+  const [dbgBusy, setDbgBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [ref, setRef] = useState<{ running: boolean; message: string; error: string | null; updatedAt: number | null } | null>(null);
@@ -75,6 +78,46 @@ export default function SettingsForm() {
           <button onClick={save} disabled={busy} className="rounded-md bg-accent/20 px-3 py-1.5 text-accent hover:bg-accent/30 disabled:opacity-50">{busy ? "проверяю…" : "Сохранить"}</button>
           {msg && <span className="text-xs text-muted">{msg}</span>}
         </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-3 text-sm">
+        <div className="font-semibold flex items-center gap-2">Чтение экрана пиков <Check ok={info?.screenCapture !== false} label={info?.screenCapture !== false ? "включено" : "выключено"} /></div>
+        <p className="text-xs text-muted">На стадии пиков программа снимает окно Доты и распознаёт портреты в верхней панели: враги и союзники появляются в пикере сами. Ничего не записывается и никуда не отправляется, кадр обрабатывается в памяти. Работает при любом разрешении 16:9, для других соотношений сторон проверь кнопкой ниже.</p>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={info?.screenCapture !== false} onChange={async (e) => { const v = e.target.checked; setInfo((i) => (i ? { ...i, screenCapture: v } : i)); await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ screenCapture: v }) }).catch(() => {}); }} className="accent-[var(--accent)]" />
+          <span>Подхватывать драфт с экрана</span>
+        </label>
+        <div className="flex items-center gap-3">
+          <button onClick={async () => { const d = (window as unknown as { desktop?: { debugCapture?: () => Promise<DebugCapture> } }).desktop; if (!d?.debugCapture) { setDbg({ ok: false, error: "Проверка работает только в приложении" }); return; } setDbgBusy(true); setDbg(await d.debugCapture().catch((e) => ({ ok: false, error: String(e) }))); setDbgBusy(false); }}
+            disabled={dbgBusy} className="shrink-0 whitespace-nowrap rounded-md border border-border px-3 py-1.5 hover:border-accent disabled:opacity-50">{dbgBusy ? "снимаю…" : "Проверить экран"}</button>
+          <span className="text-xs text-muted">Запусти Доту и зайди на стадию пиков (можно с ботами), затем нажми: покажу, что увидела программа.</span>
+        </div>
+        {dbg && !dbg.ok && <div className="text-xs text-bad">{dbg.error}</div>}
+        {dbg && dbg.ok && dbg.image && (
+          <div className="flex flex-col gap-2">
+            <div className="text-xs text-muted">Источник: {dbg.source} · кадр {dbg.w}×{dbg.h}{dbg.sources?.length ? ` · окна: ${dbg.sources.join(", ")}` : ""}</div>
+            <div className="relative w-full overflow-hidden rounded-md border border-border bg-black">
+              <img src={dbg.image} alt="верх экрана" className="block w-full" />
+              {dbg.slots?.map((sl) => {
+                const scaleX = 100 / (dbg.w ?? 1), scaleY = 100 / (dbg.stripH ?? 1);
+                return (
+                  <div key={`${sl.team}${sl.idx}`} className={`absolute border-2 ${sl.heroId ? "border-good" : sl.empty ? "border-border" : "border-bad"}`}
+                    style={{ left: `${sl.x * scaleX}%`, top: `${sl.y * scaleY}%`, width: `${sl.w * scaleX}%`, height: `${sl.h * scaleY}%` }}
+                    title={`${sl.team} ${sl.idx + 1}: ${sl.heroId ? `${sl.name} (${sl.score})` : sl.empty ? "пусто" : `не уверен (${sl.score ?? "?"})`}`} />
+                );
+              })}
+            </div>
+            <div className="grid grid-cols-2 gap-1 text-xs">
+              {(["radiant", "dire"] as const).map((team) => (
+                <div key={team} className="rounded bg-panel-2 p-2">
+                  <div className={`font-semibold mb-1 ${team === "radiant" ? "text-good" : "text-bad"}`}>{team === "radiant" ? "Свет (слева)" : "Тьма (справа)"}</div>
+                  {dbg.slots?.filter((x) => x.team === team).map((sl) => <div key={sl.idx} className={sl.heroId ? "text-foreground" : "text-muted"}>{sl.idx + 1}. {sl.heroId ? `${sl.name} · ${sl.score}` : sl.empty ? "пусто" : `не уверен${sl.score != null ? ` · ${sl.score}` : ""}`}</div>)}
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted">Зелёная рамка: герой распознан. Серая: слот пуст. Красная: что-то есть, но уверенности мало (например, твой слот со значком уровня). Если рамки не попадают на портреты, пришли этот снимок, и геометрию подстроят под твой экран.</p>
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
