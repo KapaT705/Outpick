@@ -1,7 +1,7 @@
 {
   "name": "dota-mid-helper",
   "productName": "Dota Mid Helper",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Драфт-помощник для мида: пикер, роли, история драфтов",
   "author": "KapaT",
   "main": "main.js",
@@ -25,6 +25,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "recognize.js",
       "icon.png"
     ],
     "extraResources": [
@@ -40,6 +41,10 @@
           "!draft-log.json",
           "!config.json"
         ]
+      },
+      {
+        "from": "assets",
+        "to": "assets"
       }
     ],
     "asar": true,
