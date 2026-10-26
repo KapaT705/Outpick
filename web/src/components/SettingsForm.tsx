@@ -13,7 +13,8 @@ export default function SettingsForm() {
   const [steamId, setSteamId] = useState("");
   const [token, setToken] = useState("");
   const [ghToken, setGhToken] = useState("");
-  const [gsi, setGsi] = useState<{ cfg: string; dotaDirs: string[]; fileName: string; installed?: boolean } | null>(null);
+  const [gsi, setGsi] = useState<{ cfg: string; dotaDirs: string[]; fileName: string; installed?: boolean; rewritten?: boolean; installedUri?: string | null } | null>(null);
+  const [diag, setDiag] = useState<string | null>(null);
   const [gsiMsg, setGsiMsg] = useState<string | null>(null);
   const [dotaDir, setDotaDir] = useState("");
   const [raw, setRaw] = useState<string | null>(null);
@@ -121,6 +122,16 @@ export default function SettingsForm() {
       </div>
 
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
+        <div className="font-semibold">Диагностика</div>
+        <p className="text-xs text-muted">Одна кнопка собирает всё, что нужно для разбора проблем, в zip-файл в папке «Загрузки»: версия и система, логи, данные GSI, конфиг, журнал драфтов, снимок экрана с результатом распознавания и кадры со стадии пиков, накопленные во время последнего драфта. Токены в файл не попадают. Файл можно переслать как есть.</p>
+        <div className="flex items-center gap-3">
+          <button onClick={async () => { const d = (window as unknown as { desktop?: { saveDiagnostics?: () => Promise<{ ok: boolean; file?: string; frames?: number; error?: string }> } }).desktop; if (!d?.saveDiagnostics) { setDiag("Работает только в приложении"); return; } setDiag("собираю…"); const r = await d.saveDiagnostics(); setDiag(r.ok ? `Сохранил: ${r.file} (кадров со стадии пиков: ${r.frames})` : `Ошибка: ${r.error}`); }}
+            className="shrink-0 whitespace-nowrap rounded-md border border-accent/60 px-3 py-1.5 text-accent hover:bg-accent/10">Сохранить диагностику</button>
+          {diag && <span className="text-xs text-muted break-all">{diag}</span>}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
         <div className="font-semibold">Обновления программы</div>
         <div className="flex items-center gap-3">
           <button onClick={async () => { const d = (window as unknown as { desktop?: { checkForUpdates: () => Promise<{ ok: boolean; reason?: string }> } }).desktop; if (!d) { setUpdMsg("Проверка работает только в приложении"); return; } setUpdMsg("проверяю…"); const r = await d.checkForUpdates(); setUpdMsg(r.ok ? "запросил GitHub, результат появится полосой сверху" : r.reason === "no-token" ? "нужен токен GitHub (поле выше), затем перезапусти программу" : r.reason === "dev" ? "в режиме разработки не проверяется" : `ошибка: ${r.reason}`); }}
@@ -132,7 +143,8 @@ export default function SettingsForm() {
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
         <div className="font-semibold flex items-center gap-2">Связь с Дотой (GSI) <Check ok={!!gsi?.installed} label={gsi?.installed ? "конфиг установлен" : "конфиг не найден"} /></div>
         <p className="text-xs text-muted">Дота умеет отправлять программе состояние матча: это официальная функция Valve, в игру она не вмешивается. Важно: обычному игроку Дота отдаёт только твоего выбранного героя и номер матча, состав драфта она показывает только зрителям. Поэтому врагов ты вводишь сам, а программа в режиме «Авто» дописывает твоего героя и сама сохраняет драфт в историю. Для этого в папку игры кладётся один файл конфига, после установки перезапусти Доту.</p>
-        {gsi && gsi.dotaDirs.length > 0 && <div className="text-xs text-muted">Нашёл Доту: {gsi.dotaDirs[0]}</div>}
+        {gsi && gsi.dotaDirs.length > 0 && <div className="text-xs text-muted">Нашёл Доту: {gsi.dotaDirs[0]}{gsi.installedUri ? ` · конфиг шлёт на ${gsi.installedUri}` : ""}</div>}
+        {gsi?.rewritten && <div className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-xs">Конфиг GSI указывал на старый адрес, я переписал его на текущий. Перезапусти Доту, чтобы она начала слать данные сюда.</div>}
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={async () => { setGsiMsg("ставлю…"); const r = await fetch("/api/gsi/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dotaDir: dotaDir || undefined }) }).then((x) => x.json()).catch(() => null); setGsiMsg(r?.ok ? `готово: ${r.file}` : r?.error ?? "ошибка"); fetch("/api/gsi/install").then((x) => x.json()).then(setGsi).catch(() => {}); }}
             className="rounded-md border border-border px-3 py-1.5 hover:border-accent">Установить конфиг в Доту</button>

@@ -1,5 +1,14 @@
 const { app, BrowserWindow, utilityProcess, shell, Menu, ipcMain, desktopCapturer, screen } = require("electron");
 const recog = require("./recognize.js");
+const os = require("node:os");
+const AdmZip = require("adm-zip");
+
+// --- журнал главного процесса (последние 800 строк) для диагностики ---
+const LOG = [];
+const logLine = (level, args) => { const line = `${new Date().toISOString()} [${level}] ${args.map((a) => (typeof a === "string" ? a : (() => { try { return JSON.stringify(a); } catch { return String(a); } })())).join(" ")}`; LOG.push(line); if (LOG.length > 800) LOG.shift(); };
+for (const lvl of ["log", "warn", "error"]) { const orig = console[lvl].bind(console); console[lvl] = (...a) => { logLine(lvl, a); orig(...a); }; }
+process.on("uncaughtException", (e) => console.error("uncaught:", e?.stack ?? String(e)));
+let serverPort = null;
 const { autoUpdater } = require("electron-updater");
 const path = require("node:path");
 const net = require("node:net");
@@ -43,8 +52,9 @@ async function startServer() {
     env: { ...process.env, PORT: String(port), HOSTNAME: "127.0.0.1", NODE_ENV: "production", DATA_DIR: dataDir, USER_DIR: userDir },
     stdio: "pipe",
   });
-  serverProc.stdout?.on("data", (d) => process.stdout.write(`[next] ${d}`));
-  serverProc.stderr?.on("data", (d) => process.stderr.write(`[next] ${d}`));
+  serverProc.stdout?.on("data", (d) => { logLine("next", [String(d).trim()]); process.stdout.write(`[next] ${d}`); });
+  serverProc.stderr?.on("data", (d) => { logLine("next-err", [String(d).trim()]); process.stderr.write(`[next] ${d}`); });
+  serverPort = port;
   const url = `http://127.0.0.1:${port}`;
   await waitFor(url);
   console.log(`[app] server ready at ${url}`);
@@ -68,6 +78,7 @@ async function createWindow() {
     if (isDev) {
       win.webContents.executeJavaScript("typeof window.desktop + ':' + Object.keys(window.desktop||{}).join(',')").then((v) => console.log(`[app] bridge: ${v}`)).catch((e) => console.log(`[app] bridge error: ${e}`));
       win.webContents.executeJavaScript("window.desktop.recognizeDraft()").then((v) => console.log(`[app] recognize: ${JSON.stringify(v).slice(0, 400)}`)).catch((e) => console.log(`[app] recognize error: ${e}`));
+      if (process.env.DIAG_TEST) setTimeout(() => win.webContents.executeJavaScript("window.desktop.saveDiagnostics()").then((v) => console.log(`[app] diag: ${JSON.stringify(v)}`)).catch((e) => console.log(`[app] diag error: ${e}`)), 3000);
     }
   } catch (err) {
     await win.loadURL(`data:text/html;charset=utf-8,<body style="font-family:sans-serif;background:#0f1115;color:#eee;padding:24px"><h2>Не удалось запустить сервер</h2><pre>${String(err.message)}</pre></body>`);
@@ -115,17 +126,33 @@ function ensureTemplates() {
   try { recog.loadTemplates(path.join(dataDir, "heroes.json"), path.join(assets, "heroes"), path.join(assets, "empty-slot.json")); templatesLoaded = true; } catch (e) { console.error("[recog] templates:", e.message); }
   return templatesLoaded;
 }
+const FRAMES = []; // последние кадры со стадии пиков: {at, png, slots}
+function frameIsBlack(bitmap, w, h) {
+  // средняя яркость по сетке 32x32 точек верхней трети экрана
+  let sum = 0, n = 0;
+  for (let gy = 0; gy < 32; gy++) for (let gx = 0; gx < 32; gx++) { const x = Math.floor((gx + 0.5) * w / 32), y = Math.floor((gy + 0.5) * (h / 3) / 32); const i = (y * w + x) * 4; sum += bitmap[i] + bitmap[i + 1] + bitmap[i + 2]; n += 3; }
+  return sum / n < 6;
+}
 async function captureDotaFrame() {
   const primary = screen.getPrimaryDisplay();
   const size = { width: Math.round(primary.size.width * primary.scaleFactor), height: Math.round(primary.size.height * primary.scaleFactor) };
-  const sources = await desktopCapturer.getSources({ types: ["window", "screen"], thumbnailSize: size, fetchWindowIcons: false });
-  const win = sources.find((s) => /dota\s*2/i.test(s.name));
-  const src = win ?? sources.find((s) => s.id.startsWith("screen:")) ?? sources[0];
-  if (!src) throw new Error("нет источников захвата");
-  const img = src.thumbnail;
-  const sz = img.getSize();
-  if (sz.width === 0 || sz.height === 0) throw new Error("пустой кадр");
-  return { name: src.name, w: sz.width, h: sz.height, data: img.toBitmap(), bgra: true };
+  const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: size, fetchWindowIcons: false });
+  // сначала весь основной экран (надёжнее для полноэкранной игры), потом окно Доты, если экран чёрный
+  const ordered = [sources.find((s) => s.id.startsWith("screen:")), sources.find((s) => /dota\s*2/i.test(s.name)), ...sources].filter(Boolean);
+  let lastErr = "нет источников захвата";
+  for (const src of ordered) {
+    const img = src.thumbnail; const sz = img.getSize();
+    if (sz.width === 0 || sz.height === 0) { lastErr = "пустой кадр"; continue; }
+    const data = img.toBitmap();
+    if (frameIsBlack(data, sz.width, sz.height)) { lastErr = `чёрный кадр из «${src.name}»`; continue; }
+    return { name: src.name, w: sz.width, h: sz.height, data, bgra: true, image: img };
+  }
+  throw new Error(lastErr);
+}
+function rememberFrame(frame, slots) {
+  const now = Date.now();
+  if (FRAMES.length && now - FRAMES[FRAMES.length - 1].at < 8000) return; // не чаще раза в 8 секунд
+  try { FRAMES.push({ at: now, png: frame.image.toPNG(), slots, w: frame.w, h: frame.h, source: frame.name }); if (FRAMES.length > 6) FRAMES.shift(); } catch {}
 }
 ipcMain.handle("draft:recognize", async () => {
   if (!ensureTemplates()) return { ok: false, error: "шаблоны героев не загружены" };
@@ -133,26 +160,55 @@ ipcMain.handle("draft:recognize", async () => {
     const frame = await captureDotaFrame();
     const t = Date.now();
     const slots = recog.recognize(frame);
-    return { ok: true, source: frame.name, w: frame.w, h: frame.h, ms: Date.now() - t, slots: slots.map((s) => ({ team: s.team, idx: s.idx, heroId: s.heroId, name: s.name ?? null, score: s.score ?? null, margin: s.margin ?? null, empty: !!s.empty })) };
+    const onPickScreen = slots.filter((x) => x.empty || x.heroId).length >= 4;
+    if (onPickScreen) rememberFrame(frame, slots);
+    return { ok: true, source: frame.name, w: frame.w, h: frame.h, ms: Date.now() - t, onPickScreen, slots: slots.map((s) => ({ team: s.team, idx: s.idx, heroId: s.heroId, name: s.name ?? null, score: s.score ?? null, margin: s.margin ?? null, empty: !!s.empty })) };
   } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
 });
 ipcMain.handle("draft:debug", async () => {
   if (!ensureTemplates()) return { ok: false, error: "шаблоны героев не загружены" };
   try {
-    const primary = screen.getPrimaryDisplay();
-    const size = { width: Math.round(primary.size.width * primary.scaleFactor), height: Math.round(primary.size.height * primary.scaleFactor) };
-    const sources = await desktopCapturer.getSources({ types: ["window", "screen"], thumbnailSize: size, fetchWindowIcons: false });
-    const win = sources.find((s) => /dota\s*2/i.test(s.name));
-    const src = win ?? sources.find((s) => s.id.startsWith("screen:")) ?? sources[0];
-    if (!src) throw new Error("нет источников захвата");
-    const img = src.thumbnail; const sz = img.getSize();
-    const frame = { w: sz.width, h: sz.height, data: img.toBitmap(), bgra: true };
+    const frame = await captureDotaFrame();
     const slots = recog.recognize(frame);
-    const stripH = Math.min(sz.height, recog.stripHeight(sz.height));
-    const strip = img.crop({ x: 0, y: 0, width: sz.width, height: stripH });
-    const scale = Math.min(1, 1600 / sz.width);
-    const small = scale < 1 ? strip.resize({ width: Math.round(sz.width * scale) }) : strip;
-    return { ok: true, source: src.name, w: sz.width, h: sz.height, stripH, scale, image: small.toDataURL(), slots, sources: sources.map((s) => s.name).slice(0, 12) };
+    const onPickScreen = slots.filter((x) => x.empty || x.heroId).length >= 4;
+    if (onPickScreen) rememberFrame(frame, slots);
+    const stripH = Math.min(frame.h, recog.stripHeight(frame.h));
+    const strip = frame.image.crop({ x: 0, y: 0, width: frame.w, height: stripH });
+    const scale = Math.min(1, 1600 / frame.w);
+    const small = scale < 1 ? strip.resize({ width: Math.round(frame.w * scale) }) : strip;
+    const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 1, height: 1 } }).catch(() => []);
+    return { ok: true, source: frame.name, w: frame.w, h: frame.h, stripH, scale, image: small.toDataURL(), slots, onPickScreen, sources: sources.map((s) => s.name).slice(0, 12) };
+  } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
+});
+async function serverJson(pathname) {
+  try { const r = await fetch(`http://127.0.0.1:${serverPort}${pathname}`); return await r.json(); } catch (e) { return { error: String(e?.message ?? e) }; }
+}
+ipcMain.handle("diag:save", async () => {
+  try {
+    const zip = new AdmZip();
+    const displays = screen.getAllDisplays().map((d) => ({ id: d.id, size: d.size, scaleFactor: d.scaleFactor, bounds: d.bounds, primary: d.id === screen.getPrimaryDisplay().id }));
+    const settings = await serverJson("/api/settings");
+    const info = { app: app.getVersion(), electron: process.versions.electron, node: process.versions.node, platform: process.platform, arch: process.arch, os: `${os.type()} ${os.release()}`, cpu: os.cpus()?.[0]?.model, memGb: Math.round(os.totalmem() / 1e9), displays, serverPort, savedAt: new Date().toISOString(), settings };
+    zip.addFile("info.json", Buffer.from(JSON.stringify(info, null, 2)));
+    zip.addFile("main-log.txt", Buffer.from(LOG.join("\n")));
+    zip.addFile("gsi-raw.json", Buffer.from(JSON.stringify(await serverJson("/api/gsi/raw"), null, 1)));
+    zip.addFile("gsi-config.json", Buffer.from(JSON.stringify(await serverJson("/api/gsi/install"), null, 1)));
+    zip.addFile("draft-log.json", Buffer.from(JSON.stringify(await serverJson("/api/log"), null, 1)));
+    zip.addFile("refresh.json", Buffer.from(JSON.stringify(await serverJson("/api/refresh"), null, 1)));
+    try { const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 1, height: 1 } }); zip.addFile("capture-sources.json", Buffer.from(JSON.stringify(sources.map((s) => ({ id: s.id, name: s.name })), null, 1))); } catch (e) { zip.addFile("capture-sources.json", Buffer.from(JSON.stringify({ error: String(e?.message ?? e) }))); }
+    // свежий кадр с распознаванием
+    try {
+      const frame = await captureDotaFrame();
+      const slots = ensureTemplates() ? recog.recognize(frame) : [];
+      zip.addFile("frame-now.png", frame.image.toPNG());
+      zip.addFile("frame-now.json", Buffer.from(JSON.stringify({ source: frame.name, w: frame.w, h: frame.h, slots }, null, 1)));
+    } catch (e) { zip.addFile("frame-now.json", Buffer.from(JSON.stringify({ error: String(e?.message ?? e) }))); }
+    // кадры со стадии пиков, накопленные во время драфта
+    FRAMES.forEach((f, i) => { zip.addFile(`pick-frames/frame-${i + 1}.png`, f.png); zip.addFile(`pick-frames/frame-${i + 1}.json`, Buffer.from(JSON.stringify({ at: new Date(f.at).toISOString(), source: f.source, w: f.w, h: f.h, slots: f.slots }, null, 1))); });
+    const file = path.join(app.getPath("downloads"), `dota-mid-helper-diag-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.zip`);
+    zip.writeZip(file);
+    shell.showItemInFolder(file);
+    return { ok: true, file, frames: FRAMES.length };
   } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
 });
 ipcMain.handle("draft:sources", async () => {

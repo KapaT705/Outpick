@@ -55,8 +55,19 @@ function findDotaDirs(): string[] {
 export async function GET(req: Request) {
   const origin = new URL(req.url).origin;
   const dirs = findDotaDirs();
-  const installed = dirs.some((d) => fs.existsSync(path.join(d, "cfg", "gamestate_integration", "gamestate_integration_midhelper.cfg")));
-  return NextResponse.json({ cfg: cfgText(origin), dotaDirs: dirs, fileName: "gamestate_integration_midhelper.cfg", installed });
+  let installed = false, rewritten = false, installedUri: string | null = null;
+  for (const d of dirs) {
+    const file = path.join(d, "cfg", "gamestate_integration", "gamestate_integration_midhelper.cfg");
+    if (!fs.existsSync(file)) continue;
+    installed = true;
+    try {
+      const txt = fs.readFileSync(file, "utf8");
+      installedUri = txt.match(/"uri"\s+"([^"]+)"/)?.[1] ?? null;
+      // конфиг со старым портом: переписываем на текущий адрес, Доту нужно перезапустить
+      if (installedUri && installedUri !== `${origin}/api/gsi`) { fs.writeFileSync(file, cfgText(origin)); rewritten = true; installedUri = `${origin}/api/gsi`; }
+    } catch {}
+  }
+  return NextResponse.json({ cfg: cfgText(origin), dotaDirs: dirs, fileName: "gamestate_integration_midhelper.cfg", installed, installedUri, rewritten, expectedUri: `${origin}/api/gsi` });
 }
 
 export async function POST(req: Request) {

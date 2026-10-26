@@ -69,10 +69,14 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
   const [captureOn, setCaptureOn] = useState(true);
   const [setup, setSetup] = useState<{ steam: boolean; token: boolean; gsi: boolean } | null>(null);
   const [setupHidden, setSetupHidden] = useState(false);
+  const [side, setSideState] = useState<"radiant" | "dire">("radiant"); // своя сторона, если Дота не на связи
+  const [gsiRewritten, setGsiRewritten] = useState(false);
+  const setSide = (v: "radiant" | "dire") => { setSideState(v); try { localStorage.setItem("draft.side.v1", v); } catch {} };
   useEffect(() => {
     fetch("/api/settings").then((r) => r.json()).then((c) => { setCaptureOn(c.screenCapture !== false); setSetup((p) => ({ steam: !!c.steamAccountId, token: !!c.hasToken, gsi: p?.gsi ?? false })); }).catch(() => {});
-    fetch("/api/gsi/install").then((r) => r.json()).then((g) => setSetup((p) => ({ steam: p?.steam ?? false, token: p?.token ?? false, gsi: !!g.installed }))).catch(() => {});
+    fetch("/api/gsi/install").then((r) => r.json()).then((g) => { setSetup((p) => ({ steam: p?.steam ?? false, token: p?.token ?? false, gsi: !!g.installed })); if (g.rewritten) setGsiRewritten(true); }).catch(() => {});
     try { setSetupHidden(sessionStorage.getItem("draft.setupHidden") === "1"); } catch {}
+    try { const v = localStorage.getItem("draft.side.v1"); if (v === "radiant" || v === "dire") setSideState(v); } catch {}
   }, []);
   const lastSeen = useRef<Map<string, { heroId: number | null; n: number }>>(new Map()); // стабилизация: герой принимается после 2 кадров подряд
   const loggedMatch = useRef<string | null>(null);
@@ -155,13 +159,14 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
       if (r) {
         const d = r.draft;
         setGsi({ connected: r.connected, phase: d?.phase ?? "", ownHeroId: d?.ownHeroId ?? null, matchId: d?.matchId ?? null, team: d?.team ?? null });
-        if (captureOn && r.connected && d && d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" && d.team && window.desktop?.recognizeDraft) {
+        const inSelection = !r.connected || !d?.phase || d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION";
+        if (captureOn && inSelection && window.desktop?.recognizeDraft) {
           const res = await window.desktop.recognizeDraft().catch(() => null);
           if (!stop && res) {
             if (!res.ok) setScreen({ status: res.error ?? "ошибка захвата", found: 0 });
+            else if (!res.onPickScreen) setScreen({ status: "экран пиков не виден", found: 0 });
             else {
               const slots = res.slots ?? [];
-              // стабилизация: слот принимаем, если тот же герой виден два кадра подряд
               const stable: RecognizedSlot[] = [];
               for (const sl of slots) {
                 const key = `${sl.team}${sl.idx}`;
@@ -170,14 +175,15 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
                 lastSeen.current.set(key, { heroId: sl.heroId, n });
                 if (sl.heroId && n >= 2) stable.push(sl);
               }
-              const mine = d.team as "radiant" | "dire";
+              const mine: "radiant" | "dire" = (r.connected && d?.team) ? d.team : side;
+              const mySlot: number | null = r.connected && d?.team ? (d.teamSlot ?? null) : null;
               const enemiesSeen = stable.filter((x) => x.team !== mine).map((x) => x.heroId as number);
-              const alliesSeen = stable.filter((x) => x.team === mine && x.idx !== d.teamSlot).map((x) => x.heroId as number);
-              const ownSeen = stable.find((x) => x.team === mine && x.idx === d.teamSlot)?.heroId ?? null;
+              const alliesSeen = stable.filter((x) => x.team === mine && x.idx !== mySlot).map((x) => x.heroId as number);
+              const ownSeen = mySlot === null ? null : (stable.find((x) => x.team === mine && x.idx === mySlot)?.heroId ?? null);
               setScreen({ status: `экран: ${res.source ?? ""} ${res.w}×${res.h}, ${res.ms} мс`, found: stable.length });
               setPicks((prev) => {
                 const merge = (cur: Pick[], seen: number[]) => {
-                  const out = cur.filter((p) => seen.includes(p.id) || !slots.some((sl) => sl.heroId === p.id)); // убираем только то, чего точно нет
+                  const out = cur.filter((p) => seen.includes(p.id) || !slots.some((sl) => sl.heroId === p.id));
                   for (const id of seen) if (!out.some((p) => p.id === id)) out.push({ id, role: null });
                   return out.slice(0, 5);
                 };
@@ -222,7 +228,7 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
     };
     tick();
     return () => { stop = true; };
-  }, [auto, override, byId, role, captureOn]);
+  }, [auto, override, byId, role, captureOn, side]);
 
   const togglePool = (id: number) => {
     const inPool = poolSet.has(id);
@@ -256,8 +262,14 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
           <span className="flex items-center gap-1.5 text-xs text-muted cursor-default" title={gsi?.connected ? `Дота на связи${gsi.phase ? ` · ${gsi.phase.replace("DOTA_GAMERULES_STATE_", "").toLowerCase()}` : ""}${gsi.ownHeroId ? ` · твой герой: ${byId.get(gsi.ownHeroId)?.name}` : ""}. Когда ты выберешь героя, драфт с введёнными врагами запишется в историю сам.` : "Дота не на связи: запусти игру с установленным конфигом GSI (Настройки)"}>
             <span className={`inline-block h-2 w-2 rounded-full ${gsi?.connected ? "bg-good" : "bg-border"}`} />
             {gsi?.connected ? "Дота" : "Дота не на связи"}
-            {screen && gsi?.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" && <span className="ml-1 text-muted/80" title={screen.status}>· с экрана: {screen.found}</span>}
+            {captureOn && screen && <span className="ml-1 text-muted/80" title={screen.status}>· экран: {screen.found}</span>}
           </span>
+          {!gsi?.connected && captureOn && (
+            <div className="flex rounded-md border border-border overflow-hidden text-[11px]" title="Дота не на связи, поэтому укажи, за какую сторону играешь: от этого зависит, кто в распознанном драфте враги">
+              <button onClick={() => setSide("radiant")} className={`px-2 py-1 ${side === "radiant" ? "bg-good/20 text-good" : "text-muted"}`}>я за Свет</button>
+              <button onClick={() => setSide("dire")} className={`px-2 py-1 ${side === "dire" ? "bg-bad/20 text-bad" : "text-muted"}`}>я за Тьму</button>
+            </div>
+          )}
           <button onClick={() => setPoolOpen(true)} className="text-accent hover:underline">Мой пул · {poolSet.size}</button>
           <button onClick={reset} className="text-muted hover:text-foreground underline">Сбросить драфт</button>
         </div>
@@ -273,7 +285,9 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
         </section>
       )}
 
-      <DraftBar byId={byId} allies={picks.allies} enemies={picks.enemies} ownHeroId={gsi?.ownHeroId ?? null} team={gsi?.team ?? null} role={role} />
+      {gsiRewritten && <section className="rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm">Конфиг GSI в Доте указывал на старый порт, я переписал его. Перезапусти Доту, чтобы точка «Дота» загорелась.</section>}
+
+      <DraftBar byId={byId} allies={picks.allies} enemies={picks.enemies} ownHeroId={gsi?.ownHeroId ?? null} team={gsi?.connected ? (gsi.team ?? null) : side} role={role} />
 
       <section className="grid gap-3 md:grid-cols-3">
         {ZONES.map((z) => (
