@@ -37,6 +37,11 @@ export async function POST(req: Request) {
     topPool: candidates.map((c, i) => ({ c, i })).filter((x) => x.c.poolStatus !== "outside").slice(0, 5).map((x) => rec(x.i)),
     topAll: candidates.slice(0, 5).map((_, i) => rec(i)),
   };
+  // повторное сохранение того же драфта в течение двух минут (двойной клик, повторное нажатие) заменяет прошлую запись
+  const items = readLog();
+  const same = (a: { id: number }[], b: { id: number }[]) => a.map((x) => x.id).join(",") === b.map((x) => x.id).join(",");
+  const dupIdx = items.findIndex((x) => x.matchId == null && x.chosenHeroId === item.chosenHeroId && item.createdAt - x.createdAt < 120 && same(x.enemies, item.enemies) && same(x.allies, item.allies));
+  if (dupIdx >= 0) { items[dupIdx] = { ...item, id: items[dupIdx].id, createdAt: items[dupIdx].createdAt }; writeLog(items); return NextResponse.json({ ok: true, item: items[dupIdx], replaced: true }); }
   appendLog(item);
   return NextResponse.json({ ok: true, item });
 }

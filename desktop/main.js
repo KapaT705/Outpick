@@ -8,6 +8,20 @@ const AdmZip = require("adm-zip");
 const LOG = [];
 const logLine = (level, args) => { const line = `${new Date().toISOString()} [${level}] ${args.map((a) => (typeof a === "string" ? a : (() => { try { return JSON.stringify(a); } catch { return String(a); } })())).join(" ")}`; LOG.push(line); if (LOG.length > 800) LOG.shift(); };
 for (const lvl of ["log", "warn", "error"]) { const orig = console[lvl].bind(console); console[lvl] = (...a) => { logLine(lvl, a); orig(...a); }; }
+// журнал пишется и на диск (userData/main-log.txt), при старте прошлый сохраняется как main-log-prev.txt:
+// так диагностика после перезапуска видит, что было в прошлом запуске
+let logFile = null, logPrevFile = null;
+function flushLog() { if (!logFile) return; try { fs.writeFileSync(logFile, LOG.join("\n")); } catch {} }
+function initLog(userDir) {
+  logFile = path.join(userDir, "main-log.txt"); logPrevFile = path.join(userDir, "main-log-prev.txt");
+  try { if (fs.existsSync(logFile)) fs.renameSync(logFile, logPrevFile); } catch {}
+  setInterval(flushLog, 30_000);
+}
+// обещание с таймаутом: захват экрана на Windows изредка не отвечает, и без этого цикл чтения экрана зависал навсегда
+function withTimeout(promise, ms, label) {
+  let t; const timeout = new Promise((_, rej) => { t = setTimeout(() => rej(new Error(`${label}: нет ответа ${Math.round(ms / 1000)} с`)), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
+}
 process.on("uncaughtException", (e) => console.error("uncaught:", e?.stack ?? String(e)));
 let serverPort = null;
 const { autoUpdater } = require("electron-updater");
@@ -65,6 +79,7 @@ async function startServer() {
   const dataDir = isDev ? path.join(__dirname, "..", "data") : path.join(resources, "data"); // данные Stratz (только чтение)
   const userDir = app.getPath("userData");             // журнал, настройки
   fs.mkdirSync(userDir, { recursive: true });
+  initLog(userDir);
   frames.init(userDir);
   const serverJs = path.join(appDir, "server.js");
   if (!fs.existsSync(serverJs)) throw new Error(`Не найден ${serverJs}. Запусти npm run prepare-app.`);
@@ -172,13 +187,13 @@ async function captureDotaFrame() {
   const size = { width: Math.round(biggest.size.width * biggest.scaleFactor), height: Math.round(biggest.size.height * biggest.scaleFactor) };
   // только экраны (окна не запрашиваем: каждый снимок окна стоит столько же памяти, сколько экран);
   // окно Доты берём отдельно, только если все экраны чёрные
-  const all = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: size, fetchWindowIcons: false });
+  const all = await withTimeout(desktopCapturer.getSources({ types: ["screen"], thumbnailSize: size, fetchWindowIcons: false }), 10_000, "захват экрана");
   const landscapeIds = new Set(displays.map((d) => String(d.id)));
   const screens = all.filter((s) => { const sz = s.thumbnail.getSize(); return (s.display_id ? landscapeIds.has(String(s.display_id)) : true) && sz.width >= sz.height; });
   const rank = (s) => (s.id === preferredScreen ? 0 : String(s.display_id) === primaryId ? 1 : 2);
   const ordered = screens.sort((a, b) => rank(a) - rank(b));
   let lastErr = "нет источников захвата";
-  const tryWindow = async () => { const wins = await desktopCapturer.getSources({ types: ["window"], thumbnailSize: size, fetchWindowIcons: false }); return wins.filter((s) => /dota\s*2/i.test(s.name)); };
+  const tryWindow = async () => { const wins = await withTimeout(desktopCapturer.getSources({ types: ["window"], thumbnailSize: size, fetchWindowIcons: false }), 10_000, "захват окна"); return wins.filter((s) => /dota\s*2/i.test(s.name)); };
   for (const src of [...ordered, ...(await tryWindow().catch(() => []))]) {
     const img = src.thumbnail; const sz = img.getSize();
     if (sz.width === 0 || sz.height === 0) { lastErr = "пустой кадр"; continue; }
@@ -189,21 +204,36 @@ async function captureDotaFrame() {
   throw new Error(lastErr);
 }
 const gcNow = () => { try { global.gc?.(); } catch {} };
+// сводка цикла чтения экрана раз в минуту (только когда были вызовы): по ней видно, работал ли цикл во время пиков
+const loop = { calls: 0, idle: 0, captured: 0, onPick: 0, saved: 0, errors: 0, lastErr: null, lastCtx: null, lastState: null };
+setInterval(() => {
+  if (!loop.calls) return;
+  console.log(`[loop] вызовов=${loop.calls} дота_закрыта=${loop.idle} кадров=${loop.captured} экран_пиков=${loop.onPick} сохранено=${loop.saved} ошибок=${loop.errors}${loop.lastErr ? ` последняя: ${loop.lastErr}` : ""} ctx=${JSON.stringify(loop.lastCtx)} слоты=${loop.lastState ?? "-"}`);
+  Object.assign(loop, { calls: 0, idle: 0, captured: 0, onPick: 0, saved: 0, errors: 0, lastErr: null });
+}, 60_000);
 ipcMain.handle("draft:recognize", async (_e, ctx) => {
   if (!ensureTemplates()) return { ok: false, error: "шаблоны героев не загружены" };
-  if (!(await dotaRunning())) return { ok: false, idle: true, error: "Дота не запущена" };
+  loop.calls++; loop.lastCtx = ctx ?? null;
+  if (!(await dotaRunning())) { loop.idle++; return { ok: false, idle: true, error: "Дота не запущена" }; }
   let frame = null;
   try {
     frame = await captureDotaFrame();
+    loop.captured++;
     const srcName = frame.name, srcW = frame.w, srcH = frame.h;
     const t = Date.now();
     const slots = recog.recognize(frame);
     const onPickScreen = slots.filter((x) => x.empty || x.heroId).length >= 4;
-    if (onPickScreen) { preferredScreen = frame.id; frames.remember(frame, slots, ctx && typeof ctx === "object" ? ctx : {}); }
+    const c = ctx && typeof ctx === "object" ? ctx : {};
+    // пока Дота по GSI сообщает стадию выбора героев, кадры сохраняем даже если панель не распознана:
+    // по ним потом видно, как выглядит экран, который программа не поняла
+    const inPicks = c.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION";
+    if (onPickScreen) { loop.onPick++; preferredScreen = frame.id; }
+    if (onPickScreen || inPicks) { if (frames.remember(frame, slots, c)) loop.saved++; }
+    loop.lastState = slots.map((s) => (s.empty ? "E" : s.heroId ?? (s.flat ? "F" : "U"))).join(",");
     frame.data = null; frame.image = null; frame = null;
     gcNow();
     return { ok: true, source: srcName, w: srcW, h: srcH, ms: Date.now() - t, onPickScreen, slots: slots.map((s) => ({ team: s.team, idx: s.idx, heroId: s.heroId, name: s.name ?? null, score: s.score ?? null, margin: s.margin ?? null, empty: !!s.empty, learned: !!s.learned })) };
-  } catch (e) { frame = null; gcNow(); return { ok: false, error: String(e?.message ?? e) }; }
+  } catch (e) { frame = null; gcNow(); loop.errors++; loop.lastErr = String(e?.message ?? e); return { ok: false, error: String(e?.message ?? e) }; }
 });
 ipcMain.handle("draft:debug", async () => {
   if (!ensureTemplates()) return { ok: false, error: "шаблоны героев не загружены" };
@@ -233,6 +263,7 @@ ipcMain.handle("diag:save", async () => {
     const info = { app: app.getVersion(), electron: process.versions.electron, node: process.versions.node, platform: process.platform, arch: process.arch, os: `${os.type()} ${os.release()}`, cpu: os.cpus()?.[0]?.model, memGb: Math.round(os.totalmem() / 1e9), displays, serverPort, savedAt: new Date().toISOString(), settings, memory: process.memoryUsage(), dotaRunning: await dotaRunning(), uptimeMin: Math.round(process.uptime() / 60) };
     zip.addFile("info.json", Buffer.from(JSON.stringify(info, null, 2)));
     zip.addFile("main-log.txt", Buffer.from(LOG.join("\n")));
+    try { if (logPrevFile && fs.existsSync(logPrevFile)) zip.addFile("main-log-prev.txt", fs.readFileSync(logPrevFile)); } catch {}
     zip.addFile("gsi-raw.json", Buffer.from(JSON.stringify(await serverJson("/api/gsi/raw"), null, 1)));
     zip.addFile("gsi-config.json", Buffer.from(JSON.stringify(await serverJson("/api/gsi/install"), null, 1)));
     zip.addFile("draft-log.json", Buffer.from(JSON.stringify(await serverJson("/api/log"), null, 1)));
@@ -280,4 +311,4 @@ app.whenReady().then(() => {
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
-app.on("before-quit", () => { serverProc?.kill(); });
+app.on("before-quit", () => { flushLog(); serverProc?.kill(); });

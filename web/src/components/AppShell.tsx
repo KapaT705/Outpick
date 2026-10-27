@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 type UpdateEvent = { type: "checking" | "available" | "none" | "progress" | "downloaded" | "error"; version?: string; current?: string; percent?: number; message?: string };
 export type RecognizedSlot = { team: "radiant" | "dire"; idx: number; heroId: number | null; name: string | null; score: number | null; margin: number | null; empty: boolean; learned?: boolean };
-export type RecognizeCtx = { matchId?: string | null; team?: "radiant" | "dire" | null; slot?: number | null };
+export type RecognizeCtx = { matchId?: string | null; team?: "radiant" | "dire" | null; slot?: number | null; phase?: string | null };
 export type LearnResult = { ok: boolean; error?: string; checked?: number; added?: number; total?: number; notes?: string[] };
 export type LearnedInfo = { total: number; heroes: { heroId: number; n: number }[]; sessions: string[] };
 export type RecognizeResult = { ok: boolean; error?: string; idle?: boolean; source?: string; w?: number; h?: number; ms?: number; onPickScreen?: boolean; slots?: RecognizedSlot[] };

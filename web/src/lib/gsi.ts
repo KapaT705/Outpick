@@ -32,7 +32,7 @@ export type DraftState = {
   timeRemaining: number | null;
 };
 
-const state: { last: GsiPayload | null; receivedAt: number; draft: DraftState | null; samples: { at: number; payload: GsiPayload }[] } = { last: null, receivedAt: 0, draft: null, samples: [] };
+const state: { last: GsiPayload | null; receivedAt: number; draft: DraftState | null; samples: { at: number; payload: GsiPayload }[]; phases: { at: number; phase: string; matchId: string | null; heroId: number | null }[] } = { last: null, receivedAt: 0, draft: null, samples: [], phases: [] };
 
 const DRAFT_PHASES = new Set(["DOTA_GAMERULES_STATE_HERO_SELECTION", "DOTA_GAMERULES_STATE_STRATEGY_TIME", "DOTA_GAMERULES_STATE_TEAM_SHOWCASE"]);
 
@@ -78,12 +78,19 @@ export function parseDraft(p: GsiPayload): DraftState | null {
   };
 }
 
+let seeded = false;
 export function receive(p: GsiPayload) {
+  // после перезапуска продолжаем хронологию стадий с диска, а не с пустого места
+  if (!seeded) { seeded = true; try { const j = JSON.parse(fs.readFileSync(LAST_FILE, "utf8")); if (Array.isArray(j.phases)) state.phases = j.phases.slice(-60); } catch {} }
   state.last = p;
   state.receivedAt = Date.now();
   state.draft = parseDraft(p);
   // для диагностики храним несколько последних сообщений из стадии драфта (без auth)
   const phase = p.map?.game_state ?? "";
+  // хронология стадий (когда менялась стадия, матч или герой): по ней видно, что Дота присылала во время пиков
+  const ph = { at: Date.now(), phase, matchId: p.map?.matchid ?? null, heroId: p.hero?.id || null };
+  const lastPh = state.phases[state.phases.length - 1];
+  if (!lastPh || lastPh.phase !== ph.phase || lastPh.matchId !== ph.matchId || lastPh.heroId !== ph.heroId) { state.phases.push(ph); if (state.phases.length > 60) state.phases.shift(); }
   if (DRAFT_PHASES.has(phase) || p.draft) {
     const { auth: _auth, ...rest } = p; void _auth;
     const prev = state.samples[state.samples.length - 1];
@@ -97,13 +104,13 @@ export function receive(p: GsiPayload) {
   if (now - lastWrite > 5000) { lastWrite = now; try { fs.mkdirSync(USER_DIR, { recursive: true }); fs.writeFileSync(LAST_FILE, JSON.stringify(rawSnapshot())); } catch {} }
 }
 
-export function rawSnapshot(): { receivedAt: number; last: GsiPayload; samples: typeof state.samples; parsed: DraftState | null; fromDisk?: boolean } {
+export function rawSnapshot(): { receivedAt: number; last: GsiPayload; samples: typeof state.samples; phases: typeof state.phases; parsed: DraftState | null; fromDisk?: boolean } {
   if (!state.receivedAt) {
     // после перезапуска память пуста: отдаём последний снимок с диска, помечая его
     try { const j = JSON.parse(fs.readFileSync(LAST_FILE, "utf8")); return { ...j, fromDisk: true }; } catch {}
   }
   const { auth: _auth, ...last } = (state.last ?? {}) as GsiPayload; void _auth;
-  return { receivedAt: state.receivedAt, last, samples: state.samples, parsed: state.draft };
+  return { receivedAt: state.receivedAt, last, samples: state.samples, phases: state.phases, parsed: state.draft };
 }
 
 export function snapshot() {

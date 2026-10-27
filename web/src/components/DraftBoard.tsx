@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseHeroText, type AliasMap } from "@/lib/aliases";
 import type { Attr, Candidate, Hero, Pick, PoolOverride, Role, RoleGuess } from "@/lib/types";
-import type { RecognizedSlot } from "@/components/AppShell";
+import type { RecognizedSlot, RecognizeResult } from "@/components/AppShell";
 
 type Zone = "bans" | "enemies" | "allies";
 const ZONES: { key: Zone; label: string; color: string; max: number; hint: string }[] = [
@@ -162,7 +162,12 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
         const inSelection = !r.connected || !d?.phase || d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION";
         if (captureOn && inSelection && window.desktop?.recognizeDraft) {
           const ctxTeam: "radiant" | "dire" = (r.connected && d?.team) ? d.team : side;
-          const res = await window.desktop.recognizeDraft({ matchId: r.connected ? (d?.matchId ?? null) : null, team: ctxTeam, slot: r.connected && d?.team ? (d.teamSlot ?? null) : null }).catch(() => null);
+          // таймаут: если захват экрана завис, цикл не должен остановиться навсегда
+          const ctx = { matchId: r.connected ? (d?.matchId ?? null) : null, team: ctxTeam, slot: r.connected && d?.team ? (d.teamSlot ?? null) : null, phase: r.connected ? (d?.phase ?? null) : null };
+          const res = await Promise.race([
+            window.desktop.recognizeDraft(ctx).catch(() => null),
+            new Promise<RecognizeResult | null>((resolve) => setTimeout(() => resolve({ ok: false, error: "захват экрана не отвечает, пробую снова" }), 15000)),
+          ]);
           if (!stop && res) {
             if (!res.ok) setScreen({ status: res.idle ? "Дота не запущена, экран не читаю" : (res.error ?? "ошибка захвата"), found: 0 });
             else if (!res.onPickScreen) setScreen({ status: "экран пиков не виден", found: 0 });
