@@ -17,7 +17,10 @@ const CROPS = [[0.15, 0, 0.65, 0.79], [0.1, 0, 0.7, 0.85], [0.2, 0.05, 0.6, 0.71
 // Пороги: сходство с лучшим портретом, отрыв от второго, сходство с пустым слотом,
 // и минимальная «детальность» кропа (гладкий градиент рабочего стола или обоев героем быть не может:
 // у настоящих портретов энергия границ ≥ 0.25, у пустых слотов и фона ≤ 0.17).
-const MIN_SCORE = 0.42, MIN_MARGIN = 0.08, EMPTY_NCC = 0.7, MIN_EDGE = 0.2;
+// MIN_SCORE: с вырезами как в интерфейсе настоящие герои дают ≥ 0.6 (на реальных кадрах 0.61–0.96), а подсвеченный
+// пустой слот команды, которая сейчас пикает, давал «Shadow Demon» 0.48–0.50 при сходстве с пустым 0.5–0.65.
+// Ниже 0.55 герой принимается только если кроп заведомо не похож на пустой слот (сходство с пустым < 0.3).
+const MIN_SCORE = 0.55, MIN_SCORE_SOFT = 0.45, SOFT_EMPTY = 0.3, MIN_MARGIN = 0.08, EMPTY_NCC = 0.7, MIN_EDGE = 0.2;
 // Выученные портреты (персоны, арканы) считаются точнее базовых: совпадение с ними принимаем с меньшим отрывом.
 const LEARNED_SCORE = 0.6;
 
@@ -113,7 +116,7 @@ function scoreVector(v, { useLearned = true } = {}) {
   const margin = best ? best.s - (second?.s ?? 0) : 0;
   const empty = emptyScore >= EMPTY_NCC;
   const flat = !empty && edge < MIN_EDGE;
-  const ok = !empty && !flat && best && (learnedHit || (best.s >= MIN_SCORE && margin >= MIN_MARGIN));
+  const ok = !empty && !flat && best && (learnedHit || (margin >= MIN_MARGIN && (best.s >= MIN_SCORE || (best.s >= MIN_SCORE_SOFT && emptyScore < SOFT_EMPTY))));
   return { empty, flat, ok, best, second, margin, emptyScore, edge };
 }
 

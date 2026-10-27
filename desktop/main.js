@@ -3,6 +3,7 @@ const recog = require("./recognize.js");
 const frames = require("./frames.js");
 const os = require("node:os");
 const AdmZip = require("adm-zip");
+const { PNG } = require("pngjs");
 
 // --- журнал главного процесса (последние 800 строк) для диагностики ---
 const LOG = [];
@@ -104,7 +105,8 @@ async function createWindow() {
     title: "Dota Mid Helper",
     autoHideMenuBar: true, // на Windows меню скрыто, Alt показывает
     icon: path.join(__dirname, "icon.png"),
-    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true },
+    // backgroundThrottling: false — во время пиков окно за Дотой, а видеопоток и таймеры страницы должны работать
+    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, backgroundThrottling: false },
   });
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: "deny" }; });
   win.webContents.on("will-navigate", (e, url) => { if (!url.startsWith("http://127.0.0.1")) { e.preventDefault(); shell.openExternal(url); } });
@@ -119,6 +121,13 @@ async function createWindow() {
           const frame = { name: "test", w: sz.width, h: sz.height, data: im.toBitmap(), bgra: true, image: im }; const slots = recog.recognize(frame);
           console.log(`[app] frame-test: ${slots.map((x) => x.name ?? "-").join(",")} saved=${frames.remember(frame, slots, { matchId: "999", team: "radiant", slot: 0 })} again=${frames.remember(frame, slots, { matchId: "999" })}`, JSON.stringify(frames.learnedInfo()));
         } catch (e) { console.log(`[app] frame-test error: ${e.stack}`); }
+      }
+      if (process.env.STREAM_TEST) { // проверка захвата видеопотоком и памяти: STREAM_TEST=<число кадров>
+        const n = Number(process.env.STREAM_TEST) || 30;
+        const m0 = process.memoryUsage().rss;
+        win.webContents.executeJavaScript(`(async () => { const out = []; for (let i = 0; i < ${n}; i++) { const r = await window.desktop.recognizeDraft({ phase: "DOTA_GAMERULES_STATE_HERO_SELECTION" }); out.push(r.ok ? (r.black ? "black" : r.source + " " + r.w + "x" + r.h + " " + r.ms + "ms") : "ERR " + r.error); await new Promise((res) => setTimeout(res, 300)); } return out; })()`)
+          .then((v) => { gcNow(); console.log(`[app] stream-test: ${JSON.stringify(v.slice(0, 3))} … всего ${v.length}, rss ${Math.round(m0 / 1e6)} → ${Math.round(process.memoryUsage().rss / 1e6)} MB`); })
+          .catch((e) => console.log(`[app] stream-test error: ${e}`));
       }
       if (process.env.DIAG_TEST) setTimeout(() => win.webContents.executeJavaScript("window.desktop.saveDiagnostics()").then((v) => console.log(`[app] diag: ${JSON.stringify(v)}`)).catch((e) => console.log(`[app] diag error: ${e}`)), 3000);
     }
@@ -217,16 +226,37 @@ setInterval(() => {
   console.log(`[loop] вызовов=${loop.calls} дота_закрыта=${loop.idle} кадров=${loop.captured} экран_пиков=${loop.onPick} сохранено=${loop.saved} ошибок=${loop.errors}${loop.lastErr ? ` последняя: ${loop.lastErr}` : ""} ctx=${JSON.stringify(loop.lastCtx)} слоты=${loop.lastState ?? "-"}`);
   Object.assign(loop, { calls: 0, idle: 0, captured: 0, onPick: 0, saved: 0, errors: 0, lastErr: null });
 }, 60_000);
-ipcMain.handle("draft:recognize", async (_e, ctx) => {
+// --- кадры приходят из окна: страница держит видеопоток экрана и присылает верхнюю полосу RGBA ---
+// (desktopCapturer.getSources на каждый кадр на Windows не освобождал снимки: до 6 ГБ за два матча)
+ipcMain.handle("capture:gate", async () => (ensureTemplates() ? { ok: true, dota: await dotaRunning() } : { ok: false, error: "шаблоны героев не загружены" }));
+ipcMain.handle("capture:sources", async () => {
+  const displays = landscapeDisplays();
+  const ids = new Set(displays.map((d) => String(d.id)));
+  const primaryId = String(screen.getPrimaryDisplay().id);
+  const all = await withTimeout(desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: false }), 10_000, "список экранов");
+  const list = all.filter((src) => !src.display_id || ids.has(String(src.display_id))).map((src) => {
+    const d = displays.find((x) => String(x.id) === String(src.display_id)) ?? displays[0];
+    return { id: src.id, name: src.name, displayId: String(src.display_id || ""), w: Math.round(d.size.width * d.scaleFactor), h: Math.round(d.size.height * d.scaleFactor) };
+  });
+  const rank = (x) => (x.id === preferredScreen ? 0 : x.displayId === primaryId ? 1 : 2);
+  return list.sort((a, b) => rank(a) - rank(b));
+});
+const bytes = (u) => (u ? Buffer.from(u.buffer ?? u, u.byteOffset ?? 0, u.byteLength ?? u.length) : null);
+function frameFromRenderer(f) {
+  if (!f || !f.strip || !f.w || !f.h || !f.stripH) throw new Error("пустой кадр из окна");
+  const strip = f.strip instanceof Uint8Array ? f.strip : new Uint8Array(f.strip);
+  if (strip.length < f.w * f.stripH * 4) throw new Error("полоса кадра короче ожидаемого");
+  return { id: f.id, name: f.name, w: f.w, h: f.h, stripH: f.stripH, data: strip, bgra: false, jpeg: bytes(f.jpeg), png: bytes(f.png) };
+}
+const slotsOut = (slots) => slots.map((x) => ({ team: x.team, idx: x.idx, heroId: x.heroId, name: x.name ?? null, score: x.score ?? null, margin: x.margin ?? null, empty: !!x.empty, learned: !!x.learned }));
+ipcMain.handle("draft:recognizeFrame", async (_e, ctx, f) => {
   if (!ensureTemplates()) return { ok: false, error: "шаблоны героев не загружены" };
   loop.calls++; loop.lastCtx = ctx ?? null;
-  if (!(await dotaRunning())) { loop.idle++; return { ok: false, idle: true, error: "Дота не запущена" }; }
-  let frame = null;
   try {
-    frame = await captureDotaFrame();
+    const frame = frameFromRenderer(f);
     loop.captured++;
-    const srcName = frame.name, srcW = frame.w, srcH = frame.h;
     const t = Date.now();
+    if (frameIsBlack(frame.data, frame.w, frame.stripH * 3)) { loop.lastState = "black"; return { ok: true, black: true, source: frame.name, w: frame.w, h: frame.h, ms: Date.now() - t, onPickScreen: false, slots: [] }; }
     const slots = recog.recognize(frame);
     const onPickScreen = slots.filter((x) => x.empty || x.heroId).length >= 4;
     const c = ctx && typeof ctx === "object" ? ctx : {};
@@ -235,33 +265,30 @@ ipcMain.handle("draft:recognize", async (_e, ctx) => {
     const inPicks = c.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION";
     if (onPickScreen) { loop.onPick++; preferredScreen = frame.id; }
     if (onPickScreen || inPicks) { if (frames.remember(frame, slots, c)) loop.saved++; }
-    loop.lastState = slots.map((s) => (s.empty ? "E" : s.heroId ?? (s.flat ? "F" : "U"))).join(",");
-    frame.data = null; frame.image = null; frame = null;
-    gcNow();
-    return { ok: true, source: srcName, w: srcW, h: srcH, ms: Date.now() - t, onPickScreen, slots: slots.map((s) => ({ team: s.team, idx: s.idx, heroId: s.heroId, name: s.name ?? null, score: s.score ?? null, margin: s.margin ?? null, empty: !!s.empty, learned: !!s.learned })) };
-  } catch (e) { frame = null; gcNow(); loop.errors++; loop.lastErr = String(e?.message ?? e); return { ok: false, error: String(e?.message ?? e) }; }
+    loop.lastState = slots.map((x) => (x.empty ? "E" : x.heroId ?? (x.flat ? "F" : "U"))).join(",");
+    return { ok: true, source: frame.name, w: frame.w, h: frame.h, ms: Date.now() - t, onPickScreen, slots: slotsOut(slots) };
+  } catch (e) { loop.errors++; loop.lastErr = String(e?.message ?? e); return { ok: false, error: String(e?.message ?? e) }; }
 });
-ipcMain.handle("draft:debug", async () => {
+function stripDataUrl(frame) {
+  const p = new PNG({ width: frame.w, height: frame.stripH });
+  p.data = Buffer.from(frame.data.buffer, frame.data.byteOffset, frame.w * frame.stripH * 4);
+  return `data:image/png;base64,${PNG.sync.write(p).toString("base64")}`;
+}
+ipcMain.handle("draft:debug", async (_e, f) => {
   if (!ensureTemplates()) return { ok: false, error: "шаблоны героев не загружены" };
   try {
-    const frame = await captureDotaFrame();
+    const frame = frameFromRenderer(f);
     const slots = recog.recognize(frame);
     const onPickScreen = slots.filter((x) => x.empty || x.heroId).length >= 4;
     if (onPickScreen) frames.remember(frame, slots, {});
-    const stripH = Math.min(frame.h, recog.stripHeight(frame.h));
-    const strip = frame.image.crop({ x: 0, y: 0, width: frame.w, height: stripH });
-    const scale = Math.min(1, 1600 / frame.w);
-    const small = scale < 1 ? strip.resize({ width: Math.round(frame.w * scale) }) : strip;
-    const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 1, height: 1 } }).catch(() => []);
-    const out = { ok: true, source: frame.name, w: frame.w, h: frame.h, stripH, scale, image: small.toDataURL(), slots, onPickScreen, sources: sources.map((s) => s.name).slice(0, 12), dotaRunning: await dotaRunning() };
-    frame.data = null; frame.image = null; gcNow();
-    return out;
-  } catch (e) { gcNow(); return { ok: false, error: String(e?.message ?? e) }; }
+    const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 0, height: 0 } }).catch(() => []);
+    return { ok: true, source: frame.name, w: frame.w, h: frame.h, stripH: frame.stripH, scale: 1, image: stripDataUrl(frame), slots, onPickScreen, sources: sources.map((x) => x.name).slice(0, 12), dotaRunning: await dotaRunning() };
+  } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
 });
 async function serverJson(pathname) {
   try { const r = await fetch(`http://127.0.0.1:${serverPort}${pathname}`); return await r.json(); } catch (e) { return { error: String(e?.message ?? e) }; }
 }
-ipcMain.handle("diag:save", async () => {
+ipcMain.handle("diag:save", async (_e, f) => {
   try {
     const zip = new AdmZip();
     const displays = screen.getAllDisplays().map((d) => ({ id: d.id, size: d.size, scaleFactor: d.scaleFactor, bounds: d.bounds, primary: d.id === screen.getPrimaryDisplay().id }));
@@ -274,13 +301,20 @@ ipcMain.handle("diag:save", async () => {
     zip.addFile("gsi-config.json", Buffer.from(JSON.stringify(await serverJson("/api/gsi/install"), null, 1)));
     zip.addFile("draft-log.json", Buffer.from(JSON.stringify(await serverJson("/api/log"), null, 1)));
     zip.addFile("refresh.json", Buffer.from(JSON.stringify(await serverJson("/api/refresh"), null, 1)));
-    try { const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 1, height: 1 } }); zip.addFile("capture-sources.json", Buffer.from(JSON.stringify(sources.map((s) => ({ id: s.id, name: s.name })), null, 1))); } catch (e) { zip.addFile("capture-sources.json", Buffer.from(JSON.stringify({ error: String(e?.message ?? e) }))); }
-    // свежий кадр с распознаванием
+    try { const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 0, height: 0 } }); zip.addFile("capture-sources.json", Buffer.from(JSON.stringify(sources.map((s) => ({ id: s.id, name: s.name })), null, 1))); } catch (e) { zip.addFile("capture-sources.json", Buffer.from(JSON.stringify({ error: String(e?.message ?? e) }))); }
+    // свежий кадр с распознаванием: из видеопотока окна, а если его нет (Дота закрыта и поток не поднялся) — снимок экрана
     try {
-      const frame = await captureDotaFrame();
-      const slots = ensureTemplates() ? recog.recognize(frame) : [];
-      zip.addFile("frame-now.png", frame.image.toPNG());
-      zip.addFile("frame-now.json", Buffer.from(JSON.stringify({ source: frame.name, w: frame.w, h: frame.h, slots }, null, 1)));
+      if (f && f.strip) {
+        const frame = frameFromRenderer(f);
+        const slots = ensureTemplates() ? recog.recognize(frame) : [];
+        if (frame.png) zip.addFile("frame-now.png", frame.png); else zip.addFile("frame-now-strip.png", Buffer.from(stripDataUrl(frame).split(",")[1], "base64"));
+        zip.addFile("frame-now.json", Buffer.from(JSON.stringify({ source: frame.name, via: "stream", w: frame.w, h: frame.h, slots }, null, 1)));
+      } else {
+        const frame = await captureDotaFrame();
+        const slots = ensureTemplates() ? recog.recognize(frame) : [];
+        zip.addFile("frame-now.png", frame.image.toPNG());
+        zip.addFile("frame-now.json", Buffer.from(JSON.stringify({ source: frame.name, via: "desktopCapturer", w: frame.w, h: frame.h, slots }, null, 1)));
+      }
     } catch (e) { zip.addFile("frame-now.json", Buffer.from(JSON.stringify({ error: String(e?.message ?? e) }))); }
     gcNow();
     // кадры со стадии пиков двух последних драфтов (хранятся на диске, переживают перезапуск), разметка и выученные портреты
@@ -298,7 +332,7 @@ ipcMain.handle("draft:markMatch", (_e, matchId) => ({ ok: frames.markMatch(match
 ipcMain.handle("learn:run", () => { if (!ensureTemplates()) return { ok: false, error: "шаблоны не загружены" }; const r = frames.learn(); if (r.ok && (r.added || r.checked)) console.log(`[learn] проверено матчей: ${r.checked}, выучено портретов: ${r.added}, всего: ${r.total}`, r.notes.join("; ")); return r; });
 ipcMain.handle("learn:info", () => frames.learnedInfo());
 ipcMain.handle("draft:sources", async () => {
-  try { const sources = await desktopCapturer.getSources({ types: ["window", "screen"], thumbnailSize: { width: 1, height: 1 } }); return sources.map((s) => ({ id: s.id, name: s.name })); } catch (e) { return [{ id: "error", name: String(e?.message ?? e) }]; }
+  try { const sources = await desktopCapturer.getSources({ types: ["window", "screen"], thumbnailSize: { width: 0, height: 0 } }); return sources.map((s) => ({ id: s.id, name: s.name })); } catch (e) { return [{ id: "error", name: String(e?.message ?? e) }]; }
 });
 
 app.whenReady().then(() => {
@@ -312,8 +346,20 @@ app.whenReady().then(() => {
   }
   setupUpdater();
   createWindow();
-  // доучиваем портреты по матчам, результаты которых подтянулись, пока программа была закрыта
-  setTimeout(() => { try { if (ensureTemplates()) { const r = frames.learn(); if (r.ok && r.added) console.log(`[learn] при старте выучено портретов: ${r.added}`, r.notes.join("; ")); } } catch (e) { console.warn("[learn]", e.message); } }, 8000);
+  // доучиваем портреты по матчам, результаты которых подтянулись: при старте и каждые 5 минут, если разметка обновилась
+  // (результаты сервер подтягивает сам по таймеру, см. web/src/lib/sync.ts)
+  let labelsSeen = 0;
+  const learnIfNew = (why) => {
+    try {
+      const m = fs.existsSync(frames.labelsFile) ? fs.statSync(frames.labelsFile).mtimeMs : 0;
+      if (m === labelsSeen) return; labelsSeen = m;
+      if (!ensureTemplates()) return;
+      const r = frames.learn();
+      if (r.ok && (r.added || r.checked)) console.log(`[learn] ${why}: проверено матчей ${r.checked}, выучено портретов ${r.added}, всего ${r.total}`, r.notes.join("; "));
+    } catch (e) { console.warn("[learn]", e.message); }
+  };
+  setTimeout(() => learnIfNew("при старте"), 8000);
+  setInterval(() => learnIfNew("по таймеру"), 5 * 60_000);
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });

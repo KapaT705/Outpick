@@ -26,6 +26,7 @@ export type DraftLog = {
   topPool: LogRec[];              // топ-5 из пула на момент выбора
   topAll: LogRec[];               // топ-5 общий
   // заполняется синхронизацией со Stratz
+  triedAt?: number;               // когда в последний раз искали матч (для автосинхронизации)
   matchId?: number;
   won?: boolean;
   durationSeconds?: number;

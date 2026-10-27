@@ -37,11 +37,18 @@ export async function POST(req: Request) {
     topPool: candidates.map((c, i) => ({ c, i })).filter((x) => x.c.poolStatus !== "outside").slice(0, 5).map((x) => rec(x.i)),
     topAll: candidates.slice(0, 5).map((_, i) => rec(i)),
   };
-  // повторное сохранение того же драфта в течение двух минут (двойной клик, повторное нажатие) заменяет прошлую запись
+  // Один матч — одна запись. Автозапись (по номеру матча из Доты) и ручное «взять» в том же матче сливаются:
+  // запись с тем же номером матча или свежая (до 20 минут) с тем же героем заменяется, причём состав берётся
+  // более полный, а номер матча и время первой записи сохраняются.
   const items = readLog();
-  const same = (a: { id: number }[], b: { id: number }[]) => a.map((x) => x.id).join(",") === b.map((x) => x.id).join(",");
-  const dupIdx = items.findIndex((x) => x.matchId == null && x.chosenHeroId === item.chosenHeroId && item.createdAt - x.createdAt < 120 && same(x.enemies, item.enemies) && same(x.allies, item.allies));
-  if (dupIdx >= 0) { items[dupIdx] = { ...item, id: items[dupIdx].id, createdAt: items[dupIdx].createdAt }; writeLog(items); return NextResponse.json({ ok: true, item: items[dupIdx], replaced: true }); }
+  const dupIdx = items.findIndex((x) => (item.gsiMatchId && x.gsiMatchId === item.gsiMatchId) || (x.matchId == null && x.chosenHeroId === item.chosenHeroId && item.createdAt - x.createdAt < 20 * 60));
+  if (dupIdx >= 0) {
+    const old = items[dupIdx];
+    const richer = <T,>(a: T[], b: T[]) => (b.length >= a.length ? b : a);
+    items[dupIdx] = { ...item, id: old.id, createdAt: old.createdAt, gsiMatchId: item.gsiMatchId ?? old.gsiMatchId, enemies: richer(old.enemies, item.enemies), allies: richer(old.allies, item.allies), bans: richer(old.bans, item.bans) };
+    writeLog(items);
+    return NextResponse.json({ ok: true, item: items[dupIdx], replaced: true });
+  }
   appendLog(item);
   return NextResponse.json({ ok: true, item });
 }

@@ -59,11 +59,22 @@ function remember(frame, slots, ctx = {}) {
   if (!changed && now - session.lastSavedAt < RESAVE_MS) return false;
   try {
     const n = ++session.n;
-    const stripH = Math.min(frame.h, recog.stripHeight(frame.h));
-    const strip = frame.image.crop({ x: 0, y: 0, width: frame.w, height: stripH });
-    const small = frame.image.resize({ width: Math.min(1280, frame.w) });
-    fs.writeFileSync(path.join(session.dir, `frame-${n}-strip.png`), strip.toPNG());
-    fs.writeFileSync(path.join(session.dir, `frame-${n}.jpg`), small.toJPEG(70));
+    const stripH = Math.min(frame.h, frame.stripH ?? recog.stripHeight(frame.h));
+    // кадр либо NativeImage (старый путь, тесты), либо полоса RGBA из окна (+ готовый JPEG уменьшенного кадра)
+    let stripPng, jpg = null;
+    if (frame.image) {
+      stripPng = frame.image.crop({ x: 0, y: 0, width: frame.w, height: stripH }).toPNG();
+      jpg = frame.image.resize({ width: Math.min(1280, frame.w) }).toJPEG(70);
+    } else {
+      const need = frame.w * stripH * 4;
+      if (!frame.data || frame.data.length < need) throw new Error(`полоса кадра короче ожидаемого (${frame.data?.length ?? 0} < ${need})`);
+      const p = new PNG({ width: frame.w, height: stripH });
+      p.data = Buffer.from(frame.data.buffer, frame.data.byteOffset, need);
+      stripPng = PNG.sync.write(p);
+      jpg = frame.jpeg ?? null;
+    }
+    fs.writeFileSync(path.join(session.dir, `frame-${n}-strip.png`), stripPng);
+    if (jpg) fs.writeFileSync(path.join(session.dir, `frame-${n}.jpg`), jpg);
     fs.writeFileSync(path.join(session.dir, `frame-${n}.json`), JSON.stringify({ at: new Date(now).toISOString(), source: frame.name, w: frame.w, h: frame.h, stripH, matchId: session.matchId, ctx, slots }, null, 1));
     session.stateKey = key; session.lastSavedAt = now;
     if (n > MAX_FRAMES) for (const suf of ["-strip.png", ".jpg", ".json"]) fs.rmSync(path.join(session.dir, `frame-${n - MAX_FRAMES}${suf}`), { force: true });
