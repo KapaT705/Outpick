@@ -1,7 +1,7 @@
 {
   "name": "dota-mid-helper",
   "productName": "Dota Mid Helper",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Драфт-помощник для мида: пикер, роли, история драфтов",
   "author": "KapaT",
   "main": "main.js",
@@ -26,6 +26,7 @@
       "main.js",
       "preload.js",
       "recognize.js",
+      "frames.js",
       "icon.png"
     ],
     "extraResources": [

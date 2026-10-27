@@ -8,6 +8,21 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const web = path.join(root, "web");
 const out = path.join(root, "desktop", "next-app");
 
+// Проверка: все локальные модули главного процесса должны быть в build.files, иначе установленная программа
+// падает при запуске с «Cannot find module» (так было в 0.4.0 с recognize.js и в 0.7.1 с frames.js)
+const desktop = path.join(root, "desktop");
+const pkg = JSON.parse(fs.readFileSync(path.join(desktop, "package.json"), "utf8"));
+const listed = new Set(pkg.build.files);
+const seen = new Set(), queue = ["main.js", "preload.js"];
+while (queue.length) {
+  const f = queue.pop(); if (seen.has(f)) continue; seen.add(f);
+  const src = fs.readFileSync(path.join(desktop, f), "utf8");
+  for (const m of src.matchAll(/require\("\.\/([\w-]+\.js)"\)/g)) queue.push(m[1]);
+}
+const missing = [...seen].filter((f) => !listed.has(f));
+if (missing.length) { console.error(`В desktop/package.json build.files не хватает: ${missing.join(", ")}`); process.exit(1); }
+console.log("> модули главного процесса в сборке:", [...seen].join(", "));
+
 console.log("> next build");
 execSync("npm run build", { cwd: web, stdio: "inherit" });
 
