@@ -159,7 +159,11 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
       if (r) {
         const d = r.draft;
         setGsi({ connected: r.connected, phase: d?.phase ?? "", ownHeroId: d?.ownHeroId ?? null, matchId: d?.matchId ?? null, team: d?.team ?? null });
-        const inSelection = !r.connected || !d?.phase || d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION";
+        // Экран читаем только на стадии пиков и планирования, о которых сообщает Дота; в меню и в игре захвата нет.
+        // Без связи с Дотой (GSI не приходит) читаем всегда, но реже.
+        const CAPTURE_PHASES = ["DOTA_GAMERULES_STATE_HERO_SELECTION", "DOTA_GAMERULES_STATE_STRATEGY_TIME"];
+        const inSelection = !r.connected || CAPTURE_PHASES.includes(d?.phase ?? "");
+        if (captureOn && r.connected && !inSelection) setScreen({ status: "жду стадию пиков", found: 0 });
         if (captureOn && inSelection && window.desktop?.recognizeDraft) {
           const ctxTeam: "radiant" | "dire" = (r.connected && d?.team) ? d.team : side;
           // таймаут: если захват экрана завис, цикл не должен остановиться навсегда
@@ -231,7 +235,7 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
           }
         }
       }
-      if (!stop) setTimeout(tick, 1500);
+      if (!stop) setTimeout(tick, r?.connected ? 1500 : 3000);
     };
     tick();
     return () => { stop = true; };

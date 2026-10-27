@@ -165,7 +165,7 @@ function ensureTemplates() {
   const resources = isDev ? __dirname : process.resourcesPath;
   const dataDir = isDev ? path.join(__dirname, "..", "data") : path.join(resources, "data");
   const assets = isDev ? path.join(__dirname, "assets") : path.join(resources, "assets");
-  try { recog.loadTemplates(path.join(dataDir, "heroes.json"), path.join(assets, "heroes"), path.join(assets, "empty-slot.json")); templatesLoaded = true; const n = frames.loadLearned(); if (n) console.log(`[recog] выученных портретов: ${n}`); } catch (e) { console.error("[recog] templates:", e.message); }
+  try { recog.loadTemplates(path.join(dataDir, "heroes.json"), path.join(assets, "heroes"), [path.join(assets, "empty-slot.json"), path.join(assets, "empty-slot-2.json")]); templatesLoaded = true; const n = frames.loadLearned(); if (n) console.log(`[recog] выученных портретов: ${n}`); } catch (e) { console.error("[recog] templates:", e.message); }
   return templatesLoaded;
 }
 function frameIsBlack(bitmap, w, h) {
@@ -203,7 +203,13 @@ async function captureDotaFrame() {
   }
   throw new Error(lastErr);
 }
-const gcNow = () => { try { global.gc?.(); } catch {} };
+// Принудительная сборка мусора в главном процессе. Переключатель --expose-gc через app.commandLine действует только
+// на страницы, в главном процессе global.gc так и остаётся undefined (в 0.7.1–0.7.3 сборка не вызывалась, и снимки экрана
+// копились до 5 ГБ: V8 не видит их размер и сам сборку не запускает). Поэтому функцию gc берём через v8/vm.
+let gcFn = null;
+try { require("node:v8").setFlagsFromString("--expose-gc"); gcFn = require("node:vm").runInNewContext("gc"); } catch (e) { console.warn("[mem] gc недоступен:", e.message); }
+console.log(`[mem] gc: ${typeof gcFn === "function" ? "есть" : "нет"}`);
+const gcNow = () => { try { gcFn?.(); } catch {} };
 // сводка цикла чтения экрана раз в минуту (только когда были вызовы): по ней видно, работал ли цикл во время пиков
 const loop = { calls: 0, idle: 0, captured: 0, onPick: 0, saved: 0, errors: 0, lastErr: null, lastCtx: null, lastState: null };
 setInterval(() => {

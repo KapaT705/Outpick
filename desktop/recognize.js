@@ -17,13 +17,13 @@ const CROPS = [[0.15, 0, 0.65, 0.79], [0.1, 0, 0.7, 0.85], [0.2, 0.05, 0.6, 0.71
 // Пороги: сходство с лучшим портретом, отрыв от второго, сходство с пустым слотом,
 // и минимальная «детальность» кропа (гладкий градиент рабочего стола или обоев героем быть не может:
 // у настоящих портретов энергия границ ≥ 0.25, у пустых слотов и фона ≤ 0.17).
-const MIN_SCORE = 0.42, MIN_MARGIN = 0.08, EMPTY_NCC = 0.75, MIN_EDGE = 0.2;
+const MIN_SCORE = 0.42, MIN_MARGIN = 0.08, EMPTY_NCC = 0.7, MIN_EDGE = 0.2;
 // Выученные портреты (персоны, арканы) считаются точнее базовых: совпадение с ними принимаем с меньшим отрывом.
 const LEARNED_SCORE = 0.6;
 
 let templates = null; // [{id, name, crops:[Float32Array], learned:[Float32Array]}]
 let byId = new Map();
-let emptyT = null;
+let emptyTs = []; // шаблоны пустого слота: голый (экран стратегии, старые кадры) и с медалью ранга (стадия пиков)
 
 function sample(img, x, y, w, h, tw = TW, th = TH) {
   const { w: W, h: H, data, bgra } = img;
@@ -65,7 +65,7 @@ function loadTemplates(heroesJson, imgDir, emptyJson) {
     const t = { id: h.id, name: h.name, crops: CROPS.map(([fx, fy, fw, fh]) => normalize(sample(img, fx * img.w, fy * img.h, fw * img.w, fh * img.h))), learned: [] };
     templates.push(t); byId.set(h.id, t);
   }
-  emptyT = Float32Array.from(JSON.parse(fs.readFileSync(emptyJson, "utf8")));
+  emptyTs = (Array.isArray(emptyJson) ? emptyJson : [emptyJson]).map((f) => Float32Array.from(JSON.parse(fs.readFileSync(f, "utf8"))));
   return templates.length;
 }
 
@@ -100,7 +100,7 @@ function stripHeight(H) { return Math.round((SLOT.y + SLOT.h) * H + 12); }
 
 /** Оценка одного нормализованного кропа: пустой слот, плоский фон или лучший/второй герой. */
 function scoreVector(v, { useLearned = true } = {}) {
-  const emptyScore = ncc(v, emptyT);
+  let emptyScore = -1; for (const e of emptyTs) emptyScore = Math.max(emptyScore, ncc(v, e));
   const edge = edgeEnergy(v);
   let best = null, second = null, learnedHit = false;
   for (const t of templates) {
