@@ -20,6 +20,8 @@ export default function HistoryView({ items: initial, heroes }: { items: DraftLo
       setMsg(r.updated > 0 ? `Готово: результат найден у ${r.updated} ${r.updated === 1 ? "записи" : "записей"}${r.pending ? `, ещё ${r.pending} без результата` : ""}` : r.pending > 0 ? `Пока без результата: ${r.pending}. Stratz получает матч через 5–15 минут после игры, попробуй позже.` : "Нечего обновлять: все записи уже с результатом или история пуста.");
       const fresh = await fetch("/api/log").then((x) => x.json()).catch(() => null);
       if (fresh?.items) setItems(fresh.items);
+      // по подтянутым матчам программа доучивает портреты (персоны, арканы) с кадров стадии пиков
+      if (r.updated > 0) window.desktop?.learn?.().then((l) => { if (l?.ok && l.added) setMsg((m) => `${m ?? ""} · выучено новых портретов: ${l.added}`); }).catch(() => {});
     } else setMsg(r?.error ?? "ошибка синхронизации");
     setBusy(false);
   };

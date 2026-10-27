@@ -1,5 +1,11 @@
 // Game State Integration: Дота шлёт JSON на /api/gsi, здесь храним последнее состояние и вытаскиваем драфт.
+import fs from "node:fs";
+import path from "node:path";
+import { USER_DIR } from "./paths";
 import type { Pick } from "./types";
+
+const LAST_FILE = path.join(USER_DIR, "gsi-last.json");
+let lastWrite = 0;
 
 export const GSI_TOKEN = "dotamidhelper";
 
@@ -86,9 +92,16 @@ export function receive(p: GsiPayload) {
       if (state.samples.length > 8) state.samples.shift();
     }
   }
+  // снимок на диск (не чаще раза в 5 секунд): диагностика после перезапуска программы увидит, что присылала Дота
+  const now = Date.now();
+  if (now - lastWrite > 5000) { lastWrite = now; try { fs.mkdirSync(USER_DIR, { recursive: true }); fs.writeFileSync(LAST_FILE, JSON.stringify(rawSnapshot())); } catch {} }
 }
 
-export function rawSnapshot() {
+export function rawSnapshot(): { receivedAt: number; last: GsiPayload; samples: typeof state.samples; parsed: DraftState | null; fromDisk?: boolean } {
+  if (!state.receivedAt) {
+    // после перезапуска память пуста: отдаём последний снимок с диска, помечая его
+    try { const j = JSON.parse(fs.readFileSync(LAST_FILE, "utf8")); return { ...j, fromDisk: true }; } catch {}
+  }
   const { auth: _auth, ...last } = (state.last ?? {}) as GsiPayload; void _auth;
   return { receivedAt: state.receivedAt, last, samples: state.samples, parsed: state.draft };
 }

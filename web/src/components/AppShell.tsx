@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
 type UpdateEvent = { type: "checking" | "available" | "none" | "progress" | "downloaded" | "error"; version?: string; current?: string; percent?: number; message?: string };
-export type RecognizedSlot = { team: "radiant" | "dire"; idx: number; heroId: number | null; name: string | null; score: number | null; margin: number | null; empty: boolean };
+export type RecognizedSlot = { team: "radiant" | "dire"; idx: number; heroId: number | null; name: string | null; score: number | null; margin: number | null; empty: boolean; learned?: boolean };
+export type RecognizeCtx = { matchId?: string | null; team?: "radiant" | "dire" | null; slot?: number | null };
+export type LearnResult = { ok: boolean; error?: string; checked?: number; added?: number; total?: number; notes?: string[] };
+export type LearnedInfo = { total: number; heroes: { heroId: number; n: number }[]; sessions: string[] };
 export type RecognizeResult = { ok: boolean; error?: string; source?: string; w?: number; h?: number; ms?: number; onPickScreen?: boolean; slots?: RecognizedSlot[] };
-type Desktop = { version: () => Promise<string>; checkForUpdates: () => Promise<{ ok: boolean; reason?: string }>; downloadUpdate: () => Promise<unknown>; installUpdate: () => Promise<unknown>; onUpdate: (cb: (e: UpdateEvent) => void) => () => void; recognizeDraft?: () => Promise<RecognizeResult>; captureSources?: () => Promise<{ id: string; name: string }[]>; debugCapture?: () => Promise<DebugCapture>; saveDiagnostics?: () => Promise<{ ok: boolean; file?: string; frames?: number; error?: string }> };
+type Desktop = { version: () => Promise<string>; checkForUpdates: () => Promise<{ ok: boolean; reason?: string }>; downloadUpdate: () => Promise<unknown>; installUpdate: () => Promise<unknown>; onUpdate: (cb: (e: UpdateEvent) => void) => () => void; recognizeDraft?: (ctx?: RecognizeCtx) => Promise<RecognizeResult>; markMatch?: (matchId: string) => Promise<{ ok: boolean }>; learn?: () => Promise<LearnResult>; learnedInfo?: () => Promise<LearnedInfo>; captureSources?: () => Promise<{ id: string; name: string }[]>; debugCapture?: () => Promise<DebugCapture>; saveDiagnostics?: () => Promise<{ ok: boolean; file?: string; frames?: number; error?: string }> };
 export type DebugCapture = { ok: boolean; error?: string; source?: string; w?: number; h?: number; stripH?: number; scale?: number; image?: string; slots?: (RecognizedSlot & { x: number; y: number; w: number; h: number })[]; sources?: string[] };
 declare global { interface Window { desktop?: Desktop } }
 

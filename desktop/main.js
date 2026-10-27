@@ -1,5 +1,6 @@
 const { app, BrowserWindow, utilityProcess, shell, Menu, ipcMain, desktopCapturer, screen } = require("electron");
 const recog = require("./recognize.js");
+const frames = require("./frames.js");
 const os = require("node:os");
 const AdmZip = require("adm-zip");
 
@@ -45,6 +46,7 @@ async function startServer() {
   const dataDir = isDev ? path.join(__dirname, "..", "data") : path.join(resources, "data"); // данные Stratz (только чтение)
   const userDir = app.getPath("userData");             // журнал, настройки
   fs.mkdirSync(userDir, { recursive: true });
+  frames.init(userDir);
   const serverJs = path.join(appDir, "server.js");
   if (!fs.existsSync(serverJs)) throw new Error(`Не найден ${serverJs}. Запусти npm run prepare-app.`);
   serverProc = utilityProcess.fork(serverJs, [], {
@@ -78,6 +80,12 @@ async function createWindow() {
     if (isDev) {
       win.webContents.executeJavaScript("typeof window.desktop + ':' + Object.keys(window.desktop||{}).join(',')").then((v) => console.log(`[app] bridge: ${v}`)).catch((e) => console.log(`[app] bridge error: ${e}`));
       win.webContents.executeJavaScript("window.desktop.recognizeDraft()").then((v) => console.log(`[app] recognize: ${JSON.stringify(v).slice(0, 400)}`)).catch((e) => console.log(`[app] recognize error: ${e}`));
+      if (process.env.FRAME_TEST) { // проверка хранения кадров на скриншоте: FRAME_TEST=/путь/к/скриншоту.jpg
+        try { const { nativeImage } = require("electron"); const im = nativeImage.createFromPath(process.env.FRAME_TEST); const sz = im.getSize(); ensureTemplates();
+          const frame = { name: "test", w: sz.width, h: sz.height, data: im.toBitmap(), bgra: true, image: im }; const slots = recog.recognize(frame);
+          console.log(`[app] frame-test: ${slots.map((x) => x.name ?? "-").join(",")} saved=${frames.remember(frame, slots, { matchId: "999", team: "radiant", slot: 0 })} again=${frames.remember(frame, slots, { matchId: "999" })}`, JSON.stringify(frames.learnedInfo()));
+        } catch (e) { console.log(`[app] frame-test error: ${e.stack}`); }
+      }
       if (process.env.DIAG_TEST) setTimeout(() => win.webContents.executeJavaScript("window.desktop.saveDiagnostics()").then((v) => console.log(`[app] diag: ${JSON.stringify(v)}`)).catch((e) => console.log(`[app] diag error: ${e}`)), 3000);
     }
   } catch (err) {
@@ -123,10 +131,9 @@ function ensureTemplates() {
   const resources = isDev ? __dirname : process.resourcesPath;
   const dataDir = isDev ? path.join(__dirname, "..", "data") : path.join(resources, "data");
   const assets = isDev ? path.join(__dirname, "assets") : path.join(resources, "assets");
-  try { recog.loadTemplates(path.join(dataDir, "heroes.json"), path.join(assets, "heroes"), path.join(assets, "empty-slot.json")); templatesLoaded = true; } catch (e) { console.error("[recog] templates:", e.message); }
+  try { recog.loadTemplates(path.join(dataDir, "heroes.json"), path.join(assets, "heroes"), path.join(assets, "empty-slot.json")); templatesLoaded = true; const n = frames.loadLearned(); if (n) console.log(`[recog] выученных портретов: ${n}`); } catch (e) { console.error("[recog] templates:", e.message); }
   return templatesLoaded;
 }
-const FRAMES = []; // последние кадры со стадии пиков: {at, png, slots}
 function frameIsBlack(bitmap, w, h) {
   // средняя яркость по сетке 32x32 точек верхней трети экрана
   let sum = 0, n = 0;
@@ -149,20 +156,15 @@ async function captureDotaFrame() {
   }
   throw new Error(lastErr);
 }
-function rememberFrame(frame, slots) {
-  const now = Date.now();
-  if (FRAMES.length && now - FRAMES[FRAMES.length - 1].at < 8000) return; // не чаще раза в 8 секунд
-  try { FRAMES.push({ at: now, png: frame.image.toPNG(), slots, w: frame.w, h: frame.h, source: frame.name }); if (FRAMES.length > 6) FRAMES.shift(); } catch {}
-}
-ipcMain.handle("draft:recognize", async () => {
+ipcMain.handle("draft:recognize", async (_e, ctx) => {
   if (!ensureTemplates()) return { ok: false, error: "шаблоны героев не загружены" };
   try {
     const frame = await captureDotaFrame();
     const t = Date.now();
     const slots = recog.recognize(frame);
     const onPickScreen = slots.filter((x) => x.empty || x.heroId).length >= 4;
-    if (onPickScreen) rememberFrame(frame, slots);
-    return { ok: true, source: frame.name, w: frame.w, h: frame.h, ms: Date.now() - t, onPickScreen, slots: slots.map((s) => ({ team: s.team, idx: s.idx, heroId: s.heroId, name: s.name ?? null, score: s.score ?? null, margin: s.margin ?? null, empty: !!s.empty })) };
+    if (onPickScreen) frames.remember(frame, slots, ctx && typeof ctx === "object" ? ctx : {});
+    return { ok: true, source: frame.name, w: frame.w, h: frame.h, ms: Date.now() - t, onPickScreen, slots: slots.map((s) => ({ team: s.team, idx: s.idx, heroId: s.heroId, name: s.name ?? null, score: s.score ?? null, margin: s.margin ?? null, empty: !!s.empty, learned: !!s.learned })) };
   } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
 });
 ipcMain.handle("draft:debug", async () => {
@@ -171,7 +173,7 @@ ipcMain.handle("draft:debug", async () => {
     const frame = await captureDotaFrame();
     const slots = recog.recognize(frame);
     const onPickScreen = slots.filter((x) => x.empty || x.heroId).length >= 4;
-    if (onPickScreen) rememberFrame(frame, slots);
+    if (onPickScreen) frames.remember(frame, slots, {});
     const stripH = Math.min(frame.h, recog.stripHeight(frame.h));
     const strip = frame.image.crop({ x: 0, y: 0, width: frame.w, height: stripH });
     const scale = Math.min(1, 1600 / frame.w);
@@ -203,14 +205,20 @@ ipcMain.handle("diag:save", async () => {
       zip.addFile("frame-now.png", frame.image.toPNG());
       zip.addFile("frame-now.json", Buffer.from(JSON.stringify({ source: frame.name, w: frame.w, h: frame.h, slots }, null, 1)));
     } catch (e) { zip.addFile("frame-now.json", Buffer.from(JSON.stringify({ error: String(e?.message ?? e) }))); }
-    // кадры со стадии пиков, накопленные во время драфта
-    FRAMES.forEach((f, i) => { zip.addFile(`pick-frames/frame-${i + 1}.png`, f.png); zip.addFile(`pick-frames/frame-${i + 1}.json`, Buffer.from(JSON.stringify({ at: new Date(f.at).toISOString(), source: f.source, w: f.w, h: f.h, slots: f.slots }, null, 1))); });
+    // кадры со стадии пиков двух последних драфтов (хранятся на диске, переживают перезапуск), разметка и выученные портреты
+    let nFrames = 0;
+    for (const f of frames.diagFiles(2)) { try { zip.addFile(f.zipPath, fs.readFileSync(f.file)); nFrames++; } catch {} }
+    zip.addFile("learned.json", Buffer.from(JSON.stringify(frames.learnedInfo(), null, 1)));
+    try { zip.addFile("pick-labels.json", fs.readFileSync(frames.labelsFile)); } catch {}
     const file = path.join(app.getPath("downloads"), `dota-mid-helper-diag-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.zip`);
     zip.writeZip(file);
     shell.showItemInFolder(file);
-    return { ok: true, file, frames: FRAMES.length };
+    return { ok: true, file, frames: nFrames };
   } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
 });
+ipcMain.handle("draft:markMatch", (_e, matchId) => ({ ok: frames.markMatch(matchId) }));
+ipcMain.handle("learn:run", () => { if (!ensureTemplates()) return { ok: false, error: "шаблоны не загружены" }; const r = frames.learn(); if (r.ok && (r.added || r.checked)) console.log(`[learn] проверено матчей: ${r.checked}, выучено портретов: ${r.added}, всего: ${r.total}`, r.notes.join("; ")); return r; });
+ipcMain.handle("learn:info", () => frames.learnedInfo());
 ipcMain.handle("draft:sources", async () => {
   try { const sources = await desktopCapturer.getSources({ types: ["window", "screen"], thumbnailSize: { width: 1, height: 1 } }); return sources.map((s) => ({ id: s.id, name: s.name })); } catch (e) { return [{ id: "error", name: String(e?.message ?? e) }]; }
 });
@@ -226,6 +234,8 @@ app.whenReady().then(() => {
   }
   setupUpdater();
   createWindow();
+  // доучиваем портреты по матчам, результаты которых подтянулись, пока программа была закрыта
+  setTimeout(() => { try { if (ensureTemplates()) { const r = frames.learn(); if (r.ok && r.added) console.log(`[learn] при старте выучено портретов: ${r.added}`, r.notes.join("; ")); } } catch (e) { console.warn("[learn]", e.message); } }, 8000);
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });

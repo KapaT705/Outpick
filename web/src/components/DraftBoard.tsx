@@ -161,7 +161,8 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
         setGsi({ connected: r.connected, phase: d?.phase ?? "", ownHeroId: d?.ownHeroId ?? null, matchId: d?.matchId ?? null, team: d?.team ?? null });
         const inSelection = !r.connected || !d?.phase || d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION";
         if (captureOn && inSelection && window.desktop?.recognizeDraft) {
-          const res = await window.desktop.recognizeDraft().catch(() => null);
+          const ctxTeam: "radiant" | "dire" = (r.connected && d?.team) ? d.team : side;
+          const res = await window.desktop.recognizeDraft({ matchId: r.connected ? (d?.matchId ?? null) : null, team: ctxTeam, slot: r.connected && d?.team ? (d.teamSlot ?? null) : null }).catch(() => null);
           if (!stop && res) {
             if (!res.ok) setScreen({ status: res.error ?? "ошибка захвата", found: 0 });
             else if (!res.onPickScreen) setScreen({ status: "экран пиков не виден", found: 0 });
@@ -219,6 +220,7 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
           const cur = picksRef.current;
           if (d.ownHeroId && d.matchId && d.phase !== "DOTA_GAMERULES_STATE_HERO_SELECTION" && loggedMatch.current !== d.matchId && cur.enemies.length > 0) {
             loggedMatch.current = d.matchId;
+            window.desktop?.markMatch?.(String(d.matchId)).catch(() => {});
             const body = { bans: cur.bans.map((p) => p.id), enemies: cur.enemies, allies: cur.allies, pool: override, role, chosenHeroId: d.ownHeroId, gsiMatchId: d.matchId };
             fetch("/api/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((x) => x.json()).then((j) => { if (j?.ok) { setSaved(`${byId.get(d.ownHeroId)?.name ?? ""} (матч ${d.matchId})`); setTimeout(() => setSaved(null), 8000); } }).catch(() => {});
           }

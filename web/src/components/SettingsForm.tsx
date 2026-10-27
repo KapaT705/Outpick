@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { DebugCapture } from "@/components/AppShell";
+import type { DebugCapture, LearnedInfo } from "@/components/AppShell";
 
 const Check = ({ ok, label }: { ok: boolean; label: string }) => (
   <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${ok ? "bg-good/15 text-good" : "bg-panel-2 text-muted"}`}>
@@ -23,11 +23,12 @@ export default function SettingsForm() {
   const [info, setInfo] = useState<{ steamAccountId: number | null; hasToken: boolean; tokenTail: string; hasGithubToken?: boolean; screenCapture?: boolean } | null>(null);
   const [dbg, setDbg] = useState<DebugCapture | null>(null);
   const [dbgBusy, setDbgBusy] = useState(false);
+  const [learned, setLearned] = useState<LearnedInfo | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [ref, setRef] = useState<{ running: boolean; message: string; error: string | null; updatedAt: number | null } | null>(null);
 
-  useEffect(() => { fetch("/api/settings").then((r) => r.json()).then(setInfo).catch(() => {}); fetch("/api/gsi/install").then((r) => r.json()).then(setGsi).catch(() => {}); }, []);
+  useEffect(() => { fetch("/api/settings").then((r) => r.json()).then(setInfo).catch(() => {}); fetch("/api/gsi/install").then((r) => r.json()).then(setGsi).catch(() => {}); window.desktop?.learnedInfo?.().then(setLearned).catch(() => {}); }, []);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
@@ -83,7 +84,8 @@ export default function SettingsForm() {
 
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-3 text-sm">
         <div className="font-semibold flex items-center gap-2">Чтение экрана пиков <Check ok={info?.screenCapture !== false} label={info?.screenCapture !== false ? "включено" : "выключено"} /></div>
-        <p className="text-xs text-muted">На стадии пиков программа снимает окно Доты и распознаёт портреты в верхней панели: враги и союзники появляются в пикере сами. Ничего не записывается и никуда не отправляется, кадр обрабатывается в памяти. Работает при любом разрешении 16:9, для других соотношений сторон проверь кнопкой ниже.</p>
+        <p className="text-xs text-muted">На стадии пиков программа снимает экран и распознаёт портреты в верхней панели: враги и союзники появляются в пикере сами. Кадры стадии пиков хранятся только на этом компьютере и никуда не отправляются. Когда результат матча подтягивается из Stratz, программа сверяет кадры с реальным составом и доучивает портреты, которых не знала (персоны, арканы): с каждым матчем узнаёт больше.</p>
+        {learned && <div className="text-xs text-muted">Выучено дополнительных портретов: <span className="text-foreground">{learned.total}</span>{learned.heroes.length ? ` (героев: ${learned.heroes.length})` : ""}</div>}
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={info?.screenCapture !== false} onChange={async (e) => { const v = e.target.checked; setInfo((i) => (i ? { ...i, screenCapture: v } : i)); await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ screenCapture: v }) }).catch(() => {}); }} className="accent-[var(--accent)]" />
           <span>Подхватывать драфт с экрана</span>
@@ -123,7 +125,7 @@ export default function SettingsForm() {
 
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
         <div className="font-semibold">Диагностика</div>
-        <p className="text-xs text-muted">Одна кнопка собирает всё, что нужно для разбора проблем, в zip-файл в папке «Загрузки»: версия и система, логи, данные GSI, конфиг, журнал драфтов, снимок экрана с результатом распознавания и кадры со стадии пиков, накопленные во время последнего драфта. Токены в файл не попадают. Файл можно переслать как есть.</p>
+        <p className="text-xs text-muted">Одна кнопка собирает всё, что нужно для разбора проблем, в zip-файл в папке «Загрузки»: версия и система, логи, данные GSI, конфиг, журнал драфтов, снимок экрана с результатом распознавания и кадры со стадии пиков двух последних драфтов (они хранятся на диске и не теряются при перезапуске). Токены в файл не попадают. Файл можно переслать как есть.</p>
         <div className="flex items-center gap-3">
           <button onClick={async () => { const d = (window as unknown as { desktop?: { saveDiagnostics?: () => Promise<{ ok: boolean; file?: string; frames?: number; error?: string }> } }).desktop; if (!d?.saveDiagnostics) { setDiag("Работает только в приложении"); return; } setDiag("собираю…"); const r = await d.saveDiagnostics(); setDiag(r.ok ? `Сохранил: ${r.file} (кадров со стадии пиков: ${r.frames})` : `Ошибка: ${r.error}`); }}
             className="shrink-0 whitespace-nowrap rounded-md border border-accent/60 px-3 py-1.5 text-accent hover:bg-accent/10">Сохранить диагностику</button>
