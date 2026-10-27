@@ -84,7 +84,7 @@ export default function SettingsForm() {
 
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-3 text-sm">
         <div className="font-semibold flex items-center gap-2">Чтение экрана пиков <Check ok={info?.screenCapture !== false} label={info?.screenCapture !== false ? "включено" : "выключено"} /></div>
-        <p className="text-xs text-muted">На стадии пиков программа снимает экран и распознаёт портреты в верхней панели: враги и союзники появляются в пикере сами. Кадры стадии пиков хранятся только на этом компьютере и никуда не отправляются. Когда результат матча подтягивается из Stratz, программа сверяет кадры с реальным составом и доучивает портреты, которых не знала (персоны, арканы): с каждым матчем узнаёт больше.</p>
+        <p className="text-xs text-muted">Пока Дота закрыта, программа экран не трогает и почти не нагружает компьютер. Когда Дота запущена, на стадии пиков программа снимает горизонтальный экран (вертикальные мониторы не читаются, при нескольких горизонтальных запоминает тот, где была стадия пиков) и распознаёт портреты в верхней панели: враги и союзники появляются в пикере сами. Кадры стадии пиков хранятся только на этом компьютере и никуда не отправляются. Когда результат матча подтягивается из Stratz, программа сверяет кадры с реальным составом и доучивает портреты, которых не знала (персоны, арканы): с каждым матчем узнаёт больше.</p>
         {learned && <div className="text-xs text-muted">Выучено дополнительных портретов: <span className="text-foreground">{learned.total}</span>{learned.heroes.length ? ` (героев: ${learned.heroes.length})` : ""}</div>}
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={info?.screenCapture !== false} onChange={async (e) => { const v = e.target.checked; setInfo((i) => (i ? { ...i, screenCapture: v } : i)); await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ screenCapture: v }) }).catch(() => {}); }} className="accent-[var(--accent)]" />
@@ -98,7 +98,7 @@ export default function SettingsForm() {
         {dbg && !dbg.ok && <div className="text-xs text-bad">{dbg.error}</div>}
         {dbg && dbg.ok && dbg.image && (
           <div className="flex flex-col gap-2">
-            <div className="text-xs text-muted">Источник: {dbg.source} · кадр {dbg.w}×{dbg.h}{dbg.sources?.length ? ` · окна: ${dbg.sources.join(", ")}` : ""}</div>
+            <div className="text-xs text-muted">Источник: {dbg.source} · кадр {dbg.w}×{dbg.h}{dbg.dotaRunning === false ? " · Дота не запущена (автоматически экран не читается)" : ""}{dbg.sources?.length ? ` · окна: ${dbg.sources.join(", ")}` : ""}</div>
             <div className="relative w-full overflow-hidden rounded-md border border-border bg-black">
               <img src={dbg.image} alt="верх экрана" className="block w-full" />
               {dbg.slots?.map((sl) => {

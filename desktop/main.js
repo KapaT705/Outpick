@@ -16,6 +16,25 @@ const net = require("node:net");
 const fs = require("node:fs");
 
 const isDev = !app.isPackaged;
+// --expose-gc: после каждого кадра принудительно отдаём память снимков экрана (Electron держит их до сборки мусора,
+// а V8 не видит их размер, поэтому без этого процесс разрастался на гигабайты)
+app.commandLine.appendSwitch("js-flags", "--expose-gc");
+const { execFile } = require("node:child_process");
+
+// --- запущена ли Дота: проверяем список процессов не чаще раза в 10 секунд ---
+let dotaCheck = { at: 0, running: false };
+function dotaRunning() {
+  if (process.env.CAPTURE_ALWAYS) return Promise.resolve(true);
+  const now = Date.now();
+  if (now - dotaCheck.at < 10_000) return Promise.resolve(dotaCheck.running);
+  dotaCheck.at = now;
+  return new Promise((resolve) => {
+    const done = (running) => { dotaCheck.running = running; resolve(running); };
+    if (process.platform === "win32") execFile("tasklist", ["/FI", "IMAGENAME eq dota2.exe", "/NH", "/FO", "CSV"], { windowsHide: true, timeout: 5000 }, (err, out) => done(!err && /dota2\.exe/i.test(String(out))));
+    else execFile("pgrep", ["-x", "dota2"], { timeout: 5000 }, (err) => done(!err));
+  });
+}
+setInterval(() => { const m = process.memoryUsage(); console.log(`[mem] rss=${Math.round(m.rss / 1e6)}MB heap=${Math.round(m.heapUsed / 1e6)}MB ext=${Math.round(m.external / 1e6)}MB dota=${dotaCheck.running}`); }, Number(process.env.MEM_LOG_SEC || 300) * 1000);
 let serverProc = null;
 let win = null;
 
@@ -140,32 +159,51 @@ function frameIsBlack(bitmap, w, h) {
   for (let gy = 0; gy < 32; gy++) for (let gx = 0; gx < 32; gx++) { const x = Math.floor((gx + 0.5) * w / 32), y = Math.floor((gy + 0.5) * (h / 3) / 32); const i = (y * w + x) * 4; sum += bitmap[i] + bitmap[i + 1] + bitmap[i + 2]; n += 3; }
   return sum / n < 6;
 }
+let preferredScreen = null; // id экрана, на котором в прошлый раз была стадия пиков
+function landscapeDisplays() {
+  // Дота не бывает на вертикальном мониторе: такие экраны не читаем вовсе
+  return screen.getAllDisplays().filter((d) => d.size.width >= d.size.height);
+}
 async function captureDotaFrame() {
-  const primary = screen.getPrimaryDisplay();
-  const size = { width: Math.round(primary.size.width * primary.scaleFactor), height: Math.round(primary.size.height * primary.scaleFactor) };
-  const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: size, fetchWindowIcons: false });
-  // сначала весь основной экран (надёжнее для полноэкранной игры), потом окно Доты, если экран чёрный
-  const ordered = [sources.find((s) => s.id.startsWith("screen:")), sources.find((s) => /dota\s*2/i.test(s.name)), ...sources].filter(Boolean);
+  const displays = landscapeDisplays();
+  if (displays.length === 0) throw new Error("нет горизонтальных экранов");
+  const primaryId = String(screen.getPrimaryDisplay().id);
+  const biggest = displays.reduce((a, d) => (d.size.width * d.scaleFactor > a.size.width * a.scaleFactor ? d : a), displays[0]);
+  const size = { width: Math.round(biggest.size.width * biggest.scaleFactor), height: Math.round(biggest.size.height * biggest.scaleFactor) };
+  // только экраны (окна не запрашиваем: каждый снимок окна стоит столько же памяти, сколько экран);
+  // окно Доты берём отдельно, только если все экраны чёрные
+  const all = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: size, fetchWindowIcons: false });
+  const landscapeIds = new Set(displays.map((d) => String(d.id)));
+  const screens = all.filter((s) => { const sz = s.thumbnail.getSize(); return (s.display_id ? landscapeIds.has(String(s.display_id)) : true) && sz.width >= sz.height; });
+  const rank = (s) => (s.id === preferredScreen ? 0 : String(s.display_id) === primaryId ? 1 : 2);
+  const ordered = screens.sort((a, b) => rank(a) - rank(b));
   let lastErr = "нет источников захвата";
-  for (const src of ordered) {
+  const tryWindow = async () => { const wins = await desktopCapturer.getSources({ types: ["window"], thumbnailSize: size, fetchWindowIcons: false }); return wins.filter((s) => /dota\s*2/i.test(s.name)); };
+  for (const src of [...ordered, ...(await tryWindow().catch(() => []))]) {
     const img = src.thumbnail; const sz = img.getSize();
     if (sz.width === 0 || sz.height === 0) { lastErr = "пустой кадр"; continue; }
     const data = img.toBitmap();
     if (frameIsBlack(data, sz.width, sz.height)) { lastErr = `чёрный кадр из «${src.name}»`; continue; }
-    return { name: src.name, w: sz.width, h: sz.height, data, bgra: true, image: img };
+    return { id: src.id, name: src.name, w: sz.width, h: sz.height, data, bgra: true, image: img };
   }
   throw new Error(lastErr);
 }
+const gcNow = () => { try { global.gc?.(); } catch {} };
 ipcMain.handle("draft:recognize", async (_e, ctx) => {
   if (!ensureTemplates()) return { ok: false, error: "шаблоны героев не загружены" };
+  if (!(await dotaRunning())) return { ok: false, idle: true, error: "Дота не запущена" };
+  let frame = null;
   try {
-    const frame = await captureDotaFrame();
+    frame = await captureDotaFrame();
+    const srcName = frame.name, srcW = frame.w, srcH = frame.h;
     const t = Date.now();
     const slots = recog.recognize(frame);
     const onPickScreen = slots.filter((x) => x.empty || x.heroId).length >= 4;
-    if (onPickScreen) frames.remember(frame, slots, ctx && typeof ctx === "object" ? ctx : {});
-    return { ok: true, source: frame.name, w: frame.w, h: frame.h, ms: Date.now() - t, onPickScreen, slots: slots.map((s) => ({ team: s.team, idx: s.idx, heroId: s.heroId, name: s.name ?? null, score: s.score ?? null, margin: s.margin ?? null, empty: !!s.empty, learned: !!s.learned })) };
-  } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
+    if (onPickScreen) { preferredScreen = frame.id; frames.remember(frame, slots, ctx && typeof ctx === "object" ? ctx : {}); }
+    frame.data = null; frame.image = null; frame = null;
+    gcNow();
+    return { ok: true, source: srcName, w: srcW, h: srcH, ms: Date.now() - t, onPickScreen, slots: slots.map((s) => ({ team: s.team, idx: s.idx, heroId: s.heroId, name: s.name ?? null, score: s.score ?? null, margin: s.margin ?? null, empty: !!s.empty, learned: !!s.learned })) };
+  } catch (e) { frame = null; gcNow(); return { ok: false, error: String(e?.message ?? e) }; }
 });
 ipcMain.handle("draft:debug", async () => {
   if (!ensureTemplates()) return { ok: false, error: "шаблоны героев не загружены" };
@@ -179,8 +217,10 @@ ipcMain.handle("draft:debug", async () => {
     const scale = Math.min(1, 1600 / frame.w);
     const small = scale < 1 ? strip.resize({ width: Math.round(frame.w * scale) }) : strip;
     const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 1, height: 1 } }).catch(() => []);
-    return { ok: true, source: frame.name, w: frame.w, h: frame.h, stripH, scale, image: small.toDataURL(), slots, onPickScreen, sources: sources.map((s) => s.name).slice(0, 12) };
-  } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
+    const out = { ok: true, source: frame.name, w: frame.w, h: frame.h, stripH, scale, image: small.toDataURL(), slots, onPickScreen, sources: sources.map((s) => s.name).slice(0, 12), dotaRunning: await dotaRunning() };
+    frame.data = null; frame.image = null; gcNow();
+    return out;
+  } catch (e) { gcNow(); return { ok: false, error: String(e?.message ?? e) }; }
 });
 async function serverJson(pathname) {
   try { const r = await fetch(`http://127.0.0.1:${serverPort}${pathname}`); return await r.json(); } catch (e) { return { error: String(e?.message ?? e) }; }
@@ -190,7 +230,7 @@ ipcMain.handle("diag:save", async () => {
     const zip = new AdmZip();
     const displays = screen.getAllDisplays().map((d) => ({ id: d.id, size: d.size, scaleFactor: d.scaleFactor, bounds: d.bounds, primary: d.id === screen.getPrimaryDisplay().id }));
     const settings = await serverJson("/api/settings");
-    const info = { app: app.getVersion(), electron: process.versions.electron, node: process.versions.node, platform: process.platform, arch: process.arch, os: `${os.type()} ${os.release()}`, cpu: os.cpus()?.[0]?.model, memGb: Math.round(os.totalmem() / 1e9), displays, serverPort, savedAt: new Date().toISOString(), settings };
+    const info = { app: app.getVersion(), electron: process.versions.electron, node: process.versions.node, platform: process.platform, arch: process.arch, os: `${os.type()} ${os.release()}`, cpu: os.cpus()?.[0]?.model, memGb: Math.round(os.totalmem() / 1e9), displays, serverPort, savedAt: new Date().toISOString(), settings, memory: process.memoryUsage(), dotaRunning: await dotaRunning(), uptimeMin: Math.round(process.uptime() / 60) };
     zip.addFile("info.json", Buffer.from(JSON.stringify(info, null, 2)));
     zip.addFile("main-log.txt", Buffer.from(LOG.join("\n")));
     zip.addFile("gsi-raw.json", Buffer.from(JSON.stringify(await serverJson("/api/gsi/raw"), null, 1)));
@@ -205,6 +245,7 @@ ipcMain.handle("diag:save", async () => {
       zip.addFile("frame-now.png", frame.image.toPNG());
       zip.addFile("frame-now.json", Buffer.from(JSON.stringify({ source: frame.name, w: frame.w, h: frame.h, slots }, null, 1)));
     } catch (e) { zip.addFile("frame-now.json", Buffer.from(JSON.stringify({ error: String(e?.message ?? e) }))); }
+    gcNow();
     // кадры со стадии пиков двух последних драфтов (хранятся на диске, переживают перезапуск), разметка и выученные портреты
     let nFrames = 0;
     for (const f of frames.diagFiles(2)) { try { zip.addFile(f.zipPath, fs.readFileSync(f.file)); nFrames++; } catch {} }

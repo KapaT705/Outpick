@@ -164,7 +164,7 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
           const ctxTeam: "radiant" | "dire" = (r.connected && d?.team) ? d.team : side;
           const res = await window.desktop.recognizeDraft({ matchId: r.connected ? (d?.matchId ?? null) : null, team: ctxTeam, slot: r.connected && d?.team ? (d.teamSlot ?? null) : null }).catch(() => null);
           if (!stop && res) {
-            if (!res.ok) setScreen({ status: res.error ?? "ошибка захвата", found: 0 });
+            if (!res.ok) setScreen({ status: res.idle ? "Дота не запущена, экран не читаю" : (res.error ?? "ошибка захвата"), found: 0 });
             else if (!res.onPickScreen) setScreen({ status: "экран пиков не виден", found: 0 });
             else {
               const slots = res.slots ?? [];
