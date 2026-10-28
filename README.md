@@ -32,8 +32,10 @@ npm run build:mac   # dmg для проверки на Маке
 ## Аккаунты Steam
 Токен Stratz один на всех: по нему качаются общие данные (контрпики, мета по ролям). К аккаунту привязаны
 только пул героев, личные винрейты, результаты матчей в истории и разметка для самообучения портретов.
-Дота сообщает в GSI Steam ID играющего аккаунта (`player.steamid`), поэтому профиль переключается сам
-(`web/src/lib/accounts.ts`: `currentAccount()` = аккаунт из GSI, иначе аккаунт по умолчанию из настроек).
+Дота сообщает в GSI Steam ID играющего аккаунта (`player.steamid`), но только в матче: в меню блока `player` нет.
+Поэтому `web/src/lib/accounts.ts` (`currentAccount()`) берёт аккаунт из GSI, пока Дота на связи, иначе аккаунт,
+под которым запущен Steam (`web/src/lib/steamUser.ts`: Windows — реестр `HKCU\Software\Valve\Steam\ActiveProcess\ActiveUser`,
+macOS/Linux — `loginusers.vdf` с `MostRecent 1`), иначе аккаунт по умолчанию из настроек.
 Данные аккаунта лежат в `USER_DIR/data/accounts/<steam32>/` (`player-pool.json`, `personal-pairs.json`, `updated-at.json`);
 пул из старого места `USER_DIR/data/player-pool.json` переносится туда один раз, упакованный `data/player-pool.json`
 принадлежит аккаунту из `data/pool-owner.json`. Незнакомый аккаунт работает в общем режиме: все герои «вне пула»,

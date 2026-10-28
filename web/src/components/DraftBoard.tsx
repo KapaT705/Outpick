@@ -46,7 +46,7 @@ const ROLE_FULL: Record<Role, string> = { 1: "Керри", 2: "Мид", 3: "Оф
 const ROLE_KEY = "draft.role.v1";
 const POOL_KEY_V2 = "draft.poolOverride.v2"; // { [role]: {add, remove} }
 
-type AccountInfo = { id: number | null; source: "gsi" | "manual" | "none"; known: boolean; name: string | null };
+type AccountInfo = { id: number | null; source: "gsi" | "steam" | "manual" | "none"; known: boolean; name: string | null };
 type AccountsState = { current: AccountInfo; accounts: { id: number; name?: string; known: boolean }[]; poolByRole: Record<number, number[]>; familiarByRole: Record<number, number[]> };
 
 export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliases: AliasMap }) {
@@ -304,7 +304,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
               <button onClick={() => setSide("dire")} className={`px-2 py-1 ${side === "dire" ? "bg-bad/20 text-bad" : "text-muted"}`}>я за Тьму</button>
             </div>
           )}
-          <button onClick={() => setPoolOpen(true)} className="text-accent hover:underline" title={acct?.current.id ? `Аккаунт ${acct.current.name ?? acct.current.id}${acct.current.source === "gsi" ? " (сообщила Дота)" : " (по умолчанию из настроек)"}${acct.current.known ? "" : ": пул не загружен, общий режим"}` : "Аккаунт не известен: общий режим без пула"}>
+          <button onClick={() => setPoolOpen(true)} className="text-accent hover:underline" title={acct?.current.id ? `Аккаунт ${acct.current.name ?? acct.current.id}${acct.current.source === "gsi" ? " (сообщила Дота)" : acct.current.source === "steam" ? " (под ним запущен Steam)" : " (по умолчанию из настроек)"}${acct.current.known ? "" : ": пул не загружен, общий режим"}` : "Аккаунт не известен: общий режим без пула"}>
             {acct?.current.id ? `${acct.current.name ?? acct.current.id}: пул · ${poolSet.size}` : `Мой пул · ${poolSet.size}`}
           </button>
           <button onClick={reset} className="text-muted hover:text-foreground underline">Сбросить драфт</button>
@@ -323,7 +323,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
 
       {acct?.current.id && !acct.current.known && (
         <section className="rounded-xl border border-accent/40 bg-accent/5 px-3 py-2 text-sm flex flex-wrap items-center gap-3">
-          <span><span className="font-semibold">Общий режим.</span> Аккаунт {acct.current.name ?? acct.current.id}{acct.current.source === "gsi" ? " (его сообщила Дота)" : ""} не знаком: советы по мете и контрпикам без твоего пула. Загрузи его историю, и появятся пул и личные винрейты.</span>
+          <span><span className="font-semibold">Общий режим.</span> Аккаунт {acct.current.name ?? acct.current.id}{acct.current.source === "gsi" ? " (его сообщила Дота)" : acct.current.source === "steam" ? " (под ним запущен Steam)" : ""} не знаком: советы по мете и контрпикам без твоего пула. Загрузи его историю, и появятся пул и личные винрейты.</span>
           <button onClick={() => loadHistory(acct.current.id!)} disabled={!!loadMsg && !loadMsg.startsWith("ошибка")} className="rounded-md bg-accent/20 px-2.5 py-1 text-accent hover:bg-accent/30 disabled:opacity-50">Загрузить историю аккаунта</button>
           {loadMsg && <span className="text-xs text-muted">{loadMsg}</span>}
         </section>

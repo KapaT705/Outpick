@@ -9,13 +9,14 @@ import path from "node:path";
 import { DATA_DIR, USER_DIR } from "./paths";
 import { readConfig, toSteam32, writeConfig, type Account } from "./config";
 import { gsiSteamId } from "./gsi";
+import { steamActiveUser } from "./steamUser";
 
 export const ACCOUNTS_DIR = path.join(USER_DIR, "data", "accounts");
 export const accountDir = (id: number) => path.join(ACCOUNTS_DIR, String(id));
 
 export type CurrentAccount = {
   id: number | null;
-  source: "gsi" | "manual" | "none"; // откуда известен: Дота сообщила, выбран в настройках, неизвестен
+  source: "gsi" | "steam" | "manual" | "none"; // откуда известен: Дота сообщила (в матче), Steam запущен под ним, выбран в настройках, неизвестен
   known: boolean;                    // есть загруженный пул (иначе общий режим)
   name: string | null;
 };
@@ -52,12 +53,16 @@ export function accountUpdatedAt(id: number): number | null {
   try { return JSON.parse(fs.readFileSync(path.join(accountDir(id), "updated-at.json"), "utf8")).at; } catch { return null; }
 }
 
-/** Кто играет сейчас: Steam ID из GSI (последнее сообщение Доты), иначе аккаунт по умолчанию из настроек. */
+/**
+ * Кто играет сейчас: Steam ID из GSI (Дота на связи и в матче), иначе аккаунт, под которым запущен Steam
+ * (в меню Дота ничего о себе не присылает), иначе аккаунт по умолчанию из настроек.
+ */
 export function currentAccount(): CurrentAccount {
   const cfg = readConfig();
   const fromGsi = toSteam32(gsiSteamId() ?? "");
-  const id = fromGsi ?? cfg.steamAccountId;
-  const source: CurrentAccount["source"] = fromGsi ? "gsi" : cfg.steamAccountId ? "manual" : "none";
+  const fromSteam = fromGsi ? null : steamActiveUser();
+  const id = fromGsi ?? fromSteam ?? cfg.steamAccountId;
+  const source: CurrentAccount["source"] = fromGsi ? "gsi" : fromSteam ? "steam" : cfg.steamAccountId ? "manual" : "none";
   const acc = id ? cfg.accounts.find((a) => a.id === id) : undefined;
   return { id, source, known: id ? accountKnown(id) : false, name: acc?.name ?? null };
 }

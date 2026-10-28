@@ -21,7 +21,7 @@ export default function SettingsForm() {
   const [updMsg, setUpdMsg] = useState<string | null>(null);
   const [rawMsg, setRawMsg] = useState<string | null>(null);
   type Acc = { id: number; name?: string; known: boolean; updatedAt: number | null; isDefault: boolean };
-  type Current = { id: number | null; source: "gsi" | "manual" | "none"; known: boolean; name: string | null };
+  type Current = { id: number | null; source: "gsi" | "steam" | "manual" | "none"; known: boolean; name: string | null };
   const [info, setInfo] = useState<{ steamAccountId: number | null; accounts?: Acc[]; current?: Current; hasToken: boolean; tokenTail: string; hasGithubToken?: boolean; screenCapture?: boolean } | null>(null);
   const [accMsg, setAccMsg] = useState<string | null>(null);
   const reloadInfo = () => fetch("/api/settings").then((r) => r.json()).then(setInfo).catch(() => {});
@@ -74,8 +74,8 @@ export default function SettingsForm() {
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-3 text-sm">
         <div className="flex flex-col gap-2">
           <span className="flex items-center gap-2">Аккаунты Steam <Check ok={!!info?.accounts?.length} label={info?.accounts?.length ? `${info.accounts.length}` : "нет"} /></span>
-          <span className="text-xs text-muted">Дота сама сообщает, с какого аккаунта идёт игра, и программа берёт его пул и историю. Незнакомый аккаунт работает в общем режиме (мета и контрпики без пула), пока не загрузишь его историю. Аккаунт по умолчанию используется, когда Дота не на связи.</span>
-          {info?.current?.id && <div className="text-xs text-muted">Сейчас: <span className="text-foreground">{info.current.name ?? info.current.id}</span>{info.current.source === "gsi" ? " (сообщила Дота)" : " (по умолчанию)"}{info.current.known ? "" : " · пул не загружен, общий режим"}</div>}
+          <span className="text-xs text-muted">Программа видит, под каким аккаунтом запущен Steam, а в матче Дота сообщает это сама, и берёт его пул и историю. Незнакомый аккаунт работает в общем режиме (мета и контрпики без пула), пока не загрузишь его историю. Аккаунт по умолчанию используется, когда Дота не на связи.</span>
+          {info?.current?.id && <div className="text-xs text-muted">Сейчас: <span className="text-foreground">{info.current.name ?? info.current.id}</span>{info.current.source === "gsi" ? " (сообщила Дота)" : info.current.source === "steam" ? " (под ним запущен Steam)" : " (по умолчанию)"}{info.current.known ? "" : " · пул не загружен, общий режим"}</div>}
           {!!info?.accounts?.length && (
             <div className="flex flex-col gap-1">
               {info.accounts.map((a) => (
