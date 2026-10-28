@@ -26,7 +26,12 @@ export type TrackResult = {
   conflict: number[]; // видны сразу у обеих команд: конфликт пиков, бан
 };
 
-export function trackFrame(st: TrackState, slots: SlotLike[], mine: "radiant" | "dire", mySlot: number | null): TrackResult {
+/**
+ * picking=false на стадии стратегии и дальше: пики уже закрыты, пропасть герой не может, а портреты там меняются
+ * (арканы, персоны, значок уровня в своём слоте), поэтому авто-бан не считаем и память слотов не трогаем.
+ * На реальных матчах без этого свой герой и союзник уходили в баны через 6 кадров стратегии.
+ */
+export function trackFrame(st: TrackState, slots: SlotLike[], mine: "radiant" | "dire", mySlot: number | null, picking = true): TrackResult {
   const stable: SlotLike[] = [];
   const replaced: number[] = []; // прежние герои слотов, в которых стабильно встал другой герой
   for (const sl of slots) {
@@ -37,15 +42,17 @@ export function trackFrame(st: TrackState, slots: SlotLike[], mine: "radiant" | 
     st.seen.set(key, { state, n });
     if (sl.heroId && n >= STABLE_FRAMES) {
       stable.push(sl);
-      const was = st.held.get(key);
-      if (was !== undefined && was !== sl.heroId) replaced.push(was);
-      st.held.set(key, sl.heroId);
+      if (picking) {
+        const was = st.held.get(key);
+        if (was !== undefined && was !== sl.heroId) replaced.push(was);
+        st.held.set(key, sl.heroId);
+      }
     }
   }
   const visible = new Set(stable.map((s) => s.heroId as number));
   const gone = new Set<number>();
   for (const hero of replaced) if (!visible.has(hero)) gone.add(hero);
-  for (const [key, hero] of st.held) {
+  if (picking) for (const [key, hero] of st.held) {
     const cur = st.seen.get(key);
     if (!cur || cur.state === hero || cur.n < (cur.state === "U" ? GONE_UNKNOWN_FRAMES : GONE_FRAMES)) continue;
     st.held.delete(key);
@@ -53,7 +60,7 @@ export function trackFrame(st: TrackState, slots: SlotLike[], mine: "radiant" | 
   }
   const enemySet = new Set(stable.filter((x) => x.team !== mine).map((x) => x.heroId as number));
   const allySet = new Set(stable.filter((x) => x.team === mine).map((x) => x.heroId as number));
-  const conflict = [...enemySet].filter((id) => allySet.has(id));
+  const conflict = picking ? [...enemySet].filter((id) => allySet.has(id)) : [];
   for (const id of conflict) { enemySet.delete(id); allySet.delete(id); }
   const ownSlot = mySlot === null ? null : stable.find((x) => x.team === mine && x.idx === mySlot);
   const ownSeen = ownSlot && allySet.has(ownSlot.heroId as number) ? (ownSlot.heroId as number) : null;

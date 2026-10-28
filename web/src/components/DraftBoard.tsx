@@ -204,7 +204,9 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
               const slots = res.slots ?? [];
               const mine: "radiant" | "dire" = (r.connected && d?.team) ? d.team : side;
               const mySlot: number | null = r.connected && d?.team ? (d.teamSlot ?? null) : null;
-              const t = trackFrame(track.current, slots, mine, mySlot);
+              // авто-бан (конфликт пиков) только на стадии пиков или без связи с Дотой; на стратегии пики закрыты
+              const picking = !r.connected || d?.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION";
+              const t = trackFrame(track.current, slots, mine, mySlot, picking);
               const { enemiesSeen, alliesSeen, ownSeen } = t;
               setScreen({ status: `экран: ${res.source ?? ""} ${res.w}×${res.h}, ${res.ms} мс`, found: t.stable.length });
               setPicks((prev) => {

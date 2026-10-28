@@ -79,9 +79,9 @@ export async function refreshGeneral(token: string, progress: Progress = () => {
   invalidateData();
 }
 
-/** Имя аккаунта в Steam по данным Stratz (для списка аккаунтов). */
-export async function fetchAccountName(token: string, me: number): Promise<string | null> {
-  try { const d = await gql(token, `{ player(steamAccountId: ${me}) { steamAccount { name } } }`); return d?.player?.steamAccount?.name ?? null; } catch { return null; }
+/** Имя аккаунта и закрыт ли профиль (Stratz не видит матчи закрытых: пул не соберётся, результаты ищутся по номеру матча). */
+export async function fetchAccountInfo(token: string, me: number): Promise<{ name: string | null; anonymous: boolean | undefined }> {
+  try { const d = await gql(token, `{ player(steamAccountId: ${me}) { steamAccount { name isAnonymous } } }`); return { name: d?.player?.steamAccount?.name ?? null, anonymous: d?.player?.steamAccount?.isAnonymous ?? undefined }; } catch { return { name: null, anonymous: undefined }; }
 }
 
 /** Пул героев и личные пары аккаунта за год ранговых игр: в папку аккаунта. Аккаунт добавляется в список. */
@@ -92,8 +92,8 @@ export async function refreshAccount(token: string, me: number, progress: Progre
   const names = new Map<number, string>();
   try { for (const h of JSON.parse(fs.readFileSync(path.join(USER_DATA_DIR, "heroes.json"), "utf8")) as { id: number; name: string }[]) names.set(h.id, h.name); } catch {}
   progress("имя аккаунта");
-  const accName = await fetchAccountName(token, me);
-  addAccount(me, accName ?? undefined);
+  const { name: accName, anonymous } = await fetchAccountInfo(token, me);
+  addAccount(me, accName ?? undefined, false, anonymous);
   {
     progress(`матчи ${accName ?? me} за год`);
     const start = Math.floor(Date.now() / 1000) - 365 * 86400;

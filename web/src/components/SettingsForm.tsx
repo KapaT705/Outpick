@@ -20,7 +20,7 @@ export default function SettingsForm() {
   const [raw, setRaw] = useState<string | null>(null);
   const [updMsg, setUpdMsg] = useState<string | null>(null);
   const [rawMsg, setRawMsg] = useState<string | null>(null);
-  type Acc = { id: number; name?: string; known: boolean; updatedAt: number | null; isDefault: boolean };
+  type Acc = { id: number; name?: string; known: boolean; updatedAt: number | null; isDefault: boolean; anonymous?: boolean };
   type Current = { id: number | null; source: "gsi" | "steam" | "manual" | "none"; known: boolean; name: string | null };
   const [info, setInfo] = useState<{ steamAccountId: number | null; accounts?: Acc[]; current?: Current; hasToken: boolean; tokenTail: string; hasGithubToken?: boolean; screenCapture?: boolean } | null>(null);
   const [accMsg, setAccMsg] = useState<string | null>(null);
@@ -83,6 +83,7 @@ export default function SettingsForm() {
                   <span className={info?.current?.id === a.id ? "text-foreground font-semibold" : "text-foreground"}>{a.name ?? a.id}</span>
                   <span className="text-muted">{a.name ? a.id : ""}{a.isDefault ? " · по умолчанию" : ""}{info?.current?.id === a.id ? " · сейчас" : ""}</span>
                   <span className={a.known ? "text-good" : "text-muted"}>{a.known ? `пул загружен${a.updatedAt ? ` ${new Date(a.updatedAt * 1000).toLocaleDateString("ru-RU")}` : ""}` : "пул не загружен"}</span>
+                  {a.anonymous && <span className="text-bad" title="В Доте выключено «Expose Public Match Data» (Настройки → Социальные). Stratz не видит матчи такого аккаунта: пул не собирается, результаты в историю подтягиваются по номеру матча через OpenDota.">профиль закрыт</span>}
                   <span className="ml-auto flex gap-2">
                     <button onClick={() => accountAction("load", a.id)} disabled={!!ref?.running} className="text-accent hover:underline disabled:opacity-50">{a.known ? "обновить" : "загрузить историю"}</button>
                     {!a.isDefault && <button onClick={() => accountAction("default", a.id)} className="text-muted hover:text-foreground hover:underline">по умолчанию</button>}

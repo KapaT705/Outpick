@@ -68,11 +68,12 @@ export function currentAccount(): CurrentAccount {
 }
 
 /** Добавляет аккаунт в список (без загрузки данных) и при желании делает его аккаунтом по умолчанию. */
-export function addAccount(id: number, name?: string, makeDefault = false): Account {
+export function addAccount(id: number, name?: string, makeDefault = false, anonymous?: boolean): Account {
   const cfg = readConfig();
   let acc = cfg.accounts.find((a) => a.id === id);
   if (!acc) { acc = { id, name, addedAt: Math.floor(Date.now() / 1000) }; cfg.accounts.push(acc); }
   else if (name && !acc.name) acc.name = name;
+  if (anonymous !== undefined) acc.anonymous = anonymous;
   if (makeDefault || !cfg.steamAccountId) cfg.steamAccountId = id;
   writeConfig(cfg);
   return acc;

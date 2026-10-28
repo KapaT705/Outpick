@@ -3,7 +3,7 @@ import path from "node:path";
 import { USER_DIR } from "./paths";
 
 /** Аккаунт Steam, для которого загружены пул и личная история. */
-export type Account = { id: number; name?: string; addedAt: number };
+export type Account = { id: number; name?: string; addedAt: number; anonymous?: boolean }; // anonymous: профиль закрыт в Доте, Stratz не видит его матчи
 export type AppConfig = {
   stratzToken: string;
   steamAccountId: number | null; // аккаунт по умолчанию: берётся, когда Дота не сообщила, кто играет
