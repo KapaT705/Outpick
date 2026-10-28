@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseHeroText, type AliasMap } from "@/lib/aliases";
 import type { Attr, Candidate, Hero, Pick, PoolOverride, Role, RoleGuess } from "@/lib/types";
-import type { RecognizedSlot, RecognizeResult } from "@/components/AppShell";
+import type { RecognizeResult } from "@/components/AppShell";
+import { newTrackState, trackFrame } from "@/lib/draftTrack";
 
 type Zone = "bans" | "enemies" | "allies";
 const ZONES: { key: Zone; label: string; color: string; max: number; hint: string }[] = [
@@ -78,7 +79,7 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
     try { setSetupHidden(sessionStorage.getItem("draft.setupHidden") === "1"); } catch {}
     try { const v = localStorage.getItem("draft.side.v1"); if (v === "radiant" || v === "dire") setSideState(v); } catch {}
   }, []);
-  const lastSeen = useRef<Map<string, { heroId: number | null; n: number }>>(new Map()); // стабилизация: герой принимается после 2 кадров подряд
+  const track = useRef(newTrackState()); // стабилизация слотов и пропавшие герои (конфликт пиков → бан), см. lib/draftTrack
   const loggedMatch = useRef<string | null>(null);
   const lastKey = useRef<string>("");
 
@@ -177,30 +178,29 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
             else if (!res.onPickScreen) setScreen({ status: "экран пиков не виден", found: 0 });
             else {
               const slots = res.slots ?? [];
-              const stable: RecognizedSlot[] = [];
-              for (const sl of slots) {
-                const key = `${sl.team}${sl.idx}`;
-                const prev = lastSeen.current.get(key);
-                const n = prev && prev.heroId === sl.heroId ? prev.n + 1 : 1;
-                lastSeen.current.set(key, { heroId: sl.heroId, n });
-                if (sl.heroId && n >= 2) stable.push(sl);
-              }
               const mine: "radiant" | "dire" = (r.connected && d?.team) ? d.team : side;
               const mySlot: number | null = r.connected && d?.team ? (d.teamSlot ?? null) : null;
-              const enemiesSeen = stable.filter((x) => x.team !== mine).map((x) => x.heroId as number);
-              const alliesSeen = stable.filter((x) => x.team === mine && x.idx !== mySlot).map((x) => x.heroId as number);
-              const ownSeen = mySlot === null ? null : (stable.find((x) => x.team === mine && x.idx === mySlot)?.heroId ?? null);
-              setScreen({ status: `экран: ${res.source ?? ""} ${res.w}×${res.h}, ${res.ms} мс`, found: stable.length });
+              const t = trackFrame(track.current, slots, mine, mySlot);
+              const { enemiesSeen, alliesSeen, ownSeen } = t;
+              setScreen({ status: `экран: ${res.source ?? ""} ${res.w}×${res.h}, ${res.ms} мс`, found: t.stable.length });
               setPicks((prev) => {
+                // авто-бан: герой пропал из слота или виден сразу у обеих команд (конфликт пиков);
+                // снимается сам, если герой снова стабильно виден в слоте
+                const autoBan = new Set([...t.gone, ...t.conflict]);
+                const seenNow = new Set([...enemiesSeen, ...alliesSeen, ...(ownSeen ? [ownSeen] : [])]);
+                const bans = prev.bans.filter((p) => !(p.auto && seenNow.has(p.id)));
+                for (const id of autoBan) if (!bans.some((p) => p.id === id)) bans.push({ id, role: null, auto: true });
+                const banned = new Set(bans.map((p) => p.id));
                 const merge = (cur: Pick[], seen: number[]) => {
-                  const out = cur.filter((p) => seen.includes(p.id) || !slots.some((sl) => sl.heroId === p.id));
-                  for (const id of seen) if (!out.some((p) => p.id === id)) out.push({ id, role: null });
+                  const out = cur.filter((p) => !banned.has(p.id) && (seen.includes(p.id) || !slots.some((sl) => sl.heroId === p.id)));
+                  for (const id of seen) if (!banned.has(id) && !out.some((p) => p.id === id)) out.push({ id, role: null });
                   return out.slice(0, 5);
                 };
                 const enemies = merge(prev.enemies, enemiesSeen);
                 const allies = merge(prev.allies, alliesSeen).filter((p) => p.id !== ownSeen);
-                if (JSON.stringify(enemies) === JSON.stringify(prev.enemies) && JSON.stringify(allies) === JSON.stringify(prev.allies)) return prev;
-                return { ...prev, enemies, allies };
+                const same = (a: Pick[], b: Pick[]) => JSON.stringify(a) === JSON.stringify(b);
+                if (same(enemies, prev.enemies) && same(allies, prev.allies) && same(bans, prev.bans)) return prev;
+                return { bans, enemies, allies };
               });
             }
           }
@@ -210,7 +210,7 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
           if (d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" && d.matchId && lastMatch.current !== d.matchId) {
             lastMatch.current = d.matchId;
             lastKey.current = "";
-            lastSeen.current.clear();
+            track.current = newTrackState();
             setPicks({ bans: [], enemies: [], allies: [] });
           }
           // Дота отдаёт состав драфта только зрителям; если вдруг он есть, подхватываем
@@ -313,9 +313,9 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
                 const h = byId.get(p.id)!;
                 const guess = z.key === "bans" ? undefined : roles[z.key].find((g) => g.id === p.id);
                 return (
-                  <div key={p.id} onClick={(e) => e.stopPropagation()} className="flex items-center rounded-md bg-panel-2 text-xs overflow-hidden">
-                    <button onClick={() => remove(z.key, p.id)} title="Убрать" className="flex items-center gap-1 pr-2 hover:bg-border">
-                      <img src={icon(h.short)} alt="" className="h-7 w-7" />{h.name}
+                  <div key={p.id} onClick={(e) => e.stopPropagation()} className={`flex items-center rounded-md bg-panel-2 text-xs overflow-hidden ${p.auto ? "outline outline-1 outline-dashed outline-ban/70" : ""}`}>
+                    <button onClick={() => remove(z.key, p.id)} title={p.auto ? "Пропал из слота: его выбрали обе команды, и он забанен. Нажми, чтобы убрать, если это не так" : "Убрать"} className="flex items-center gap-1 pr-2 hover:bg-border">
+                      <img src={icon(h.short)} alt="" className="h-7 w-7" />{h.name}{p.auto && <span className="text-[10px] text-ban/80 ml-0.5">конфликт</span>}
                     </button>
                     {z.key !== "bans" && (
                       <select value={p.role ?? ""} onChange={(e) => setPickRole(z.key, p.id, e.target.value ? (Number(e.target.value) as Role) : null)}

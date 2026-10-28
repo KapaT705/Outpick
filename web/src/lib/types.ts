@@ -12,7 +12,7 @@ export type RoleMetaEntry = { heroId: number; games: number; wins: number; winra
 export type PersonalPair = { role?: number; own: number; other: number; ally: boolean; games: number; wins: number };
 
 export type Role = 1 | 2 | 3 | 4 | 5;
-export type Pick = { id: number; role: Role | null };   // role null = не задана, будет предсказана
+export type Pick = { id: number; role: Role | null; auto?: boolean }; // role null = не задана, будет предсказана; auto = бан поставлен сам (пропал из слота: конфликт пиков)
 export type PoolOverride = { add: number[]; remove: number[] }; // ручные правки пула (хранятся в браузере)
 export type DraftInput = { bans: number[]; enemies: Pick[]; allies: Pick[]; pool?: PoolOverride; role?: Role };
 export type HeroPositions = { heroId: number; name: string; games: number; p: Record<"1" | "2" | "3" | "4" | "5", number> };
