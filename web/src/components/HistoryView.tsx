@@ -7,8 +7,12 @@ import type { Hero } from "@/lib/types";
 const icon = (short: string) => `https://cdn.stratz.com/images/dota2/heroes/${short}_icon.png`;
 const fmt = (t: number) => new Date(t * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-export default function HistoryView({ items: initial, heroes }: { items: DraftLog[]; heroes: Hero[] }) {
+export default function HistoryView({ items: initial, heroes, accounts = {}, defaultAccountId = null }: { items: DraftLog[]; heroes: Hero[]; accounts?: Record<number, string>; defaultAccountId?: number | null }) {
   const [items, setItems] = useState(initial);
+  // записи с разных аккаунтов помечаются именем аккаунта
+  const accOf = (x: DraftLog) => x.accountId ?? defaultAccountId;
+  const multiAccount = new Set(items.map(accOf)).size > 1;
+  const accName = (x: DraftLog) => { const id = accOf(x); return id ? (accounts[id] ?? String(id)) : "?"; };
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const byId = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes]);
@@ -82,6 +86,7 @@ export default function HistoryView({ items: initial, heroes }: { items: DraftLo
           return (
             <div key={x.id} className="rounded-lg border border-border bg-panel p-3 flex flex-wrap items-center gap-3 text-sm">
               <span className="text-xs text-muted w-24">{fmt(x.createdAt)}</span>
+              {multiAccount && <span className="rounded bg-panel-2 px-1.5 py-0.5 text-[11px] text-muted" title="Аккаунт Steam, с которого играли">{accName(x)}</span>}
               {h && <img src={icon(h.short)} alt="" className="h-8 w-8 rounded" />}
               <div className="min-w-0 flex-1">
                 <div><b>{h?.name ?? x.chosenHeroId}</b> · {res}{x.matchId ? <a className="text-muted underline ml-2" href={`https://stratz.com/matches/${x.matchId}`} target="_blank" rel="noreferrer">матч</a> : null}</div>

@@ -19,8 +19,8 @@ const FAMILIAR_MIN_GAMES = 3;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const r1 = (v: number) => Math.round(v * 10) / 10;
 
-export function evaluateDraft(input: DraftInput): { candidates: Candidate[]; enemyRoles: RoleGuess[]; allyRoles: RoleGuess[]; role: Role } {
-  const { heroes, heroById, matchups, pool, pairs, roleMeta } = loadData();
+export function evaluateDraft(input: DraftInput, accountId?: number | null): { candidates: Candidate[]; enemyRoles: RoleGuess[]; allyRoles: RoleGuess[]; role: Role } {
+  const { heroes, heroById, matchups, pool, pairs, roleMeta } = loadData(accountId);
   const role: Role = ([1, 2, 3, 4, 5] as Role[]).includes(input.role as Role) ? (input.role as Role) : 2;
   const meta = roleMeta.get(role)!;
   const laneRoles = LANE_OPP[role];

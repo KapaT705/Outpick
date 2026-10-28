@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { readConfig, writeConfig } from "@/lib/config";
+import { readConfig, toSteam32, writeConfig } from "@/lib/config";
+import { addAccount, currentAccount, listAccounts } from "@/lib/accounts";
 
 export async function GET() {
   const c = readConfig();
-  return NextResponse.json({ steamAccountId: c.steamAccountId, hasToken: !!c.stratzToken, tokenTail: c.stratzToken ? c.stratzToken.slice(-6) : "", hasGithubToken: !!c.githubToken, screenCapture: c.screenCapture !== false });
+  return NextResponse.json({ steamAccountId: c.steamAccountId, accounts: listAccounts(), current: currentAccount(), hasToken: !!c.stratzToken, tokenTail: c.stratzToken ? c.stratzToken.slice(-6) : "", hasGithubToken: !!c.githubToken, screenCapture: c.screenCapture !== false });
 }
 
 export async function POST(req: Request) {
@@ -13,9 +14,9 @@ export async function POST(req: Request) {
   const idRaw = String(body.steamAccountId ?? "").trim();
   let steamAccountId = cur.steamAccountId;
   if (idRaw) {
-    const n = Number(idRaw);
-    if (!Number.isInteger(n) || n <= 0) return NextResponse.json({ error: "Steam ID должен быть числом (32-битный id из ссылки Dotabuff/Stratz)" }, { status: 400 });
-    steamAccountId = n > 76561197960265728 ? n - 76561197960265728 : n; // принимаем и 64-битный id
+    const n = toSteam32(idRaw);
+    if (!n) return NextResponse.json({ error: "Steam ID должен быть числом (32-битный id из ссылки Dotabuff/Stratz)" }, { status: 400 });
+    steamAccountId = n;
   }
   // проверим токен запросом к Stratz
   if (token) {
@@ -24,6 +25,8 @@ export async function POST(req: Request) {
   }
   const githubToken = typeof body.githubToken === "string" && body.githubToken.trim() ? body.githubToken.trim() : cur.githubToken;
   const screenCapture = typeof body.screenCapture === "boolean" ? body.screenCapture : cur.screenCapture !== false;
-  writeConfig({ stratzToken: token, steamAccountId, githubToken, screenCapture });
-  return NextResponse.json({ ok: true, steamAccountId, hasToken: !!token, hasGithubToken: !!githubToken, screenCapture });
+  writeConfig({ ...cur, stratzToken: token, steamAccountId, githubToken, screenCapture });
+  // новый Steam ID из поля настроек: это аккаунт по умолчанию и первый в списке
+  if (steamAccountId && idRaw) addAccount(steamAccountId, undefined, true);
+  return NextResponse.json({ ok: true, steamAccountId, accounts: listAccounts(), current: currentAccount(), hasToken: !!token, hasGithubToken: !!githubToken, screenCapture });
 }

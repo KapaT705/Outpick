@@ -20,7 +20,21 @@ export default function SettingsForm() {
   const [raw, setRaw] = useState<string | null>(null);
   const [updMsg, setUpdMsg] = useState<string | null>(null);
   const [rawMsg, setRawMsg] = useState<string | null>(null);
-  const [info, setInfo] = useState<{ steamAccountId: number | null; hasToken: boolean; tokenTail: string; hasGithubToken?: boolean; screenCapture?: boolean } | null>(null);
+  type Acc = { id: number; name?: string; known: boolean; updatedAt: number | null; isDefault: boolean };
+  type Current = { id: number | null; source: "gsi" | "manual" | "none"; known: boolean; name: string | null };
+  const [info, setInfo] = useState<{ steamAccountId: number | null; accounts?: Acc[]; current?: Current; hasToken: boolean; tokenTail: string; hasGithubToken?: boolean; screenCapture?: boolean } | null>(null);
+  const [accMsg, setAccMsg] = useState<string | null>(null);
+  const reloadInfo = () => fetch("/api/settings").then((r) => r.json()).then(setInfo).catch(() => {});
+  const accountAction = async (action: "add" | "load" | "default" | "remove", id: number | string) => {
+    setAccMsg(action === "add" || action === "load" ? "загружаю историю…" : null);
+    const r = await fetch("/api/accounts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, id }) }).then((x) => x.json()).catch(() => null);
+    if (!r?.ok) { setAccMsg(r?.error ?? "ошибка"); return; }
+    if (action === "add" || action === "load") {
+      setSteamId("");
+      const poll = async () => { const st = await fetch("/api/refresh").then((x) => x.json()).catch(() => null); if (st?.running) { setAccMsg(st.message); setRef(st); setTimeout(poll, 1500); return; } setAccMsg(st?.error ? `ошибка: ${st.error}` : "готово"); reloadInfo(); };
+      setTimeout(poll, 1000);
+    } else { setAccMsg(null); reloadInfo(); }
+  };
   const [dbg, setDbg] = useState<DebugCapture | null>(null);
   const [dbgBusy, setDbgBusy] = useState(false);
   const [learned, setLearned] = useState<LearnedInfo | null>(null);
@@ -28,7 +42,7 @@ export default function SettingsForm() {
   const [busy, setBusy] = useState(false);
   const [ref, setRef] = useState<{ running: boolean; message: string; error: string | null; updatedAt: number | null } | null>(null);
 
-  useEffect(() => { fetch("/api/settings").then((r) => r.json()).then(setInfo).catch(() => {}); fetch("/api/gsi/install").then((r) => r.json()).then(setGsi).catch(() => {}); window.desktop?.learnedInfo?.().then(setLearned).catch(() => {}); }, []);
+  useEffect(() => { reloadInfo(); fetch("/api/gsi/install").then((r) => r.json()).then(setGsi).catch(() => {}); window.desktop?.learnedInfo?.().then(setLearned).catch(() => {}); }, []);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
@@ -47,8 +61,8 @@ export default function SettingsForm() {
 
   const save = async () => {
     setBusy(true); setMsg(null);
-    const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stratzToken: token, steamAccountId: steamId, githubToken: ghToken }) }).then((x) => x.json()).catch(() => null);
-    if (r?.ok) { setMsg("Сохранено"); setToken(""); setGhToken(""); setInfo({ steamAccountId: r.steamAccountId, hasToken: r.hasToken, tokenTail: "", hasGithubToken: r.hasGithubToken }); } else setMsg(r?.error ?? "Ошибка");
+    const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stratzToken: token, githubToken: ghToken }) }).then((x) => x.json()).catch(() => null);
+    if (r?.ok) { setMsg("Сохранено"); setToken(""); setGhToken(""); reloadInfo(); } else setMsg(r?.error ?? "Ошибка");
     setBusy(false);
   };
 
@@ -58,12 +72,34 @@ export default function SettingsForm() {
         <h1 className="text-2xl font-semibold">Настройки</h1>
       </header>
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-3 text-sm">
-        <label className="flex flex-col gap-1">
-          <span className="flex items-center gap-2">Steam ID <Check ok={!!info?.steamAccountId} label={info?.steamAccountId ? `привязан: ${info.steamAccountId}` : "не задан"} /></span>
-          <span className="text-xs text-muted">число из ссылки Dotabuff или Stratz, можно и 64-битный. Если привязан, трогать не нужно.</span>
-          <input value={steamId} onChange={(e) => setSteamId(e.target.value)} placeholder={info?.steamAccountId ? String(info.steamAccountId) : "например 401776935"}
-            className="rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent" />
-        </label>
+        <div className="flex flex-col gap-2">
+          <span className="flex items-center gap-2">Аккаунты Steam <Check ok={!!info?.accounts?.length} label={info?.accounts?.length ? `${info.accounts.length}` : "нет"} /></span>
+          <span className="text-xs text-muted">Дота сама сообщает, с какого аккаунта идёт игра, и программа берёт его пул и историю. Незнакомый аккаунт работает в общем режиме (мета и контрпики без пула), пока не загрузишь его историю. Аккаунт по умолчанию используется, когда Дота не на связи.</span>
+          {info?.current?.id && <div className="text-xs text-muted">Сейчас: <span className="text-foreground">{info.current.name ?? info.current.id}</span>{info.current.source === "gsi" ? " (сообщила Дота)" : " (по умолчанию)"}{info.current.known ? "" : " · пул не загружен, общий режим"}</div>}
+          {!!info?.accounts?.length && (
+            <div className="flex flex-col gap-1">
+              {info.accounts.map((a) => (
+                <div key={a.id} className="flex flex-wrap items-center gap-2 rounded-md bg-panel-2 px-2 py-1 text-xs">
+                  <span className={info?.current?.id === a.id ? "text-foreground font-semibold" : "text-foreground"}>{a.name ?? a.id}</span>
+                  <span className="text-muted">{a.name ? a.id : ""}{a.isDefault ? " · по умолчанию" : ""}{info?.current?.id === a.id ? " · сейчас" : ""}</span>
+                  <span className={a.known ? "text-good" : "text-muted"}>{a.known ? `пул загружен${a.updatedAt ? ` ${new Date(a.updatedAt * 1000).toLocaleDateString("ru-RU")}` : ""}` : "пул не загружен"}</span>
+                  <span className="ml-auto flex gap-2">
+                    <button onClick={() => accountAction("load", a.id)} disabled={!!ref?.running} className="text-accent hover:underline disabled:opacity-50">{a.known ? "обновить" : "загрузить историю"}</button>
+                    {!a.isDefault && <button onClick={() => accountAction("default", a.id)} className="text-muted hover:text-foreground hover:underline">по умолчанию</button>}
+                    <button onClick={() => { if (confirm(`Убрать аккаунт ${a.name ?? a.id} вместе с его пулом?`)) accountAction("remove", a.id); }} className="text-muted hover:text-bad hover:underline">убрать</button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <input value={steamId} onChange={(e) => setSteamId(e.target.value)} placeholder="Steam ID нового аккаунта, например 401776935"
+              className="flex-1 min-w-56 rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent" />
+            <button onClick={() => { if (steamId.trim()) accountAction("add", steamId.trim()); }} disabled={!steamId.trim() || !!ref?.running || !info?.hasToken} title={info?.hasToken ? "" : "Сначала сохрани токен Stratz"} className="rounded-md border border-border px-3 py-1.5 hover:border-accent disabled:opacity-50">Добавить и загрузить историю</button>
+          </div>
+          <span className="text-xs text-muted">Число из ссылки Dotabuff или Stratz, можно и 64-битный. Добавлять заранее не обязательно: когда зайдёшь в Доту с нового аккаунта, пикер сам предложит загрузить его историю.</span>
+          {accMsg && <span className="text-xs text-muted">{accMsg}</span>}
+        </div>
         <label className="flex flex-col gap-1">
           <span className="flex items-center gap-2">Токен Stratz API <Check ok={!!info?.hasToken} label={info?.hasToken ? `сохранён${info.tokenTail ? ` …${info.tokenTail}` : ""}` : "не задан"} /></span>
           <input value={token} onChange={(e) => setToken(e.target.value)} type="password" placeholder="вставь токен со страницы stratz.com/api"

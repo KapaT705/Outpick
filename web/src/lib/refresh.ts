@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { USER_DIR } from "./paths";
 import { invalidateData } from "./data";
+import { accountDir, addAccount } from "./accounts";
 
 export const USER_DATA_DIR = path.join(USER_DIR, "data");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -18,7 +19,14 @@ async function gql(token: string, query: string) {
   return j.data;
 }
 
+/** Общие данные (герои, матчапы, мета по ролям) и, если указан аккаунт, его пул и личная история. */
 export async function refreshData(token: string, me: number | null, progress: Progress = () => {}) {
+  await refreshGeneral(token, progress);
+  if (me) await refreshAccount(token, me, progress);
+  progress("готово");
+}
+
+export async function refreshGeneral(token: string, progress: Progress = () => {}) {
   fs.mkdirSync(USER_DATA_DIR, { recursive: true });
   const save = (name: string, obj: unknown) => fs.writeFileSync(path.join(USER_DATA_DIR, name), JSON.stringify(obj));
 
@@ -67,8 +75,27 @@ export async function refreshData(token: string, me: number | null, progress: Pr
   save("hero-positions.json", [...posAgg].map(([heroId, a]) => { const tot = Object.values(a).reduce((x, y) => x + y, 0) || 1; return { heroId, name: names.get(heroId), games: tot, p: Object.fromEntries(Object.entries(a).map(([k, v]) => [k, v / tot])) }; }));
   save("role-meta.json", roleMeta);
 
-  if (me) {
-    progress("твои матчи за год");
+  fs.writeFileSync(path.join(USER_DATA_DIR, "updated-at.json"), JSON.stringify({ at: Math.floor(Date.now() / 1000) }));
+  invalidateData();
+}
+
+/** Имя аккаунта в Steam по данным Stratz (для списка аккаунтов). */
+export async function fetchAccountName(token: string, me: number): Promise<string | null> {
+  try { const d = await gql(token, `{ player(steamAccountId: ${me}) { steamAccount { name } } }`); return d?.player?.steamAccount?.name ?? null; } catch { return null; }
+}
+
+/** Пул героев и личные пары аккаунта за год ранговых игр: в папку аккаунта. Аккаунт добавляется в список. */
+export async function refreshAccount(token: string, me: number, progress: Progress = () => {}) {
+  const dir = accountDir(me);
+  fs.mkdirSync(dir, { recursive: true });
+  const save = (name: string, obj: unknown) => fs.writeFileSync(path.join(dir, name), JSON.stringify(obj));
+  const names = new Map<number, string>();
+  try { for (const h of JSON.parse(fs.readFileSync(path.join(USER_DATA_DIR, "heroes.json"), "utf8")) as { id: number; name: string }[]) names.set(h.id, h.name); } catch {}
+  progress("имя аккаунта");
+  const accName = await fetchAccountName(token, me);
+  addAccount(me, accName ?? undefined);
+  {
+    progress(`матчи ${accName ?? me} за год`);
     const start = Math.floor(Date.now() / 1000) - 365 * 86400;
     type MM = { id: number; startDateTime: number; lobbyType: string; players: { steamAccountId: number; heroId: number; position: string | null; isRadiant: boolean; isVictory: boolean }[] };
     const matches: MM[] = [];
@@ -93,9 +120,8 @@ export async function refreshData(token: string, me: number | null, progress: Pr
     save("player-pool.json", [...pool.values()].sort((a, b) => b.midGames - a.midGames));
     save("personal-pairs.json", [...pairs.values()]);
   }
-  fs.writeFileSync(path.join(USER_DATA_DIR, "updated-at.json"), JSON.stringify({ at: Math.floor(Date.now() / 1000) }));
+  fs.writeFileSync(path.join(dir, "updated-at.json"), JSON.stringify({ at: Math.floor(Date.now() / 1000) }));
   invalidateData();
-  progress("готово");
 }
 
 export function dataUpdatedAt(): number | null {

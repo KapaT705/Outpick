@@ -117,3 +117,10 @@ export function snapshot() {
   const age = Date.now() - state.receivedAt;
   return { connected: state.receivedAt > 0 && age < 30_000, ageMs: state.receivedAt ? age : null, draft: state.draft };
 }
+
+/** 64-битный Steam ID играющего аккаунта из последнего сообщения Доты (и после перезапуска: из снимка на диске). */
+export function gsiSteamId(): string | null {
+  const fromMem = state.last?.player?.steamid;
+  if (fromMem) return String(fromMem);
+  try { const j = JSON.parse(fs.readFileSync(LAST_FILE, "utf8")); const s = j?.last?.player?.steamid; return s ? String(s) : null; } catch { return null; }
+}

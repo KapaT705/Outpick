@@ -46,10 +46,29 @@ const ROLE_FULL: Record<Role, string> = { 1: "Керри", 2: "Мид", 3: "Оф
 const ROLE_KEY = "draft.role.v1";
 const POOL_KEY_V2 = "draft.poolOverride.v2"; // { [role]: {add, remove} }
 
-export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases }: { heroes: Hero[]; poolByRole: Record<number, number[]>; familiarByRole: Record<number, number[]>; aliases: AliasMap }) {
+type AccountInfo = { id: number | null; source: "gsi" | "manual" | "none"; known: boolean; name: string | null };
+type AccountsState = { current: AccountInfo; accounts: { id: number; name?: string; known: boolean }[]; poolByRole: Record<number, number[]>; familiarByRole: Record<number, number[]> };
+
+export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliases: AliasMap }) {
   const [role, setRoleState] = useState<Role>(2);
-  const poolIds = poolByRole[role] ?? [];
-  const familiarIds = familiarByRole[role] ?? [];
+  // аккаунт и его пул: Дота сообщает Steam ID играющего, и профиль переключается сам (см. lib/accounts)
+  const [acct, setAcct] = useState<AccountsState | null>(null);
+  const [loadMsg, setLoadMsg] = useState<string | null>(null);
+  const poolIds = acct?.poolByRole[role] ?? [];
+  const familiarIds = acct?.familiarByRole[role] ?? [];
+  const reloadAccounts = () => fetch("/api/accounts").then((r) => r.json()).then((a) => { if (a?.current) setAcct(a); }).catch(() => {});
+  const loadHistory = async (id: number) => {
+    setLoadMsg("запускаю…");
+    const r = await fetch("/api/accounts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "load", id }) }).then((x) => x.json()).catch(() => null);
+    if (!r?.ok) { setLoadMsg(r?.error ?? "ошибка"); return; }
+    const poll = async () => {
+      const st = await fetch("/api/refresh").then((x) => x.json()).catch(() => null);
+      if (st?.running) { setLoadMsg(st.message); setTimeout(poll, 1500); return; }
+      setLoadMsg(st?.error ? `ошибка: ${st.error}` : null);
+      reloadAccounts();
+    };
+    setTimeout(poll, 1000);
+  };
   const [zone, setZone] = useState<Zone>("enemies");
   const [picks, setPicks] = useState<Record<Zone, Pick[]>>({ bans: [], enemies: [], allies: [] });
   const [roles, setRoles] = useState<{ enemies: RoleGuess[]; allies: RoleGuess[] }>({ enemies: [], allies: [] });
@@ -65,7 +84,7 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
   const [poolQuery, setPoolQuery] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
   const auto = true; // связь с Дотой работает всегда, когда программа открыта
-  const [gsi, setGsi] = useState<{ connected: boolean; phase: string; ownHeroId: number | null; matchId: string | null; team: "radiant" | "dire" | null } | null>(null);
+  const [gsi, setGsi] = useState<{ connected: boolean; phase: string; ownHeroId: number | null; matchId: string | null; team: "radiant" | "dire" | null; accountId: number | null } | null>(null);
   const [screen, setScreen] = useState<{ status: string; found: number } | null>(null);
   const [captureOn, setCaptureOn] = useState(true);
   const [setup, setSetup] = useState<{ steam: boolean; token: boolean; gsi: boolean } | null>(null);
@@ -78,7 +97,11 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
     fetch("/api/gsi/install").then((r) => r.json()).then((g) => { setSetup((p) => ({ steam: p?.steam ?? false, token: p?.token ?? false, gsi: !!g.installed })); if (g.rewritten) setGsiRewritten(true); }).catch(() => {});
     try { setSetupHidden(sessionStorage.getItem("draft.setupHidden") === "1"); } catch {}
     try { const v = localStorage.getItem("draft.side.v1"); if (v === "radiant" || v === "dire") setSideState(v); } catch {}
+    reloadAccounts();
   }, []);
+  // Дота сообщила другой аккаунт: перечитываем его пул
+  const acctId = gsi?.accountId ?? null;
+  useEffect(() => { if (acct && acct.current.id !== acctId) reloadAccounts(); }, [acctId]); // eslint-disable-line react-hooks/exhaustive-deps
   const track = useRef(newTrackState()); // стабилизация слотов и пропавшие герои (конфликт пиков → бан), см. lib/draftTrack
   const loggedMatch = useRef<string | null>(null);
   const lastKey = useRef<string>("");
@@ -123,7 +146,7 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
       .catch(() => {})
       .finally(() => setLoading(false));
     return () => ctrl.abort();
-  }, [picks, override, role]);
+  }, [picks, override, role, acct?.current.id]);
 
   const addMany = (z: Zone, ids: number[]) => {
     const max = ZONES.find((x) => x.key === z)!.max;
@@ -159,7 +182,7 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
       if (stop) return;
       if (r) {
         const d = r.draft;
-        setGsi({ connected: r.connected, phase: d?.phase ?? "", ownHeroId: d?.ownHeroId ?? null, matchId: d?.matchId ?? null, team: d?.team ?? null });
+        setGsi({ connected: r.connected, phase: d?.phase ?? "", ownHeroId: d?.ownHeroId ?? null, matchId: d?.matchId ?? null, team: d?.team ?? null, accountId: r.account?.id ?? null });
         // Экран читаем только на стадии пиков и планирования, о которых сообщает Дота; в меню и в игре захвата нет.
         // Без связи с Дотой (GSI не приходит) читаем всегда, но реже.
         const CAPTURE_PHASES = ["DOTA_GAMERULES_STATE_HERO_SELECTION", "DOTA_GAMERULES_STATE_STRATEGY_TIME"];
@@ -281,7 +304,9 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
               <button onClick={() => setSide("dire")} className={`px-2 py-1 ${side === "dire" ? "bg-bad/20 text-bad" : "text-muted"}`}>я за Тьму</button>
             </div>
           )}
-          <button onClick={() => setPoolOpen(true)} className="text-accent hover:underline">Мой пул · {poolSet.size}</button>
+          <button onClick={() => setPoolOpen(true)} className="text-accent hover:underline" title={acct?.current.id ? `Аккаунт ${acct.current.name ?? acct.current.id}${acct.current.source === "gsi" ? " (сообщила Дота)" : " (по умолчанию из настроек)"}${acct.current.known ? "" : ": пул не загружен, общий режим"}` : "Аккаунт не известен: общий режим без пула"}>
+            {acct?.current.id ? `${acct.current.name ?? acct.current.id}: пул · ${poolSet.size}` : `Мой пул · ${poolSet.size}`}
+          </button>
           <button onClick={reset} className="text-muted hover:text-foreground underline">Сбросить драфт</button>
         </div>
       </header>
@@ -293,6 +318,14 @@ export default function DraftBoard({ heroes, poolByRole, familiarByRole, aliases
           <span className={setup.gsi ? "text-good" : "text-muted"}>{setup.gsi ? "✓" : "2."} конфиг GSI в Доту</span>
           <a href="/settings" className="rounded-md bg-accent/20 px-2.5 py-1 text-accent hover:bg-accent/30">Открыть настройки</a>
           <button onClick={() => { setSetupHidden(true); try { sessionStorage.setItem("draft.setupHidden", "1"); } catch {} }} className="ml-auto text-xs text-muted hover:text-foreground">Скрыть</button>
+        </section>
+      )}
+
+      {acct?.current.id && !acct.current.known && (
+        <section className="rounded-xl border border-accent/40 bg-accent/5 px-3 py-2 text-sm flex flex-wrap items-center gap-3">
+          <span><span className="font-semibold">Общий режим.</span> Аккаунт {acct.current.name ?? acct.current.id}{acct.current.source === "gsi" ? " (его сообщила Дота)" : ""} не знаком: советы по мете и контрпикам без твоего пула. Загрузи его историю, и появятся пул и личные винрейты.</span>
+          <button onClick={() => loadHistory(acct.current.id!)} disabled={!!loadMsg && !loadMsg.startsWith("ошибка")} className="rounded-md bg-accent/20 px-2.5 py-1 text-accent hover:bg-accent/30 disabled:opacity-50">Загрузить историю аккаунта</button>
+          {loadMsg && <span className="text-xs text-muted">{loadMsg}</span>}
         </section>
       )}
 
