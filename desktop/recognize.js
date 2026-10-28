@@ -23,10 +23,16 @@ const CROPS = [[0.15, 0, 0.65, 0.79], [0.1, 0, 0.7, 0.85], [0.2, 0.05, 0.6, 0.71
 const MIN_SCORE = 0.55, MIN_SCORE_SOFT = 0.45, SOFT_EMPTY = 0.3, MIN_MARGIN = 0.08, EMPTY_NCC = 0.7, MIN_EDGE = 0.2;
 // Выученные портреты (персоны, арканы) считаются точнее базовых: совпадение с ними принимаем с меньшим отрывом.
 const LEARNED_SCORE = 0.6;
+// Оверлей FPS (NVIDIA, Steam) в углу экрана закрывает верх крайнего слота: герой под ним набирал 0.52–0.54 и терялся.
+// Если слот не прочитался целиком, сравниваем только его нижние ряды (без верхних MASK_ROWS из TH):
+// без оверлея это те же герои с запасом (0.69–0.71 при отрыве 0.26), пустые слоты по-прежнему узнаются как пустые.
+// Данных меньше, поэтому отрыв от второго кандидата нужен больше (на сохранённых кадрах чужие слоты дают отрыв ≤ 0.08).
+const MASK_ROWS = 5, MASK_SCORE = 0.55, MASK_MARGIN = 0.15;
 
 let templates = null; // [{id, name, crops:[Float32Array], learned:[Float32Array]}]
 let byId = new Map();
 let emptyTs = []; // шаблоны пустого слота: голый (экран стратегии, старые кадры) и с медалью ранга (стадия пиков)
+let emptyLow = []; // те же без верхних рядов
 
 function sample(img, x, y, w, h, tw = TW, th = TH) {
   const { w: W, h: H, data, bgra } = img;
@@ -46,13 +52,15 @@ function sample(img, x, y, w, h, tw = TW, th = TH) {
 }
 function normalize(v) { let m = 0; for (const x of v) m += x; m /= v.length; let s = 0; for (const x of v) s += (x - m) ** 2; s = Math.sqrt(s / v.length) || 1; const o = new Float32Array(v.length); for (let i = 0; i < v.length; i++) o[i] = (v[i] - m) / s; return o; }
 function ncc(a, b) { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s / a.length; }
+/** Нижние ряды нормализованного кропа, заново нормализованные (нормализация не зависит от сдвига и масштаба). */
+function lowerOf(v) { return normalize(v.subarray(MASK_ROWS * TW * 3)); }
 /** Средняя разность соседних точек нормализованного кропа: мера детальности. */
-function edgeEnergy(v) {
+function edgeEnergy(v, th = TH) {
   let s = 0, n = 0;
-  for (let y = 0; y < TH; y++) for (let x = 0; x < TW; x++) for (let c = 0; c < 3; c++) {
+  for (let y = 0; y < th; y++) for (let x = 0; x < TW; x++) for (let c = 0; c < 3; c++) {
     const i = (y * TW + x) * 3 + c;
     if (x + 1 < TW) { s += Math.abs(v[i] - v[i + 3]); n++; }
-    if (y + 1 < TH) { s += Math.abs(v[i] - v[i + TW * 3]); n++; }
+    if (y + 1 < th) { s += Math.abs(v[i] - v[i + TW * 3]); n++; }
   }
   return s / (n || 1);
 }
@@ -65,29 +73,31 @@ function loadTemplates(heroesJson, imgDir, emptyJson) {
     if (!fs.existsSync(f)) continue;
     const p = PNG.sync.read(fs.readFileSync(f));
     const img = { w: p.width, h: p.height, data: p.data, bgra: false };
-    const t = { id: h.id, name: h.name, crops: CROPS.map(([fx, fy, fw, fh]) => normalize(sample(img, fx * img.w, fy * img.h, fw * img.w, fh * img.h))), learned: [] };
+    const crops = CROPS.map(([fx, fy, fw, fh]) => normalize(sample(img, fx * img.w, fy * img.h, fw * img.w, fh * img.h)));
+    const t = { id: h.id, name: h.name, crops, cropsLow: crops.map(lowerOf), learned: [], learnedLow: [] };
     templates.push(t); byId.set(h.id, t);
   }
   emptyTs = (Array.isArray(emptyJson) ? emptyJson : [emptyJson]).map((f) => Float32Array.from(JSON.parse(fs.readFileSync(f, "utf8"))));
+  emptyLow = emptyTs.map(lowerOf);
   return templates.length;
 }
 
 /** Подгружает выученные портреты: { heroes: { [heroId]: [{ v: number[] }] } }. Возвращает их число. */
 function loadLearned(file) {
   if (!templates) throw new Error("templates not loaded");
-  for (const t of templates) t.learned = [];
+  for (const t of templates) { t.learned = []; t.learnedLow = []; }
   let n = 0;
   try {
     const j = JSON.parse(fs.readFileSync(file, "utf8"));
     for (const [id, list] of Object.entries(j.heroes ?? {})) {
       const t = byId.get(Number(id));
       if (!t || !Array.isArray(list)) continue;
-      for (const e of list) if (Array.isArray(e.v) && e.v.length === TW * TH * 3) { t.learned.push(Float32Array.from(e.v)); n++; }
+      for (const e of list) if (Array.isArray(e.v) && e.v.length === TW * TH * 3) { const v = Float32Array.from(e.v); t.learned.push(v); t.learnedLow.push(lowerOf(v)); n++; }
     }
   } catch {}
   return n;
 }
-function addLearned(heroId, vec) { const t = byId.get(heroId); if (!t) return false; t.learned.push(Float32Array.from(vec)); return true; }
+function addLearned(heroId, vec) { const t = byId.get(heroId); if (!t) return false; const v = Float32Array.from(vec); t.learned.push(v); t.learnedLow.push(lowerOf(v)); return true; }
 function learnedCount() { let n = 0; for (const t of templates ?? []) n += t.learned.length; return n; }
 
 function slotRects(W, H) {
@@ -101,23 +111,38 @@ function slotRects(W, H) {
 /** Высота верхней полосы, которую стоит показать для отладки (в пикселях кадра). */
 function stripHeight(H) { return Math.round((SLOT.y + SLOT.h) * H + 12); }
 
+/** Лучший и второй герой для вектора по заданным наборам кропов. */
+function bestOf(v, pick, useLearned) {
+  let best = null, second = null;
+  for (const t of templates) {
+    const { crops, learned } = pick(t);
+    let s = -1, viaLearned = false;
+    for (const c of crops) { const q = ncc(v, c); if (q > s) s = q; }
+    if (useLearned) for (const c of learned) { const q = ncc(v, c); if (q > s) { s = q; viaLearned = true; } }
+    if (!best || s > best.s) { second = best; best = { id: t.id, name: t.name, s, viaLearned }; } else if (!second || s > second.s) second = { id: t.id, name: t.name, s };
+  }
+  return { best, margin: best ? best.s - (second?.s ?? 0) : 0 };
+}
+
 /** Оценка одного нормализованного кропа: пустой слот, плоский фон или лучший/второй герой. */
 function scoreVector(v, { useLearned = true } = {}) {
   let emptyScore = -1; for (const e of emptyTs) emptyScore = Math.max(emptyScore, ncc(v, e));
   const edge = edgeEnergy(v);
-  let best = null, second = null, learnedHit = false;
-  for (const t of templates) {
-    let s = -1, viaLearned = false;
-    for (const c of t.crops) { const q = ncc(v, c); if (q > s) s = q; }
-    if (useLearned) for (const c of t.learned) { const q = ncc(v, c); if (q > s) { s = q; viaLearned = true; } }
-    if (!best || s > best.s) { second = best; best = { id: t.id, name: t.name, s, viaLearned }; } else if (!second || s > second.s) second = { id: t.id, name: t.name, s };
-  }
-  if (best) learnedHit = best.viaLearned && best.s >= LEARNED_SCORE;
-  const margin = best ? best.s - (second?.s ?? 0) : 0;
+  const { best, margin } = bestOf(v, (t) => ({ crops: t.crops, learned: t.learned }), useLearned);
+  const learnedHit = !!best && best.viaLearned && best.s >= LEARNED_SCORE;
   const empty = emptyScore >= EMPTY_NCC;
   const flat = !empty && edge < MIN_EDGE;
   const ok = !empty && !flat && best && (learnedHit || (margin >= MIN_MARGIN && (best.s >= MIN_SCORE || (best.s >= MIN_SCORE_SOFT && emptyScore < SOFT_EMPTY))));
-  return { empty, flat, ok, best, second, margin, emptyScore, edge };
+  if (empty || ok) return { empty, flat, ok, best, margin, emptyScore, edge, masked: false };
+  // не прочитался целиком: возможно, верх закрыт оверлеем — пробуем по нижним рядам
+  const l = lowerOf(v);
+  let emptyL = -1; for (const e of emptyLow) emptyL = Math.max(emptyL, ncc(l, e));
+  if (emptyL >= EMPTY_NCC) return { empty: true, flat: false, ok: false, best, margin, emptyScore: emptyL, edge, masked: true };
+  const edgeL = edgeEnergy(l, TH - MASK_ROWS);
+  const low = bestOf(l, (t) => ({ crops: t.cropsLow, learned: t.learnedLow }), useLearned);
+  const okL = edgeL >= MIN_EDGE && low.best && low.margin >= MASK_MARGIN && low.best.s >= MASK_SCORE;
+  if (okL) return { empty: false, flat: false, ok: true, best: low.best, margin: low.margin, emptyScore: emptyL, edge: edgeL, masked: true };
+  return { empty, flat, ok, best, margin, emptyScore, edge, masked: false };
 }
 
 /** img: {w,h,data,bgra}. Возвращает слоты с heroId или null (пусто/неуверенно). */
@@ -126,10 +151,10 @@ function recognize(img) {
   return slotRects(img.w, img.h).map((r) => {
     const v = normalize(sample(img, r.x, r.y, r.w, r.h));
     const q = scoreVector(v);
-    if (q.empty) return { ...r, heroId: null, empty: true, emptyScore: +q.emptyScore.toFixed(2) };
+    if (q.empty) return { ...r, heroId: null, empty: true, emptyScore: +q.emptyScore.toFixed(2), masked: q.masked };
     return {
       ...r, heroId: q.ok ? q.best.id : null, name: q.ok ? q.best.name : null, flat: q.flat,
-      score: +(q.best?.s ?? 0).toFixed(2), margin: +q.margin.toFixed(2), emptyScore: +q.emptyScore.toFixed(2), edge: +q.edge.toFixed(2), learned: q.ok && q.best.viaLearned,
+      score: +(q.best?.s ?? 0).toFixed(2), margin: +q.margin.toFixed(2), emptyScore: +q.emptyScore.toFixed(2), edge: +q.edge.toFixed(2), learned: q.ok && !!q.best.viaLearned, masked: q.masked,
     };
   });
 }
