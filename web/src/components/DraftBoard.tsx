@@ -13,7 +13,8 @@ const ZONES: { key: Zone; label: string; color: string; max: number; hint: strin
   { key: "bans", label: "Баны", color: "border-ban text-ban", max: 24, hint: "инвокер шторм" },
 ];
 
-const icon = (short: string) => `https://cdn.stratz.com/images/dota2/heroes/${short}_icon.png`;
+// иконки с CDN Valve: у Stratz alchemist_icon.png оказался копией dragon_knight_icon.png
+const icon = (short: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${short}.png`;
 const portrait = (short: string) => `https://cdn.stratz.com/images/dota2/heroes/${short}_horz.png`;
 const ROLE_LABEL: Record<Role, string> = { 1: "керри", 2: "мид", 3: "офлейн", 4: "4", 5: "5" };
 const ROLES: Role[] = [1, 2, 3, 4, 5];
@@ -275,10 +276,11 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
 
   const inPool = result.filter((c) => c.poolStatus !== "outside");
   const outside = result.filter((c) => c.poolStatus === "outside").slice(0, showAll ? 40 : 8);
+  // порядок в окне пула постоянный (по алфавиту): отмеченные герои не перепрыгивают наверх, иначе список скачет при каждом клике
   const poolList = useMemo(() => {
     const q = poolQuery.trim().toLowerCase();
-    return heroes.filter((h) => !q || h.name.toLowerCase().includes(q)).sort((a, b) => Number(poolSet.has(b.id)) - Number(poolSet.has(a.id)) || a.name.localeCompare(b.name));
-  }, [heroes, poolQuery, poolSet]);
+    return heroes.filter((h) => !q || h.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
+  }, [heroes, poolQuery]);
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-5 flex flex-col gap-5">
@@ -408,7 +410,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
       </div>
 
       {poolOpen && (
-        <div className="fixed inset-0 z-20 bg-black/60 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setPoolOpen(false)}>
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setPoolOpen(false)}>
           <div className="w-full max-w-2xl rounded-xl border border-border bg-panel p-4 flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h2 className="font-semibold">Мой пул · {ROLE_FULL[role].toLowerCase()} · {poolSet.size} героев</h2>

@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import type { DraftLog } from "@/lib/log";
 import type { Hero } from "@/lib/types";
 
-const icon = (short: string) => `https://cdn.stratz.com/images/dota2/heroes/${short}_icon.png`;
+// иконки с CDN Valve: у Stratz alchemist_icon.png оказался копией dragon_knight_icon.png
+const icon = (short: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${short}.png`;
 const fmt = (t: number) => new Date(t * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 export default function HistoryView({ items: initial, heroes, accounts = {}, defaultAccountId = null }: { items: DraftLog[]; heroes: Hero[]; accounts?: Record<number, string>; defaultAccountId?: number | null }) {
