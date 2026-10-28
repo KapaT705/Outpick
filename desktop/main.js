@@ -299,7 +299,17 @@ ipcMain.handle("diag:save", async (_e, f) => {
     zip.addFile("main-log.txt", Buffer.from(LOG.join("\n")));
     try { if (logPrevFile && fs.existsSync(logPrevFile)) zip.addFile("main-log-prev.txt", fs.readFileSync(logPrevFile)); } catch {}
     zip.addFile("gsi-raw.json", Buffer.from(JSON.stringify(await serverJson("/api/gsi/raw"), null, 1)));
-    zip.addFile("gsi-config.json", Buffer.from(JSON.stringify(await serverJson("/api/gsi/install"), null, 1)));
+    const gsiCfg = await serverJson("/api/gsi/install");
+    zip.addFile("gsi-config.json", Buffer.from(JSON.stringify(gsiCfg, null, 1)));
+    // файлы Доты, где при подключении к матчу могут быть Steam ID всех десяти игроков (server_log.txt) — хвост 256 КБ
+    for (const dir of gsiCfg?.dotaDirs ?? []) for (const name of ["server_log.txt", "console.log"]) {
+      try {
+        const p = path.join(dir, name); if (!fs.existsSync(p)) continue;
+        const st = fs.statSync(p); const len = Math.min(st.size, 256 * 1024); const buf = Buffer.alloc(len);
+        const fd = fs.openSync(p, "r"); fs.readSync(fd, buf, 0, len, st.size - len); fs.closeSync(fd);
+        zip.addFile(`dota-${name}`, buf);
+      } catch {}
+    }
     zip.addFile("draft-log.json", Buffer.from(JSON.stringify(await serverJson("/api/log"), null, 1)));
     zip.addFile("refresh.json", Buffer.from(JSON.stringify(await serverJson("/api/refresh"), null, 1)));
     try { const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 0, height: 0 } }); zip.addFile("capture-sources.json", Buffer.from(JSON.stringify(sources.map((s) => ({ id: s.id, name: s.name })), null, 1))); } catch (e) { zip.addFile("capture-sources.json", Buffer.from(JSON.stringify({ error: String(e?.message ?? e) }))); }
