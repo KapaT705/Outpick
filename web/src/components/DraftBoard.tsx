@@ -16,7 +16,9 @@ const ZONES: { key: Zone; label: string; color: string; max: number; hint: strin
 // иконки с CDN Valve: у Stratz alchemist_icon.png оказался копией dragon_knight_icon.png
 const icon = (short: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${short}.png`;
 const portrait = (short: string) => `https://cdn.stratz.com/images/dota2/heroes/${short}_horz.png`;
-const ROLE_LABEL: Record<Role, string> = { 1: "керри", 2: "мид", 3: "офлейн", 4: "4", 5: "5" };
+// роли везде цифрами, как в игре: 1 керри, 2 мид, 3 офлейн, 4 и 5 саппорты (полные названия в подсказках)
+const ROLE_LABEL: Record<Role, string> = { 1: "1", 2: "2", 3: "3", 4: "4", 5: "5" };
+const ROLE_NAME: Record<Role, string> = { 1: "керри", 2: "мид", 3: "офлейн", 4: "саппорт 4", 5: "саппорт 5" };
 const ROLES: Role[] = [1, 2, 3, 4, 5];
 const ATTRS: { key: Attr; label: string; color: string }[] = [
   { key: "str", label: "Сила", color: "bg-[#ec3d06]" },
@@ -43,7 +45,7 @@ function storeOverride(role: Role, o: PoolOverride) {
   try { const all = JSON.parse(localStorage.getItem(POOL_KEY_V2) ?? "{}"); all[role] = o; localStorage.setItem(POOL_KEY_V2, JSON.stringify(all)); } catch {}
 }
 
-const ROLE_FULL: Record<Role, string> = { 1: "Керри", 2: "Мид", 3: "Офлейн", 4: "Саппорт 4", 5: "Саппорт 5" };
+const ROLE_FULL: Record<Role, string> = { 1: "1 · керри", 2: "2 · мид", 3: "3 · офлейн", 4: "4 · саппорт", 5: "5 · саппорт" };
 const ROLE_KEY = "draft.role.v1";
 const POOL_KEY_V2 = "draft.poolOverride.v2"; // { [role]: {add, remove} }
 
@@ -291,7 +293,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
           <h1 className="text-xl font-semibold">Драфт <span className="text-muted text-sm font-normal">Divine/Immortal</span></h1>
           <div className="flex rounded-lg border border-border overflow-hidden text-xs" title="Твоя роль в этой игре: от неё зависят пул, базовые винрейты и вес матчапов по лейну">
             {ROLES.map((r) => (
-              <button key={r} onClick={() => setRole(r)} className={`px-2.5 py-1.5 ${role === r ? "bg-accent/25 text-accent font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>{ROLE_FULL[r]}</button>
+              <button key={r} onClick={() => setRole(r)} title={ROLE_NAME[r]} className={`px-2.5 py-1.5 ${role === r ? "bg-accent/25 text-accent font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>{ROLE_FULL[r]}</button>
             ))}
           </div>
         </div>
@@ -356,10 +358,10 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
                     </button>
                     {z.key !== "bans" && (
                       <select value={p.role ?? ""} onChange={(e) => setPickRole(z.key, p.id, e.target.value ? (Number(e.target.value) as Role) : null)}
-                        title={p.role ? "Роль задана тобой" : guess ? `Предполагаю: ${ROLE_LABEL[guess.role]} (${Math.round(guess.prob * 100)}%)` : "Роль"}
+                        title={p.role ? `Роль задана тобой: ${ROLE_NAME[p.role]}` : guess ? `Предполагаю: ${ROLE_NAME[guess.role]} (${Math.round(guess.prob * 100)}%)` : "Роль (1 керри, 2 мид, 3 офлейн, 4 и 5 саппорты)"}
                         className={`h-7 border-l border-border bg-panel px-1 outline-none cursor-pointer ${p.role ? "text-foreground" : "text-muted italic"}`}>
                         <option value="">{guess ? `${ROLE_LABEL[guess.role]}?` : "роль?"}</option>
-                        {ROLES.filter((r) => !(z.key === "allies" && r === role)).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                        {ROLES.filter((r) => !(z.key === "allies" && r === role)).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]} · {ROLE_NAME[r]}</option>)}
                       </select>
                     )}
                   </div>
@@ -405,7 +407,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
         </section>
 
         <section className="flex flex-col gap-4 min-w-0">
-          <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role].toLowerCase()}`} items={inPool} loading={loading} byId={byId} onTake={take} />
+          <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} items={inPool} loading={loading} byId={byId} onTake={take} />
           <ResultBlock title="Вне пула, но хороши в этот драфт" items={outside} loading={loading} byId={byId} onTake={take}
             footer={<button onClick={() => setShowAll(!showAll)} className="text-xs text-muted underline">{showAll ? "Показать меньше" : "Показать больше"}</button>} />
         </section>
@@ -415,7 +417,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
         <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setPoolOpen(false)}>
           <div className="w-full max-w-2xl rounded-xl border border-border bg-panel p-4 flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold">Мой пул · {ROLE_FULL[role].toLowerCase()} · {poolSet.size} героев</h2>
+              <h2 className="font-semibold">Мой пул · {ROLE_FULL[role]} · {poolSet.size} героев</h2>
               <button onClick={() => setPoolOpen(false)} className="text-muted hover:text-foreground">Закрыть</button>
             </div>
             <p className="text-xs text-muted">Пул отдельный для каждой роли. По умолчанию в нём герои с 10+ играми на этой роли за год. Отметь тех, на ком реально играешь: они попадут в список «Из твоего пула». Правки хранятся в этом браузере.</p>

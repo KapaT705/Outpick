@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
-type UpdateEvent = { type: "checking" | "available" | "none" | "progress" | "downloaded" | "error"; version?: string; current?: string; percent?: number; message?: string };
+type UpdateEvent = { type: "checking" | "available" | "none" | "progress" | "downloaded" | "installing" | "error"; version?: string; current?: string; percent?: number; message?: string };
 export type RecognizedSlot = { team: "radiant" | "dire"; idx: number; heroId: number | null; name: string | null; score: number | null; margin: number | null; empty: boolean; learned?: boolean };
 export type RecognizeCtx = { matchId?: string | null; team?: "radiant" | "dire" | null; slot?: number | null; phase?: string | null };
 export type LearnResult = { ok: boolean; error?: string; checked?: number; added?: number; total?: number; notes?: string[] };
@@ -37,7 +37,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => { off?.(); window.removeEventListener("desktop-update", onFake); };
   }, []);
 
-  const banner = upd && !dismissed && (upd.type === "available" || upd.type === "progress" || upd.type === "downloaded" || upd.type === "error") ? upd : null;
+  const banner = upd && !dismissed && (upd.type === "available" || upd.type === "progress" || upd.type === "downloaded" || upd.type === "installing" || upd.type === "error") ? upd : null;
 
   return (
     <div className="min-h-full flex flex-col">
@@ -68,9 +68,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <div className="h-1.5 w-48 overflow-hidden rounded bg-panel-2"><div className="h-full bg-accent transition-all" style={{ width: `${banner.percent ?? 0}%` }} /></div>
             </>}
             {banner.type === "downloaded" && <>
-              <span>Версия <b>{banner.version}</b> скачана, установится при перезапуске.</span>
-              <button onClick={() => window.desktop?.installUpdate()} className="rounded-md bg-accent px-3 py-1 text-xs font-semibold text-black hover:brightness-110">Перезапустить сейчас</button>
+              <span>Версия <b>{banner.version}</b> скачана. При перезапуске установится сама, без окон установщика, и программа откроется снова.</span>
+              <button onClick={() => { window.desktop?.installUpdate(); setUpd({ type: "installing", version: banner.version }); }} className="rounded-md bg-accent px-3 py-1 text-xs font-semibold text-black hover:brightness-110">Перезапустить сейчас</button>
             </>}
+            {banner.type === "installing" && <span>Устанавливаю {banner.version}… программа закроется и откроется сама через несколько секунд.</span>}
             {banner.type === "error" && <span className="text-bad">Не удалось проверить обновления: {banner.message}</span>}
             <button onClick={() => setDismissed(true)} className="ml-auto text-xs text-muted hover:text-foreground">Скрыть</button>
           </div>

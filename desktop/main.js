@@ -162,7 +162,8 @@ function setupUpdater() {
     try { await autoUpdater.checkForUpdates(); return { ok: true }; } catch (e) { return { ok: false, reason: String(e?.message ?? e) }; }
   });
   ipcMain.handle("update:download", async () => { try { await autoUpdater.downloadUpdate(); return { ok: true }; } catch (e) { return { ok: false, reason: String(e?.message ?? e) }; } });
-  ipcMain.handle("update:install", () => { autoUpdater.quitAndInstall(); return { ok: true }; });
+  // тихая установка (NSIS /S) и автозапуск после неё: без мастера «Далее → Готово», окно программы просто возвращается
+  ipcMain.handle("update:install", () => { setTimeout(() => autoUpdater.quitAndInstall(true, true), 300); return { ok: true }; });
   // тихая проверка при старте, если есть токен
   if (!isDev && configureFeed()) setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 4000);
 }

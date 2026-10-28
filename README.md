@@ -128,3 +128,5 @@ Stratz сам (`web/src/lib/sync.ts`: раз в 5 минут, для запис�
 (Fine-grained token с правом Contents: Read на этот репозиторий). Новая версия: поднять `version`
 в `desktop/package.json`, закоммитить, `git tag vX.Y.Z && git push origin main --tags`;
 GitHub Actions соберёт установщики и опубликует релиз.
+Кнопка «Перезапустить сейчас» ставит обновление тихо (`quitAndInstall(true, true)`: NSIS с `/S` и автозапуск), без мастера
+«Далее → Готово»: программа закрывается и через несколько секунд открывается новой версией.
