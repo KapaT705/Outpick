@@ -44,7 +44,28 @@ export type DraftLog = {
 const FILE = path.join(USER_DIR, "draft-log.json");
 
 export function readLog(): DraftLog[] {
-  try { return JSON.parse(fs.readFileSync(FILE, "utf8")) as DraftLog[]; } catch { return []; }
+  let items: DraftLog[];
+  try { items = JSON.parse(fs.readFileSync(FILE, "utf8")) as DraftLog[]; } catch { return []; }
+  const clean = dedupe(items);
+  if (clean.length !== items.length) writeLog(clean);
+  return clean;
+}
+
+/**
+ * Один матч — одна запись. Старые версии писали дубли (ручное «взять» несколько раз в одном матче): оставляем самую
+ * полную по номеру матча (больше врагов/союзников, есть разбор), остальные выбрасываем.
+ */
+function dedupe(items: DraftLog[]): DraftLog[] {
+  const byMatch = new Map<number, DraftLog>();
+  const out: DraftLog[] = [];
+  const richness = (x: DraftLog) => x.enemies.length + x.allies.length + (x.details ? 10 : 0) + (x.gsiMatchId ? 1 : 0);
+  for (const x of items) {
+    if (x.matchId == null) { out.push(x); continue; }
+    const prev = byMatch.get(x.matchId);
+    if (!prev) { byMatch.set(x.matchId, x); out.push(x); continue; }
+    if (richness(x) > richness(prev)) { out[out.indexOf(prev)] = x; byMatch.set(x.matchId, x); }
+  }
+  return out;
 }
 
 export function writeLog(items: DraftLog[]) {

@@ -154,7 +154,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
               <button onClick={(e) => { e.stopPropagation(); del(x.id); }} className="text-xs text-muted hover:text-bad">удалить</button>
               {openId === x.id && (
                 <div className="basis-full border-t border-border pt-2 text-xs text-muted grid gap-1 sm:grid-cols-2">
-                  <div><span className="text-foreground">Совет из пула:</span> {x.topPool.length ? x.topPool.map((r) => <span key={r.heroId} className={r.heroId === x.chosenHeroId ? "text-accent" : ""}>{r.rank}. {r.name} {Math.round(r.finalScore)}%; </span>) : "пусто"}</div>
+                  <div><span className="text-foreground">Совет из пула:</span> {x.topPool.length ? x.topPool.map((r) => <span key={r.heroId} className={r.heroId === x.chosenHeroId ? "text-accent" : ""}>{r.rank}. {r.name} {Math.round(r.finalScore)}%; </span>) : "пул аккаунта не был загружен"}</div>
                   <div><span className="text-foreground">Лучшие вообще:</span> {x.topAll.map((r) => <span key={r.heroId} className={r.heroId === x.chosenHeroId ? "text-accent" : ""}>{r.rank}. {r.name} {Math.round(r.finalScore)}%; </span>)}</div>
                   <div className="sm:col-span-2">
                     {x.details ? <MatchStats d={x.details} b={x.bench ?? null} byId={byId} /> : x.matchId ? <button onClick={(e) => { e.stopPropagation(); loadDetails(x.id); }} disabled={detailsBusy === x.id} className="text-accent hover:underline disabled:opacity-50">{detailsBusy === x.id ? "загружаю разбор…" : "Загрузить разбор матча"}</button> : <span>Разбор появится, когда подтянется результат.</span>}
@@ -172,19 +172,20 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
 
 /** Цифры матча рядом с нормой героя на позиции: зелёное лучше нормы на 10%+, красное хуже. */
 function MatchStats({ d, b, byId }: { d: MatchDetails; b: Bench | null; byId: Map<number, Hero> }) {
-  const cmp = (v: number | null | undefined, norm: number | null | undefined, lowerBetter = false, digits = 0) => {
+  // значение, подкрашенное относительно нормы; норма пишется рядом как «/ n», для KDA отдельно скобками (bare)
+  const cmp = (v: number | null | undefined, norm: number | null | undefined, lowerBetter = false, digits = 0, bare = false) => {
     if (v == null) return null;
     const n = norm == null ? null : Math.round(norm * 10 ** digits) / 10 ** digits;
     const ratio = n ? v / n : null;
     const good = ratio != null && (lowerBetter ? ratio <= 0.9 : ratio >= 1.1), bad = ratio != null && (lowerBetter ? ratio >= 1.1 : ratio <= 0.9);
-    return <><b className={good ? "text-good" : bad ? "text-bad" : "text-foreground"}>{v}</b>{n != null ? <span className="opacity-70"> / {n}</span> : null}</>;
+    return <><b className={good ? "text-good" : bad ? "text-bad" : "text-foreground"}>{v}</b>{n != null && !bare ? <span className="opacity-70"> / {n}</span> : null}</>;
   };
   const dur = b?.avgDuration ? b.avgDuration : null;
   const oppName = d.laneOpp ? byId.get(d.laneOpp.heroId)?.name ?? "враг" : null;
   const laneDiff = d.laneOpp && d.nw10 != null && d.laneOpp.nw10 != null ? d.nw10 - d.laneOpp.nw10 : null;
   return (
     <div className="text-xs text-muted flex flex-wrap gap-x-3 gap-y-0.5 mt-1" title={b ? `Норма: средние Divine/Immortal на этом герое и позиции, ${b.matchCount} матчей, винрейт ${Math.round(b.winrate * 100)}%` : "Нормы нет: Stratz не ответил"}>
-      <span>KDA {cmp(d.kills, b?.overall.kills)}/{cmp(d.deaths, b?.overall.deaths, true)}/{cmp(d.assists, b?.overall.assists)}</span>
+      <span>KDA {cmp(d.kills, b?.overall.kills, false, 0, true)}/{cmp(d.deaths, b?.overall.deaths, true, 0, true)}/{cmp(d.assists, b?.overall.assists, false, 0, true)}{b ? <span className="opacity-60"> (норма {Math.round(b.overall.kills)}/{Math.round(b.overall.deaths)}/{Math.round(b.overall.assists)})</span> : null}</span>
       <span>GPM {cmp(d.gpm, dur ? b!.overall.networth / dur : null)}</span>
       <span>XPM {cmp(d.xpm, dur ? b!.overall.xp / dur : null)}</span>
       <span>LH {cmp(d.lastHits, b?.overall.cs)}</span>
