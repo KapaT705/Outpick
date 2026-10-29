@@ -111,6 +111,31 @@ function slotRects(W, H) {
 // Под слотами своей команды Дота пишет роль из очереди (иконка и текст, низ строки ≈ 140/U): полоса захвата
 // и сохранённые кадры включают её, чтобы по ним можно было собрать шаблоны иконок ролей и читать роли союзников.
 const ROLE_ROW_BOTTOM = 140 / U;
+// Иконка роли под слотом своей команды: строка «иконка + текст» начинается под левым краем слота. Геометрия
+// ориентировочная (по кадру 1280x720), уточняется по полному кадру 2560x1440; шаблоны пяти иконок —
+// desktop/assets/role-icons.json ({ "1": [...], ... }, нормализованные 12x12 RGB), без файла роли не читаются.
+const ROLE_ICON = { dx: 2 / U, y: 114 / U, w: 13 / U, h: 13 / U };
+const RW = 12, RH = 12, ROLE_MIN = 0.6, ROLE_MARGIN = 0.1;
+let roleTs = null; // { role: Float32Array[] }
+/** Прямоугольники иконок ролей под слотами команды. */
+function roleRects(W, H, team) {
+  return slotRects(W, H).filter((r) => r.team === team).map((r) => ({ team: r.team, idx: r.idx, x: Math.round(r.x + ROLE_ICON.dx * H), y: Math.round(ROLE_ICON.y * H), w: Math.round(ROLE_ICON.w * H), h: Math.round(ROLE_ICON.h * H) }));
+}
+function loadRoleTemplates(file) {
+  roleTs = null;
+  try { const j = JSON.parse(fs.readFileSync(file, "utf8")); roleTs = {}; for (const [role, list] of Object.entries(j)) roleTs[role] = list.map((v) => Float32Array.from(v)); return Object.keys(roleTs).length; } catch { return 0; }
+}
+/** Роли союзников по иконкам под слотами: [{idx, role|null, score}]; пусто, если шаблонов нет. */
+function recognizeRoles(img, team) {
+  if (!roleTs) return [];
+  return roleRects(img.w, img.h, team).map((r) => {
+    const v = normalize(sample(img, r.x, r.y, r.w, r.h, RW, RH));
+    let best = null, second = null;
+    for (const [role, list] of Object.entries(roleTs)) { let s = -1; for (const t of list) s = Math.max(s, ncc(v, t)); if (!best || s > best.s) { second = best; best = { role: Number(role), s }; } else if (!second || s > second.s) second = { role: Number(role), s }; }
+    const ok = best && best.s >= ROLE_MIN && best.s - (second?.s ?? 0) >= ROLE_MARGIN;
+    return { idx: r.idx, role: ok ? best.role : null, score: +(best?.s ?? 0).toFixed(2) };
+  });
+}
 /** Высота верхней полосы кадра: слоты и строка ролей под ними (в пикселях кадра). */
 function stripHeight(H) { return Math.round(ROLE_ROW_BOTTOM * H + 12); }
 
@@ -162,4 +187,4 @@ function recognize(img) {
   });
 }
 
-module.exports = { loadTemplates, loadLearned, addLearned, learnedCount, recognize, scoreVector, slotRects, stripHeight, sample, normalize, ncc, TW, TH };
+module.exports = { loadTemplates, loadLearned, addLearned, learnedCount, recognize, scoreVector, slotRects, stripHeight, sample, normalize, ncc, TW, TH, roleRects, loadRoleTemplates, recognizeRoles, RW, RH };

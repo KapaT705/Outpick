@@ -39,7 +39,11 @@ export default function SettingsForm() {
   const [learned, setLearned] = useState<LearnedInfo | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [ref, setRef] = useState<{ running: boolean; message: string; error: string | null; updatedAt: number | null } | null>(null);
+  type Tab = "accounts" | "screen" | "dota" | "data" | "diag";
+  const [tab, setTabState] = useState<Tab>("accounts");
+  const setTab = (t: Tab) => { setTabState(t); try { localStorage.setItem("settings.tab", t); } catch {} };
+  useEffect(() => { try { const t = localStorage.getItem("settings.tab"); if (t && ["accounts", "screen", "dota", "data", "diag"].includes(t)) setTabState(t as Tab); } catch {} }, []);
+  const [ref, setRef] = useState<{ running: boolean; message: string; error: string | null; updatedAt: number | null; autoEveryDays?: number; due?: boolean } | null>(null);
 
   useEffect(() => { reloadInfo(); fetch("/api/gsi/install").then((r) => r.json()).then(setGsi).catch(() => {}); window.desktop?.learnedInfo?.().then(setLearned).catch(() => {}); }, []);
   useEffect(() => {
@@ -67,9 +71,24 @@ export default function SettingsForm() {
 
   return (
     <main className="mx-auto w-full max-w-xl px-4 py-5 flex flex-col gap-4">
-      <header className="flex items-baseline justify-between">
+      <header className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Настройки</h1>
       </header>
+      {/* вкладки вместо длинной прокрутки: у каждой точка состояния (зелёная = настроено) */}
+      <nav className="flex flex-wrap gap-1 rounded-xl border border-border bg-panel p-1 text-sm">
+        {([
+          ["accounts", "Аккаунты и Stratz", !!info?.hasToken && !!info?.accounts?.length],
+          ["screen", "Экран пиков", info?.screenCapture !== false],
+          ["dota", "Связь с Дотой", !!gsi?.installed],
+          ["data", "Данные и обновления", !!ref?.updatedAt && !ref?.due],
+          ["diag", "Диагностика", true],
+        ] as [Tab, string, boolean][]).map(([key, label, ok]) => (
+          <button key={key} onClick={() => setTab(key)} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 ${tab === key ? "bg-accent/20 text-accent font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>
+            <span className={`inline-block h-1.5 w-1.5 rounded-full ${ok ? "bg-good" : "bg-border"}`} />{label}
+          </button>
+        ))}
+      </nav>
+      {tab === "accounts" && (
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-3 text-sm">
         <div className="flex flex-col gap-2">
           <span className="flex items-center gap-2">Аккаунты Steam <Check ok={!!info?.accounts?.length} label={info?.accounts?.length ? `${info.accounts.length}` : "нет"} /></span>
@@ -111,7 +130,9 @@ export default function SettingsForm() {
           {msg && <span className="text-xs text-muted">{msg}</span>}
         </div>
       </div>
+      )}
 
+      {tab === "screen" && (
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-3 text-sm">
         <div className="font-semibold flex items-center gap-2">Чтение экрана пиков <Check ok={info?.screenCapture !== false} label={info?.screenCapture !== false ? "включено" : "выключено"} /></div>
         <p className="text-xs text-muted">Пока Дота закрыта, программа экран не трогает и почти не нагружает компьютер. Когда Дота запущена, на стадии пиков программа снимает горизонтальный экран (вертикальные мониторы не читаются, при нескольких горизонтальных запоминает тот, где была стадия пиков) и распознаёт портреты в верхней панели: враги и союзники появляются в пикере сами. Кадры стадии пиков хранятся только на этом компьютере и никуда не отправляются. Когда результат матча подтягивается из Stratz, программа сверяет кадры с реальным составом и доучивает портреты, которых не знала (персоны, арканы): с каждым матчем узнаёт больше.</p>
@@ -152,7 +173,9 @@ export default function SettingsForm() {
           </div>
         )}
       </div>
+      )}
 
+      {tab === "diag" && (
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
         <div className="font-semibold">Диагностика</div>
         <p className="text-xs text-muted">Одна кнопка собирает всё, что нужно для разбора проблем, в zip-файл в папке «Загрузки»: версия и система, логи, данные GSI, конфиг, журнал драфтов, снимок экрана с результатом распознавания и кадры со стадии пиков двух последних драфтов (они хранятся на диске и не теряются при перезапуске). Токены в файл не попадают. Файл можно переслать как есть.</p>
@@ -162,7 +185,9 @@ export default function SettingsForm() {
           {diag && <span className="text-xs text-muted break-all">{diag}</span>}
         </div>
       </div>
+      )}
 
+      {tab === "data" && (
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
         <div className="font-semibold">Обновления программы</div>
         <div className="flex items-center gap-3">
@@ -171,7 +196,9 @@ export default function SettingsForm() {
           {updMsg && <span className="text-xs text-muted">{updMsg}</span>}
         </div>
       </div>
+      )}
 
+      {tab === "dota" && (
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
         <div className="font-semibold flex items-center gap-2">Связь с Дотой (GSI) <Check ok={!!gsi?.installed} label={gsi?.installed ? "конфиг установлен" : "конфиг не найден"} /></div>
         <p className="text-xs text-muted">Дота умеет отправлять программе состояние матча: это официальная функция Valve, в игру она не вмешивается. Важно: обычному игроку Дота отдаёт только твоего выбранного героя и номер матча, состав драфта она показывает только зрителям. Поэтому врагов ты вводишь сам, а программа в режиме «Авто» дописывает твоего героя и сама сохраняет драфт в историю. Для этого в папку игры кладётся один файл конфига, после установки перезапусти Доту.</p>
@@ -192,10 +219,12 @@ export default function SettingsForm() {
         {raw && <textarea readOnly value={raw} className="h-48 w-full rounded bg-panel-2 p-2 text-[11px] font-mono text-muted" />}
         {gsi && <details className="text-xs text-muted"><summary className="cursor-pointer">Или вручную: содержимое файла {gsi.fileName}</summary><pre className="mt-1 whitespace-pre-wrap rounded bg-panel-2 p-2 text-[11px]">{gsi.cfg}</pre><div>Положи его в папку <code>dota 2 beta\game\dota\cfg\gamestate_integration\</code>.</div></details>}
       </div>
+      )}
 
+      {tab === "data" && (
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
         <div className="font-semibold flex items-center gap-2">Данные меты <Check ok={!!ref?.updatedAt} label={ref?.updatedAt ? `обновлены ${new Date(ref.updatedAt * 1000).toLocaleDateString("ru-RU")}` : "из сборки"} /></div>
-        <p className="text-xs text-muted">Матчапы, синергии, популярность героев на миде и роли за последние 4 недели на Divine/Immortal, плюс твой пул и личная история за год. Обновлять стоит раз в неделю и после патча. Занимает около минуты.</p>
+        <p className="text-xs text-muted">Матчапы, синергии, популярность героев по ролям за последние 4 недели на Divine/Immortal и отдельно у Immortal, плюс пул и личная история текущего аккаунта за год. Обновляется само раз в {ref?.autoEveryDays ?? 7} дней, когда Дота не на стадии пиков; после патча можно нажать вручную. Занимает около минуты.</p>
         <div className="flex items-center gap-3">
           <button onClick={startRefresh} disabled={!!ref?.running} className="rounded-md border border-border px-3 py-1.5 hover:border-accent disabled:opacity-50">{ref?.running ? "обновляю…" : "Обновить мету"}</button>
           <span className="text-xs text-muted">
@@ -203,6 +232,7 @@ export default function SettingsForm() {
           </span>
         </div>
       </div>
+      )}
     </main>
   );
 }

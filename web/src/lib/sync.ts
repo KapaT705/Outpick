@@ -1,6 +1,8 @@
 import { readLog, writeLog, type DraftLog } from "./log";
 import { readConfig } from "./config";
 import { saveLabels, type MatchLabel } from "./labels";
+import { fetchMatchDetails } from "./matchDetails";
+import { fetchBench } from "./bench";
 
 type P = { steamAccountId: number | null; heroId: number; isRadiant: boolean; isVictory: boolean; playerSlot: number };
 type M = { id: number; startDateTime: number; durationSeconds: number; didRadiantWin: boolean; lobbyType?: string; players: P[] };
@@ -58,6 +60,14 @@ function meIn(m: M, me: number, heroId: number): P | undefined {
   return m.players.find((p) => p.steamAccountId === me) ?? m.players.find((p) => p.heroId === heroId);
 }
 
+/** Разбор матча и норма героя для записи; тихо, без исключений. */
+export async function attachDetails(rec: DraftLog, ME: number) {
+  if (!rec.matchId || rec.details) return;
+  rec.details = await fetchMatchDetails(rec.matchId, ME, rec.chosenHeroId);
+  const pos = rec.details?.position ?? rec.role ?? 2;
+  rec.bench = await fetchBench(rec.chosenHeroId, pos);
+}
+
 function apply(rec: DraftLog, m: M, me: P, now: number, labels: MatchLabel[]) {
   rec.matchId = m.id; rec.won = me.isVictory; rec.durationSeconds = m.durationSeconds; rec.syncedAt = now;
   // сверка игроков из server_log.txt с матчем: те же Steam ID и тот же порядок (слот 0–4 Свет, 5–9 Тьма по playerSlot)
@@ -94,7 +104,7 @@ export async function syncResults(): Promise<SyncResult> {
     const ME = rec.accountId ?? DEFAULT ?? 0;
     if (rec.gsiMatchId) {
       const m = (await stratzMatch(TOKEN, rec.gsiMatchId)) ?? (await openDotaMatch(rec.gsiMatchId));
-      if (m) { fetched++; const me = meIn(m, ME, rec.chosenHeroId); if (me) { apply(rec, m, me, now, labels); updated++; } }
+      if (m) { fetched++; const me = meIn(m, ME, rec.chosenHeroId); if (me) { apply(rec, m, me, now, labels); await attachDetails(rec, ME); updated++; } }
       continue;
     }
     byList.push(rec);
@@ -117,7 +127,7 @@ export async function syncResults(): Promise<SyncResult> {
         const overlap = rec.enemies.filter((e) => enemyIds.includes(e.id)).length;
         return rec.enemies.length === 0 || overlap >= Math.min(2, rec.enemies.length);
       });
-      if (hit) { apply(rec, hit, hit.players.find((p) => p.steamAccountId === ME)!, now, labels); updated++; }
+      if (hit) { apply(rec, hit, hit.players.find((p) => p.steamAccountId === ME)!, now, labels); await attachDetails(rec, ME); updated++; }
       else if (now - rec.createdAt > 6 * 3600 && matches.some((m) => m.startDateTime > rec.createdAt + 40 * 60)) {
         // прошло много времени и есть более поздние матчи, а подходящего нет: игра не состоялась
         rec.noMatch = true; rec.syncedAt = now;

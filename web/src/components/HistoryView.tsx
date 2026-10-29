@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import type { DraftLog } from "@/lib/log";
+import type { MatchDetails } from "@/lib/matchDetails";
+import type { Bench } from "@/lib/bench";
 import type { Hero } from "@/lib/types";
 
 // иконки с CDN Valve: у Stratz alchemist_icon.png оказался копией dragon_knight_icon.png
@@ -31,6 +33,13 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
       if (r.updated > 0) window.desktop?.learn?.().then((l) => { if (l?.ok && l.added) setMsg((m) => `${m ?? ""} · выучено новых портретов: ${l.added}`); }).catch(() => {});
     } else setMsg(r?.error ?? "ошибка синхронизации");
     setBusy(false);
+  };
+  const [detailsBusy, setDetailsBusy] = useState<string | null>(null);
+  const loadDetails = async (id: string) => {
+    setDetailsBusy(id);
+    const r = await fetch("/api/log/details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).then((x) => x.json()).catch(() => null);
+    if (r?.ok && r.item) setItems((cur) => cur.map((x) => (x.id === id ? r.item : x)));
+    setDetailsBusy(null);
   };
   const del = async (id: string) => {
     await fetch("/api/log", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
@@ -72,6 +81,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
           {h && <img src={icon(h.short)} alt="" className="h-9 w-9 rounded" />}
           <div className="min-w-0 flex-1">
             <div><span className="text-muted">Последний матч:</span> <b>{h?.name}</b>, {last.won ? <span className="text-good font-semibold">победа</span> : <span className="text-bad font-semibold">поражение</span>}{last.durationSeconds ? <span className="text-muted"> за {Math.round(last.durationSeconds / 60)} мин</span> : null}</div>
+            {last.details && <MatchStats d={last.details} b={last.bench ?? null} byId={byId} />}
             <div className="text-xs text-muted">
               {last.chosen ? `Пикер ставил его ${last.chosen.rank}-м с прогнозом ${Math.round(last.chosen.finalScore)}%` : "Пикер этого героя не оценивал"}
               {adv && adv.heroId !== last.chosenHeroId ? ` · совет из пула был ${adv.name} ${Math.round(adv.finalScore)}%` : adv ? " · ты взял лучшего из пула" : ""}
@@ -146,6 +156,9 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
                 <div className="basis-full border-t border-border pt-2 text-xs text-muted grid gap-1 sm:grid-cols-2">
                   <div><span className="text-foreground">Совет из пула:</span> {x.topPool.length ? x.topPool.map((r) => <span key={r.heroId} className={r.heroId === x.chosenHeroId ? "text-accent" : ""}>{r.rank}. {r.name} {Math.round(r.finalScore)}%; </span>) : "пусто"}</div>
                   <div><span className="text-foreground">Лучшие вообще:</span> {x.topAll.map((r) => <span key={r.heroId} className={r.heroId === x.chosenHeroId ? "text-accent" : ""}>{r.rank}. {r.name} {Math.round(r.finalScore)}%; </span>)}</div>
+                  <div className="sm:col-span-2">
+                    {x.details ? <MatchStats d={x.details} b={x.bench ?? null} byId={byId} /> : x.matchId ? <button onClick={(e) => { e.stopPropagation(); loadDetails(x.id); }} disabled={detailsBusy === x.id} className="text-accent hover:underline disabled:opacity-50">{detailsBusy === x.id ? "загружаю разбор…" : "Загрузить разбор матча"}</button> : <span>Разбор появится, когда подтянется результат.</span>}
+                  </div>
                   {x.enemyRoles?.length > 0 && <div className="sm:col-span-2">Роли врагов: {x.enemyRoles.map((g) => `${byId.get(g.id)?.name ?? g.id} ${g.role}`).join(", ")}{x.role ? ` · твоя роль ${x.role}` : ""}</div>}
                 </div>
               )}
@@ -154,6 +167,33 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
         })}
       </section>
     </main>
+  );
+}
+
+/** Цифры матча рядом с нормой героя на позиции: зелёное лучше нормы на 10%+, красное хуже. */
+function MatchStats({ d, b, byId }: { d: MatchDetails; b: Bench | null; byId: Map<number, Hero> }) {
+  const cmp = (v: number | null | undefined, norm: number | null | undefined, lowerBetter = false, digits = 0) => {
+    if (v == null) return null;
+    const n = norm == null ? null : Math.round(norm * 10 ** digits) / 10 ** digits;
+    const ratio = n ? v / n : null;
+    const good = ratio != null && (lowerBetter ? ratio <= 0.9 : ratio >= 1.1), bad = ratio != null && (lowerBetter ? ratio >= 1.1 : ratio <= 0.9);
+    return <><b className={good ? "text-good" : bad ? "text-bad" : "text-foreground"}>{v}</b>{n != null ? <span className="opacity-70"> / {n}</span> : null}</>;
+  };
+  const dur = b?.avgDuration ? b.avgDuration : null;
+  const oppName = d.laneOpp ? byId.get(d.laneOpp.heroId)?.name ?? "враг" : null;
+  const laneDiff = d.laneOpp && d.nw10 != null && d.laneOpp.nw10 != null ? d.nw10 - d.laneOpp.nw10 : null;
+  return (
+    <div className="text-xs text-muted flex flex-wrap gap-x-3 gap-y-0.5 mt-1" title={b ? `Норма: средние Divine/Immortal на этом герое и позиции, ${b.matchCount} матчей, винрейт ${Math.round(b.winrate * 100)}%` : "Нормы нет: Stratz не ответил"}>
+      <span>KDA {cmp(d.kills, b?.overall.kills)}/{cmp(d.deaths, b?.overall.deaths, true)}/{cmp(d.assists, b?.overall.assists)}</span>
+      <span>GPM {cmp(d.gpm, dur ? b!.overall.networth / dur : null)}</span>
+      <span>XPM {cmp(d.xpm, dur ? b!.overall.xp / dur : null)}</span>
+      <span>LH {cmp(d.lastHits, b?.overall.cs)}</span>
+      {d.lh10 != null && <span>к 10 мин: LH {cmp(d.lh10, b?.at10?.cs)}</span>}
+      {d.nw10 != null && <span>нетворс {cmp(d.nw10, b?.at10?.networth)}</span>}
+      {d.deaths10 != null && <span>смертей {cmp(d.deaths10, b?.at10?.deaths, true, 1)}</span>}
+      {oppName && <span>линия vs {oppName}{laneDiff != null ? <>: <b className={laneDiff >= 300 ? "text-good" : laneDiff <= -300 ? "text-bad" : "text-foreground"}>{laneDiff > 0 ? "+" : ""}{laneDiff}</b> золота к 10 мин</> : ""}</span>}
+      <span className="opacity-60">{d.source === "stratz" ? "Stratz" : "OpenDota"}</span>
+    </div>
   );
 }
 

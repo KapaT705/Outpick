@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { USER_DIR } from "./paths";
 import type { Pick, Role } from "./types";
+import type { MatchDetails } from "./matchDetails";
+import type { Bench } from "./bench";
 
 export type LogRec = {
   heroId: number;
@@ -25,6 +27,8 @@ export type DraftLog = {
   accountId?: number;             // аккаунт Steam, с которого играли (старые записи без него: аккаунт по умолчанию)
   players?: { slot: number; accountId: number }[]; // игроки матча из server_log.txt на момент записи (для сверки порядка слотов)
   playersVerified?: boolean;      // сверка с матчем: совпали ли Steam ID и порядок слотов
+  details?: MatchDetails | null;  // разбор матча (KDA, GPM, линия к 10 минуте), null = не удалось получить
+  bench?: Bench | null;           // норма героя на позиции у Divine/Immortal на момент разбора
   chosen: LogRec | null;          // как оценивался выбранный герой
   topPool: LogRec[];              // топ-5 из пула на момент выбора
   topAll: LogRec[];               // топ-5 общий

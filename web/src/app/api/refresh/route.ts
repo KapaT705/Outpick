@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { dataUpdatedAt } from "@/lib/refresh";
 import { currentAccount } from "@/lib/accounts";
 import { refreshState, startRefresh } from "@/lib/refreshState";
+import { REFRESH_EVERY_DAYS, refreshDue } from "@/lib/autoRefresh";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({ ...refreshState(), updatedAt: dataUpdatedAt() });
+  return NextResponse.json({ ...refreshState(), updatedAt: dataUpdatedAt(), autoEveryDays: REFRESH_EVERY_DAYS, due: refreshDue() });
 }
 
 /** Обновить общие данные меты и пул текущего аккаунта. */
