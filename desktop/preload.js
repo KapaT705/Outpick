@@ -5,8 +5,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 // Раньше каждый кадр брался через desktopCapturer.getSources: на Windows такие снимки не освобождались даже после
 // принудительной сборки мусора (до 6 ГБ за два матча). Видеопоток держит один буфер и переиспользует его.
 // Поток живёт только пока его просят (гаснет через 10 с без запросов), из кадра берём лишь верхнюю полосу.
-const U = 1125, SLOT_Y = 6, SLOT_H = 56;
-const stripHeight = (H) => Math.round(((SLOT_Y + SLOT_H) / U) * H + 12); // как recognize.stripHeight
+const U = 1125, ROLE_ROW_BOTTOM = 140; // низ строки ролей под слотами, как recognize.stripHeight
+const stripHeight = (H) => Math.round((ROLE_ROW_BOTTOM / U) * H + 12);
 const cap = { stream: null, video: null, source: null, sources: [], idx: 0, lastUse: 0, blackRuns: 0, starting: null, canvas: null, small: null, full: null };
 
 function stopStream() {

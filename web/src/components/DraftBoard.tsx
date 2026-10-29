@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseHeroText, type AliasMap } from "@/lib/aliases";
-import type { Attr, Candidate, Hero, Pick, PoolOverride, Role, RoleGuess } from "@/lib/types";
+import type { Attr, Candidate, Hero, LaneOpponent, Pick, PoolOverride, PredictedPicks, Role, RoleGuess } from "@/lib/types";
 import type { RecognizeResult } from "@/components/AppShell";
 import { newTrackState, trackFrame } from "@/lib/draftTrack";
 
@@ -75,6 +75,8 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const [zone, setZone] = useState<Zone>("enemies");
   const [picks, setPicks] = useState<Record<Zone, Pick[]>>({ bans: [], enemies: [], allies: [] });
   const [roles, setRoles] = useState<{ enemies: RoleGuess[]; allies: RoleGuess[] }>({ enemies: [], allies: [] });
+  const [laneOpp, setLaneOpp] = useState<LaneOpponent | null>(null); // соперник по линии из оценки драфта
+  const [predicted, setPredicted] = useState<PredictedPicks[]>([]); // вероятные пики врага на незанятые роли
   const [query, setQuery] = useState("");
   const [attr, setAttr] = useState<Attr>("str");
   const [quick, setQuick] = useState<Record<Zone, string>>({ bans: "", enemies: "", allies: "" });
@@ -142,14 +144,14 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   useEffect(() => {
     const ctrl = new AbortController();
     setLoading(true);
-    const body = { bans: picks.bans.map((p) => p.id), enemies: picks.enemies, allies: picks.allies, pool: override, role };
+    const body = { bans: picks.bans.map((p) => p.id), enemies: picks.enemies, allies: picks.allies, pool: override, role, team: gsi?.connected ? (gsi.team ?? null) : side };
     fetch("/api/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal })
       .then((r) => r.json())
-      .then((d) => { setResult(d.candidates ?? []); setRoles({ enemies: d.enemyRoles ?? [], allies: d.allyRoles ?? [] }); })
+      .then((d) => { setResult(d.candidates ?? []); setRoles({ enemies: d.enemyRoles ?? [], allies: d.allyRoles ?? [] }); setLaneOpp(d.laneOpponent ?? null); setPredicted(d.predicted ?? []); })
       .catch(() => {})
       .finally(() => setLoading(false));
     return () => ctrl.abort();
-  }, [picks, override, role, acct?.current.id]);
+  }, [picks, override, role, acct?.current.id, gsi?.team, side]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addMany = (z: Zone, ids: number[]) => {
     const max = ZONES.find((x) => x.key === z)!.max;
@@ -219,9 +221,10 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
                 const bans = prev.bans.filter((p) => !(p.auto && seenNow.has(p.id)));
                 for (const id of autoBan) if (!bans.some((p) => p.id === id)) bans.push({ id, role: null, auto: true });
                 const banned = new Set(bans.map((p) => p.id));
+                const slotOf = new Map(t.stable.map((s) => [s.heroId as number, s.idx]));
                 const merge = (cur: Pick[], seen: number[]) => {
-                  const out = cur.filter((p) => !banned.has(p.id) && (seen.includes(p.id) || !slots.some((sl) => sl.heroId === p.id)));
-                  for (const id of seen) if (!banned.has(id) && !out.some((p) => p.id === id)) out.push({ id, role: null });
+                  const out = cur.filter((p) => !banned.has(p.id) && (seen.includes(p.id) || !slots.some((sl) => sl.heroId === p.id))).map((p) => (p.slot === undefined && slotOf.has(p.id) ? { ...p, slot: slotOf.get(p.id) } : p));
+                  for (const id of seen) if (!banned.has(id) && !out.some((p) => p.id === id)) out.push({ id, role: null, slot: slotOf.get(id) });
                   return out.slice(0, 5);
                 };
                 const enemies = merge(prev.enemies, enemiesSeen);
@@ -263,7 +266,9 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
           }
         }
       }
-      if (!stop) setTimeout(tick, r?.connected ? 1500 : 3000);
+      // на стадии пиков опрашиваем экран раз в полсекунды: решение нужно за 30 секунд
+      const picking = r?.connected && r.draft?.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION";
+      if (!stop) setTimeout(tick, picking ? 500 : r?.connected ? 1500 : 3000);
     };
     tick();
     return () => { stop = true; };
@@ -407,7 +412,14 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
         </section>
 
         <section className="flex flex-col gap-4 min-w-0">
-          <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} items={inPool} loading={loading} byId={byId} onTake={take} />
+          {picks.enemies.length > 0 && picks.enemies.length < 5 && predicted.length > 0 && (
+            <div className="rounded-xl border border-border bg-panel px-3 py-2 text-xs text-muted flex flex-wrap gap-x-4 gap-y-1" title="Самые популярные герои Divine/Immortal на ролях, которые у врагов ещё не заняты, среди не занятых в драфте. Пока соперник по твоей линии не выбран, матчапы против вероятных героев его роли учитываются с небольшим весом.">
+              <span className="text-foreground">Враги ещё не взяли:</span>
+              {predicted.map((p) => <span key={p.role}><span className="text-enemy">{ROLE_LABEL[p.role]}</span>{p.player ? <span className="text-foreground"> {p.player}:</span> : ""} {p.heroes.map((h) => `${h.name} ${Math.round(h.share * 100)}%`).join(", ")}</span>)}
+            </div>
+          )}
+          {laneOpp && <LaneCard lane={laneOpp} inPool={inPool} byId={byId} />}
+          <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} items={inPool} loading={loading} byId={byId} onTake={take} lane={laneOpp} />
           <ResultBlock title="Вне пула, но хороши в этот драфт" items={outside} loading={loading} byId={byId} onTake={take}
             footer={<button onClick={() => setShowAll(!showAll)} className="text-xs text-muted underline">{showAll ? "Показать меньше" : "Показать больше"}</button>} />
         </section>
@@ -444,7 +456,27 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   );
 }
 
-function ResultBlock({ title, items, loading, byId, footer, onTake }: { title: string; items: Candidate[]; loading: boolean; byId: Map<number, Hero>; footer?: React.ReactNode; onTake: (id: number) => void }) {
+/** Карточка соперника по линии: кто против тебя и кто из твоего пула лучше всего против него. */
+function LaneCard({ lane, inPool, byId }: { lane: LaneOpponent; inPool: Candidate[]; byId: Map<number, Hero> }) {
+  const h = byId.get(lane.heroId);
+  const best = [...inPool].filter((c) => c.vsLane).sort((a, b) => (b.vsLane!.value) - (a.vsLane!.value)).slice(0, 4);
+  return (
+    <div className="rounded-xl border border-enemy/40 bg-panel p-3 flex flex-wrap items-center gap-3">
+      {h && <img src={portrait(h.short)} alt="" className="h-12 w-[86px] rounded-md object-cover shrink-0" />}
+      <div className="min-w-0 flex-1">
+        <div className="text-sm"><span className="text-muted">Соперник по линии:</span> <b>{lane.name}</b> <span className="text-xs text-muted">· {ROLE_NAME[lane.role]}{lane.prob < 0.9 ? ` ${Math.round(lane.prob * 100)}%` : ""}</span>
+          {lane.player && <span className="text-xs text-muted"> · {lane.player.name ?? "игрок"}{lane.player.games > 0 ? <>: на нём <b className="text-foreground">{lane.player.wins}–{lane.player.games - lane.player.wins}</b> за месяц</> : lane.player.rolesKnown ? ": на нём за месяц не играл" : ": профиль закрыт"}</span>}
+        </div>
+        <div className="text-xs text-muted mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+          {best.length === 0 && <span>в пуле пока нет оценённых против него героев</span>}
+          {best.map((c) => <span key={c.heroId}><span className="text-foreground">{c.name}</span> <span className={c.vsLane!.value > 0 ? "text-good" : c.vsLane!.value < 0 ? "text-bad" : ""}>{c.vsLane!.value > 0 ? "+" : ""}{c.vsLane!.value}</span>{c.vsLane!.personal ? <span className="text-accent"> · ты {c.vsLane!.personal.wins}–{c.vsLane!.personal.games - c.vsLane!.personal.wins}</span> : null}</span>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResultBlock({ title, items, loading, byId, footer, onTake, lane }: { title: string; items: Candidate[]; loading: boolean; byId: Map<number, Hero>; footer?: React.ReactNode; onTake: (id: number) => void; lane?: LaneOpponent | null }) {
   return (
     <div className="rounded-xl border border-border bg-panel p-3">
       <div className="flex items-center justify-between mb-2">
@@ -452,7 +484,7 @@ function ResultBlock({ title, items, loading, byId, footer, onTake }: { title: s
         {loading && <span className="text-xs text-muted">считаю…</span>}
       </div>
       <div className="flex flex-col gap-2">
-        {items.map((c) => <Row key={c.heroId} c={c} byId={byId} onTake={onTake} />)}
+        {items.map((c) => <Row key={c.heroId} c={c} byId={byId} onTake={onTake} lane={lane} />)}
         {items.length === 0 && !loading && <span className="text-sm text-muted">Пусто</span>}
       </div>
       {footer && <div className="mt-2">{footer}</div>}
@@ -460,7 +492,7 @@ function ResultBlock({ title, items, loading, byId, footer, onTake }: { title: s
   );
 }
 
-function Row({ c, byId, onTake }: { c: Candidate; byId: Map<number, Hero>; onTake: (id: number) => void }) {
+function Row({ c, byId, onTake, lane }: { c: Candidate; byId: Map<number, Hero>; onTake: (id: number) => void; lane?: LaneOpponent | null }) {
   const [open, setOpen] = useState(false);
   const h = byId.get(c.heroId)!;
   const tone = c.finalScore >= 55 ? "text-good" : c.finalScore <= 45 ? "text-bad" : "text-foreground";
@@ -476,6 +508,8 @@ function Row({ c, byId, onTake }: { c: Candidate; byId: Map<number, Hero>; onTak
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium">{c.name}</span>{tag}
             {c.personalWinrate !== null && <span className="text-xs text-muted">ты: {c.midWins}–{c.midGames - c.midWins} ({c.personalWinrate}%)</span>}
+            {c.top && <span className="rounded bg-panel px-1.5 py-0.5 text-[11px] text-muted" title={`У Immortal на этой роли за 4 недели: винрейт ${c.top.winrate}%, доля пиков ${c.top.rate}% (${c.top.games} игр)`}>Immortal {c.top.winrate}% · {c.top.rate}%</span>}
+            {lane && c.vsLane && <span className={`rounded px-1.5 py-0.5 text-[11px] ${c.vsLane.value >= 1 ? "bg-good/15 text-good" : c.vsLane.value <= -1 ? "bg-bad/15 text-bad" : "bg-panel text-muted"}`} title={`Матчап против соперника по линии (${c.vsLane.games} игр в выборке)${c.vsLane.personal ? `, твой счёт против него ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}`}>vs {lane.name.split(" ")[0]} {c.vsLane.value > 0 ? "+" : ""}{c.vsLane.value}{c.vsLane.personal ? ` · ты ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}</span>}
           </div>
           <div className="mt-1 h-1 w-full overflow-hidden rounded bg-panel"><div className={`h-full ${c.finalScore >= 55 ? "bg-good" : c.finalScore <= 45 ? "bg-bad" : "bg-accent"}`} style={{ width: `${Math.max(4, Math.min(100, (c.finalScore - 30) * 2.5))}%` }} /></div>
           <div className="text-xs text-muted truncate">
@@ -493,6 +527,7 @@ function Row({ c, byId, onTake }: { c: Candidate; byId: Map<number, Hero>; onTak
         <div className="mt-2 border-t border-border pt-2 text-xs text-muted grid gap-1">
           <div>Базовый винрейт героя на этой роли: <b className="text-foreground">{c.base}%</b> · контрпики: <b className="text-foreground">{c.vsTotal > 0 ? "+" : ""}{c.vsTotal}</b> · синергии: <b className="text-foreground">{c.withTotal > 0 ? "+" : ""}{c.withTotal}</b> · поправка на твой опыт: <b className="text-foreground">{c.personalAdj > 0 ? "+" : ""}{c.personalAdj}</b></div>
           {c.reasons.map((r) => <div key={`${r.kind}-${r.heroId}`}>{r.value > 0 ? "+" : ""}{r.value} {r.kind === "vs" ? "против" : "вместе с"} {r.name}{r.laneOpp ? <span className="text-enemy"> · твой оппонент по лейну, вес выше</span> : null} <span className="opacity-60">({r.games} игр в выборке)</span></div>)}
+          {c.predictedAdj !== 0 && <div>Вероятные пики врага на твою линию: <b className="text-foreground">{c.predictedAdj > 0 ? "+" : ""}{c.predictedAdj}</b> <span className="opacity-60">(с небольшим весом, пока соперник не выбран)</span></div>}
           {c.personalNotes.map((n) => <div key={`${n.ally}-${n.heroId}`} className="text-accent">Твоя история {n.ally ? "вместе с" : "против"} {n.name}: {n.wins}–{n.games - n.wins}</div>)}
           <div className="opacity-60">Доля игр героя на этой роли у Divine/Immortal: {Math.round(c.midRate * 100)}%</div>
         </div>

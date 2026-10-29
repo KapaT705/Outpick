@@ -108,8 +108,11 @@ function slotRects(W, H) {
   for (let i = 0; i < 5; i++) rects.push(mk(SLOT.dire0 + i * SLOT.pitch, "dire", i));
   return rects;
 }
-/** Высота верхней полосы, которую стоит показать для отладки (в пикселях кадра). */
-function stripHeight(H) { return Math.round((SLOT.y + SLOT.h) * H + 12); }
+// Под слотами своей команды Дота пишет роль из очереди (иконка и текст, низ строки ≈ 140/U): полоса захвата
+// и сохранённые кадры включают её, чтобы по ним можно было собрать шаблоны иконок ролей и читать роли союзников.
+const ROLE_ROW_BOTTOM = 140 / U;
+/** Высота верхней полосы кадра: слоты и строка ролей под ними (в пикселях кадра). */
+function stripHeight(H) { return Math.round(ROLE_ROW_BOTTOM * H + 12); }
 
 /** Лучший и второй герой для вектора по заданным наборам кропов. */
 function bestOf(v, pick, useLearned) {

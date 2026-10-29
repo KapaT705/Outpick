@@ -3,6 +3,7 @@ import { evaluateDraft } from "@/lib/draft";
 import { appendLog, readLog, writeLog, type DraftLog, type LogRec } from "@/lib/log";
 import type { DraftInput, Pick, PoolOverride, Role } from "@/lib/types";
 import { currentAccount } from "@/lib/accounts";
+import { currentLobby } from "@/lib/players";
 
 const ids = (v: unknown): number[] => (Array.isArray(v) ? v.map(Number).filter((n) => Number.isInteger(n) && n > 0) : []);
 const picks = (v: unknown): Pick[] =>
@@ -36,6 +37,7 @@ export async function POST(req: Request) {
     role,
     gsiMatchId: typeof body.gsiMatchId === "string" && /^\d+$/.test(body.gsiMatchId) ? body.gsiMatchId : undefined,
     accountId: account.id ?? undefined,
+    players: currentLobby()?.players.map((p) => ({ slot: p.slot, accountId: p.accountId })),
     chosen: idx >= 0 ? rec(idx) : null,
     topPool: candidates.map((c, i) => ({ c, i })).filter((x) => x.c.poolStatus !== "outside").slice(0, 5).map((x) => rec(x.i)),
     topAll: candidates.slice(0, 5).map((_, i) => rec(i)),

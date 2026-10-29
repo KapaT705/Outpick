@@ -60,6 +60,14 @@ function meIn(m: M, me: number, heroId: number): P | undefined {
 
 function apply(rec: DraftLog, m: M, me: P, now: number, labels: MatchLabel[]) {
   rec.matchId = m.id; rec.won = me.isVictory; rec.durationSeconds = m.durationSeconds; rec.syncedAt = now;
+  // сверка игроков из server_log.txt с матчем: те же Steam ID и тот же порядок (слот 0–4 Свет, 5–9 Тьма по playerSlot)
+  if (rec.players?.length === 10) {
+    const bySlot = [...m.players].sort((a, b) => a.playerSlot - b.playerSlot);
+    const known = bySlot.filter((p) => p.steamAccountId);
+    const sameSet = known.every((p) => rec.players!.some((x) => x.accountId === p.steamAccountId));
+    const sameOrder = known.every((p) => { const i = bySlot.indexOf(p); return rec.players![i]?.accountId === p.steamAccountId; });
+    rec.playersVerified = known.length >= 5 ? sameSet && sameOrder : undefined;
+  }
   // разметка слотов для самообучения портретов: порядок игроков в верхней панели = playerSlot
   const bySlot = (radiant: boolean) => m.players.filter((p) => p.isRadiant === radiant).sort((a, b) => a.playerSlot - b.playerSlot).map((p) => p.heroId);
   labels.push({ matchId: String(m.id), radiant: bySlot(true), dire: bySlot(false), at: now });

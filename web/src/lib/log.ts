@@ -23,6 +23,8 @@ export type DraftLog = {
   role?: number;                  // роль игрока при оценке (1..5)
   gsiMatchId?: string;            // id матча из Доты, если был
   accountId?: number;             // аккаунт Steam, с которого играли (старые записи без него: аккаунт по умолчанию)
+  players?: { slot: number; accountId: number }[]; // игроки матча из server_log.txt на момент записи (для сверки порядка слотов)
+  playersVerified?: boolean;      // сверка с матчем: совпали ли Steam ID и порядок слотов
   chosen: LogRec | null;          // как оценивался выбранный герой
   topPool: LogRec[];              // топ-5 из пула на момент выбора
   topAll: LogRec[];               // топ-5 общий

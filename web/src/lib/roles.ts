@@ -5,13 +5,15 @@ const ROLES: Role[] = [1, 2, 3, 4, 5];
 const FLOOR = 0.01; // никакая роль не считается невозможной
 
 /** Самая вероятная раскладка ролей: каждая роль не более одного раза, зафиксированные пользователем роли не меняются. */
-export function inferRoles(picks: Pick[], exclude: Role[] = []): RoleGuess[] {
+export function inferRoles(picks: Pick[], exclude: Role[] = [], priors: (Record<Role, number> | null | undefined)[] = []): RoleGuess[] {
   const { positions } = loadData();
   const n = picks.length;
   if (n === 0) return [];
-  const prior = picks.map((p) => {
+  // априори по герою (на какой роли его играют) умножаем на априори по игроку (на каких ролях играет он сам), если оно известно
+  const prior = picks.map((p, i) => {
     const pos = positions.get(p.id)?.p;
-    return ROLES.map((r) => Math.max(FLOOR, pos ? pos[String(r) as "1"] : 0.2));
+    const pp = priors[i];
+    return ROLES.map((r) => Math.max(FLOOR, pos ? pos[String(r) as "1"] : 0.2) * (pp ? Math.max(0.05, pp[r]) : 1));
   });
   // перебор всех назначений без повторов (максимум 5 героев -> 5! = 120 вариантов)
   let best: Role[] | null = null;

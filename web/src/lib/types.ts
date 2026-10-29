@@ -12,11 +12,19 @@ export type RoleMetaEntry = { heroId: number; games: number; wins: number; winra
 export type PersonalPair = { role?: number; own: number; other: number; ally: boolean; games: number; wins: number };
 
 export type Role = 1 | 2 | 3 | 4 | 5;
-export type Pick = { id: number; role: Role | null; auto?: boolean }; // role null = не задана, будет предсказана; auto = бан поставлен сам (пропал из слота: конфликт пиков)
+export type Pick = { id: number; role: Role | null; auto?: boolean; slot?: number }; // role null = не задана, будет предсказана; auto = бан поставлен сам (пропал из слота: конфликт пиков); slot = номер слота в верхней панели (0..4), если герой прочитан с экрана
 export type PoolOverride = { add: number[]; remove: number[] }; // ручные правки пула (хранятся в браузере)
-export type DraftInput = { bans: number[]; enemies: Pick[]; allies: Pick[]; pool?: PoolOverride; role?: Role };
+export type DraftInput = { bans: number[]; enemies: Pick[]; allies: Pick[]; pool?: PoolOverride; role?: Role; team?: "radiant" | "dire" | null };
 export type HeroPositions = { heroId: number; name: string; games: number; p: Record<"1" | "2" | "3" | "4" | "5", number> };
 export type RoleGuess = { id: number; role: Role; prob: number; locked: boolean };
+/** Соперник по линии: враг, который с наибольшей вероятностью стоит против тебя. */
+export type LaneOpponent = { heroId: number; name: string; short: string; role: Role; prob: number; player?: { name: string | null; games: number; wins: number; rolesKnown: boolean } | null };
+/** Вероятные пики врага на ещё не занятую роль: самые популярные герои роли за 4 недели, не занятые в драфте. */
+export type PredictedPicks = { role: Role; heroes: { heroId: number; name: string; short: string; share: number }[]; player?: string | null }; // player: имя игрока, если прогноз по его истории, иначе по мете
+/** Кандидат у Immortal: винрейт и доля пиков на этой роли за 4 недели. */
+export type TopStat = { winrate: number; rate: number; games: number };
+/** Кандидат против соперника по линии: вклад матчапа и твой личный счёт против него. */
+export type VsLane = { value: number; games: number; personal?: { games: number; wins: number } };
 
 export type Reason = { kind: "vs" | "with" | "base"; heroId?: number; name: string; value: number; games?: number; laneOpp?: boolean };
 
@@ -38,5 +46,8 @@ export type Candidate = {
   personalAdj: number;     // pp adjustment from personal results
   finalScore: number;      // draftScore + personalAdj (%)
   midRate: number;         // share of this hero's games played mid at Divine/Immortal
+  vsLane?: VsLane | null;  // против соперника по линии (если он известен)
+  top?: TopStat | null;    // как герой идёт у Immortal на этой роли
+  predictedAdj: number;    // поправка за вероятные пики врага на твою линию (pp)
   personalNotes: PersonalNote[];
 };

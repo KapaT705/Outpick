@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { findDotaDirs } from "@/lib/dotaDirs";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -28,28 +29,6 @@ export function cfgText(origin: string) {
   }
 }
 `;
-}
-
-/** Ищем папку Доты: стандартные пути Steam плюс библиотеки из libraryfolders.vdf. */
-function findDotaDirs(): string[] {
-  const roots: string[] = [];
-  if (process.platform === "win32") {
-    roots.push("C:\\Program Files (x86)\\Steam", "C:\\Program Files\\Steam");
-    for (const d of ["D", "E", "F", "G"]) roots.push(`${d}:\\Steam`, `${d}:\\SteamLibrary`, `${d}:\\Games\\Steam`);
-  } else if (process.platform === "darwin") {
-    roots.push(path.join(os.homedir(), "Library/Application Support/Steam"));
-  } else {
-    roots.push(path.join(os.homedir(), ".steam/steam"), path.join(os.homedir(), ".local/share/Steam"));
-  }
-  const libs = new Set<string>(roots);
-  for (const r of roots) {
-    const vdf = path.join(r, "steamapps", "libraryfolders.vdf");
-    try {
-      const txt = fs.readFileSync(vdf, "utf8");
-      for (const m of txt.matchAll(/"path"\s+"([^"]+)"/g)) libs.add(m[1].replace(/\\\\/g, "\\"));
-    } catch {}
-  }
-  return [...libs].map((l) => path.join(l, "steamapps", "common", "dota 2 beta", "game", "dota")).filter((p) => fs.existsSync(p));
 }
 
 export async function GET(req: Request) {

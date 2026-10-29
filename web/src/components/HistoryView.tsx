@@ -15,6 +15,8 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
   const multiAccount = new Set(items.map(accOf)).size > 1;
   const accName = (x: DraftLog) => { const id = accOf(x); return id ? (accounts[id] ?? String(id)) : "?"; };
   const [busy, setBusy] = useState(false);
+  const [period, setPeriod] = useState<number>(30); // дней для сводки; 0 = всё время
+  const [openId, setOpenId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const byId = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes]);
 
@@ -35,7 +37,14 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
     setItems(items.filter((x) => x.id !== id));
   };
 
-  const done = items.filter((x) => x.won !== undefined);
+  const since = period ? Math.floor(Date.now() / 1000) - period * 86400 : 0;
+  const done = items.filter((x) => x.won !== undefined && x.createdAt >= since);
+  const last = items.find((x) => x.won !== undefined); // последний матч с результатом: короткий отчёт
+  // лучшие и худшие герои за период
+  const byHero = new Map<number, { n: number; w: number }>();
+  for (const x of done) { const s = byHero.get(x.chosenHeroId) ?? { n: 0, w: 0 }; s.n++; if (x.won) s.w++; byHero.set(x.chosenHeroId, s); }
+  const heroRows = [...byHero].map(([id, s]) => ({ id, ...s, wr: Math.round((s.w / s.n) * 100) })).sort((a, b) => b.n - a.n || b.wr - a.wr).slice(0, 8);
+  const advised = (x: DraftLog) => (x.chosen?.rank ?? 99) <= 3;
   const stat = (f: (x: DraftLog) => boolean) => { const s = done.filter(f); const w = s.filter((x) => x.won).length; return { n: s.length, w, wr: s.length ? Math.round((w / s.length) * 100) : null }; };
   const top1 = stat((x) => x.chosen?.rank === 1);
   const top3 = stat((x) => (x.chosen?.rank ?? 99) <= 3);
@@ -58,12 +67,43 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
 
       {msg && <div className={`rounded-lg border px-3 py-2 text-sm ${msg.startsWith("Готово") ? "border-good/40 bg-good/10 text-good" : "border-border bg-panel text-foreground"}`}>{msg}</div>}
 
+      {last && (() => { const h = byId.get(last.chosenHeroId); const adv = last.topPool[0]; const advAll = last.topAll[0]; return (
+        <section className={`rounded-xl border p-3 text-sm flex flex-wrap items-center gap-3 ${last.won ? "border-good/40 bg-good/5" : "border-bad/40 bg-bad/5"}`}>
+          {h && <img src={icon(h.short)} alt="" className="h-9 w-9 rounded" />}
+          <div className="min-w-0 flex-1">
+            <div><span className="text-muted">Последний матч:</span> <b>{h?.name}</b>, {last.won ? <span className="text-good font-semibold">победа</span> : <span className="text-bad font-semibold">поражение</span>}{last.durationSeconds ? <span className="text-muted"> за {Math.round(last.durationSeconds / 60)} мин</span> : null}</div>
+            <div className="text-xs text-muted">
+              {last.chosen ? `Пикер ставил его ${last.chosen.rank}-м с прогнозом ${Math.round(last.chosen.finalScore)}%` : "Пикер этого героя не оценивал"}
+              {adv && adv.heroId !== last.chosenHeroId ? ` · совет из пула был ${adv.name} ${Math.round(adv.finalScore)}%` : adv ? " · ты взял лучшего из пула" : ""}
+              {advAll && advAll.heroId !== last.chosenHeroId && advAll.heroId !== adv?.heroId ? ` · лучший вообще ${advAll.name} ${Math.round(advAll.finalScore)}%` : ""}
+            </div>
+          </div>
+        </section>
+      ); })()}
+
+      <section className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-muted">Сводка за:</span>
+        {[7, 30, 90, 0].map((d) => <button key={d} onClick={() => setPeriod(d)} className={`rounded-md border px-2 py-1 ${period === d ? "border-accent text-accent bg-accent/10" : "border-border text-muted hover:text-foreground"}`}>{d ? `${d} дней` : "всё время"}</button>)}
+        <span className="text-muted ml-2">матчей с результатом: {done.length} · винрейт {done.length ? Math.round((done.filter((x) => x.won).length / done.length) * 100) : 0}% · по совету (топ-3) {stat(advised).wr ?? "—"}% против {stat((x) => !advised(x)).wr ?? "—"}% не по совету</span>
+      </section>
+
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat title="Взял лучшего по совету" s={top1} />
         <Stat title="Взял из топ-3" s={top3} />
         <Stat title="Взял ниже топ-3" s={below} />
         <Stat title="Взял лучшего из пула" s={poolTop} />
       </section>
+
+      {heroRows.length > 0 && (
+        <section className="rounded-xl border border-border bg-panel p-3">
+          <h2 className="font-semibold mb-2">Твои герои за период</h2>
+          <div className="flex flex-wrap gap-2 text-xs">
+            {heroRows.map((r) => { const h = byId.get(r.id); return (
+              <span key={r.id} className={`flex items-center gap-1.5 rounded-md bg-panel-2 px-2 py-1 ${r.wr >= 55 ? "text-good" : r.wr <= 45 ? "text-bad" : "text-foreground"}`}>{h && <img src={icon(h.short)} alt="" className="h-5 w-5 rounded" />}{h?.name} <span className="text-muted">{r.w}–{r.n - r.w}</span> {r.wr}%</span>
+            ); })}
+          </div>
+        </section>
+      )}
 
       <section className="rounded-xl border border-border bg-panel p-3">
         <h2 className="font-semibold mb-2">Калибровка: что предсказал пикер и что вышло</h2>
@@ -85,7 +125,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
           const h = byId.get(x.chosenHeroId);
           const res = x.won === undefined ? (x.noMatch ? <span className="text-muted">матч не найден</span> : <span className="text-muted">ждёт результата</span>) : x.won ? <span className="text-good font-semibold">Победа</span> : <span className="text-bad font-semibold">Поражение</span>;
           return (
-            <div key={x.id} className="rounded-lg border border-border bg-panel p-3 flex flex-wrap items-center gap-3 text-sm">
+            <div key={x.id} className="rounded-lg border border-border bg-panel p-3 flex flex-wrap items-center gap-3 text-sm cursor-pointer" onClick={() => setOpenId(openId === x.id ? null : x.id)}>
               <span className="text-xs text-muted w-24">{fmt(x.createdAt)}</span>
               {multiAccount && <span className="rounded bg-panel-2 px-1.5 py-0.5 text-[11px] text-muted" title="Аккаунт Steam, с которого играли">{accName(x)}</span>}
               {h && <img src={icon(h.short)} alt="" className="h-8 w-8 rounded" />}
@@ -101,7 +141,14 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
                   {x.bans.length > 0 && <span className="ml-2">баны: {x.bans.length}</span>}
                 </div>
               </div>
-              <button onClick={() => del(x.id)} className="text-xs text-muted hover:text-bad">удалить</button>
+              <button onClick={(e) => { e.stopPropagation(); del(x.id); }} className="text-xs text-muted hover:text-bad">удалить</button>
+              {openId === x.id && (
+                <div className="basis-full border-t border-border pt-2 text-xs text-muted grid gap-1 sm:grid-cols-2">
+                  <div><span className="text-foreground">Совет из пула:</span> {x.topPool.length ? x.topPool.map((r) => <span key={r.heroId} className={r.heroId === x.chosenHeroId ? "text-accent" : ""}>{r.rank}. {r.name} {Math.round(r.finalScore)}%; </span>) : "пусто"}</div>
+                  <div><span className="text-foreground">Лучшие вообще:</span> {x.topAll.map((r) => <span key={r.heroId} className={r.heroId === x.chosenHeroId ? "text-accent" : ""}>{r.rank}. {r.name} {Math.round(r.finalScore)}%; </span>)}</div>
+                  {x.enemyRoles?.length > 0 && <div className="sm:col-span-2">Роли врагов: {x.enemyRoles.map((g) => `${byId.get(g.id)?.name ?? g.id} ${g.role}`).join(", ")}{x.role ? ` · твоя роль ${x.role}` : ""}</div>}
+                </div>
+              )}
             </div>
           );
         })}

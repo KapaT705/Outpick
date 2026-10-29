@@ -27,6 +27,7 @@ type General = {
   positions: Map<number, HeroPositions>;
   aliases: AliasMap;
   roleMeta: Map<number, Map<number, RoleMetaEntry>>; // роль -> герой -> статистика за 4 недели
+  roleMetaTop: Map<number, Map<number, RoleMetaEntry>>; // то же только по Immortal (rate здесь = доля пиков роли); пусто в старых данных
 };
 /** Данные аккаунта: пул героев и личные пары. Пустые у незнакомого аккаунта (общий режим). */
 type AccountData = { accountId: number | null; pool: Map<number, PoolEntry>; pairs: PersonalPair[] };
@@ -58,6 +59,10 @@ function loadGeneral(): General {
   }
   const roleMeta = new Map<number, Map<number, RoleMetaEntry>>();
   for (const r of [1, 2, 3, 4, 5]) roleMeta.set(r, new Map((roleMetaRaw[String(r)] ?? []).map((e) => [e.heroId, e])));
+  let topRaw: Record<string, RoleMetaEntry[]> = {};
+  try { topRaw = readJson<Record<string, RoleMetaEntry[]>>("role-meta-immortal.json"); } catch {}
+  const roleMetaTop = new Map<number, Map<number, RoleMetaEntry>>();
+  for (const r of [1, 2, 3, 4, 5]) roleMetaTop.set(r, new Map((topRaw[String(r)] ?? []).map((e) => [e.heroId, e])));
   general = {
     heroes,
     heroById: new Map(heroes.map((h) => [h.id, h])),
@@ -66,6 +71,7 @@ function loadGeneral(): General {
     positions: new Map(positions.map((p) => [p.heroId, p])),
     aliases,
     roleMeta,
+    roleMetaTop,
   };
   return general;
 }

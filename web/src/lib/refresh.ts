@@ -72,6 +72,18 @@ export async function refreshGeneral(token: string, progress: Progress = () => {
     roleMeta[pos] = [...per].map(([heroId, q]) => ({ heroId, games: q.g, wins: q.w, winrate: q.g ? q.w / q.g : 0.5, rate: q.g / (allA.get(heroId)?.g || q.g) }));
     await sleep(200);
   }
+  // то же только по Immortal: что реально берут и с каким винрейтом игроки верхнего брекета на каждой роли
+  progress("мета Immortal");
+  const topMeta: Record<string, { heroId: number; games: number; wins: number; winrate: number; rate: number }[]> = { 1: [], 2: [], 3: [], 4: [], 5: [] };
+  for (const pos of [1, 2, 3, 4, 5]) {
+    const rows: WW[] = (await gql(token, `{ heroStats { winWeek(positionIds: [POSITION_${pos}], bracketIds: [IMMORTAL], take: 400) { week heroId matchCount winCount } } }`)).heroStats.winWeek;
+    const per = new Map<number, { g: number; w: number }>();
+    for (const r of rows) { if (!weeks.includes(r.week)) continue; const q = per.get(r.heroId) ?? { g: 0, w: 0 }; q.g += r.matchCount; q.w += r.winCount ?? 0; per.set(r.heroId, q); }
+    const total = [...per.values()].reduce((a, q) => a + q.g, 0) || 1;
+    topMeta[pos] = [...per].map(([heroId, q]) => ({ heroId, games: q.g, wins: q.w, winrate: q.g ? q.w / q.g : 0.5, rate: q.g / total }));
+    await sleep(200);
+  }
+  save("role-meta-immortal.json", topMeta);
   save("hero-positions.json", [...posAgg].map(([heroId, a]) => { const tot = Object.values(a).reduce((x, y) => x + y, 0) || 1; return { heroId, name: names.get(heroId), games: tot, p: Object.fromEntries(Object.entries(a).map(([k, v]) => [k, v / tot])) }; }));
   save("role-meta.json", roleMeta);
 
