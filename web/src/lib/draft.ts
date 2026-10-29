@@ -6,7 +6,10 @@ import type { Candidate, DraftInput, DraftStage, Hero, HeroTag, LaneOpponent, Pe
 // Tunables
 const PAIR_SHRINK = 150;      // games at which a matchup entry gets half weight
 const PERSONAL_SHRINK = 30;   // personal games at which personal winrate gets half weight
-const PERSONAL_MIN_GAMES = 3; // меньше игр на роли: счёт показываем, но оценку не двигаем (2–0 ничего не значит)
+const PERSONAL_MIN_GAMES = 3;
+// наигранность: сколько игр на герое на этой роли за год. Это опыт, он отдельно от винрейта:
+// бонус растёт с числом игр и насыщается (половина EXP_MAX при EXP_HALF играх), только у героев пула
+const EXP_MAX = 2.5, EXP_HALF = 25; // меньше игр на роли: счёт показываем, но оценку не двигаем (2–0 ничего не значит)
 const PERSONAL_WEIGHT = 0.6;  // how strongly personal winrate moves the final score
 const MID_RATE_MIN = 0.15;    // hero counts as a mid hero if >= 15% of its games are mid
 const MID_GAMES_MIN = 4500;   // ...and has enough games on the role in the last 4 weeks (Immortal only: ~29% of the old Divine+Immortal volume, thresholds scaled)
@@ -161,6 +164,7 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
 
     let personalWinrate: number | null = null;
     let personalAdj = 0;
+    const experienceAdj = poolStatus === "pool" && midGames > 0 ? EXP_MAX * (midGames / (midGames + EXP_HALF)) : 0;
     if (midGames > 0) {
       personalWinrate = (midWins / midGames) * 100;
       // личный счёт двигает оценку только у героев пула: вне пула (и у «знакомых») список про мету и драфт, счёт лишь показываем
@@ -193,7 +197,8 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
       midWins,
       personalWinrate: personalWinrate === null ? null : Math.round(personalWinrate),
       personalAdj: r1(personalAdj),
-      finalScore: r1(clamp(draftScore + personalAdj, 15, 85)),
+      experienceAdj: r1(experienceAdj),
+      finalScore: r1(clamp(draftScore + personalAdj + experienceAdj, 15, 85)),
       midRate: rm.rate,
       personalNotes,
     });

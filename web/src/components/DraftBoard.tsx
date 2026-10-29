@@ -585,9 +585,14 @@ function Row({ c, byId, onTake, lane }: { c: Candidate; byId: Map<number, Hero>;
             {c.predictedAdj !== 0 && <Part label="Вероятные пики врага на твою линию" note="небольшой вес, пока соперник не выбран" value={c.predictedAdj} />}
             {c.stageAdj !== 0 && <Part label="Очередь пика" note={`риск контрпика ${c.counterRisk}`} value={c.stageAdj} />}
             {c.needsAdj !== 0 && <Part label="Закрывает нехватку команды" value={c.needsAdj} />}
-            {c.poolStatus === "pool"
-              ? <Part label={c.midGames > 0 ? `Поправка за твой счёт ${c.midWins}–${c.midGames - c.midWins} (${c.personalWinrate}%)` : "Поправка за твой счёт"} note={c.midGames === 0 ? "игр на роли нет" : c.midGames < 3 ? "меньше 3 игр, не учитывается" : c.personalAdj === 0 ? "ровно 50%, ничего не прибавляет" : undefined} value={c.personalAdj} />
-              : <div className="flex items-baseline justify-between gap-3"><span>Поправка за твой счёт{c.midGames > 0 ? ` ${c.midWins}–${c.midGames - c.midWins}` : ""}<span className="opacity-60"> · не в пуле, не учитывается</span></span><b className="text-muted">0</b></div>}
+            {c.poolStatus === "pool" ? (
+              <>
+                <Part label="Наигранность" note={`${c.midGames} игр на роли за год`} value={c.experienceAdj} />
+                <Part label="Твой винрейт" note={c.midGames === 0 ? "игр на роли нет" : `${c.midWins}–${c.midGames - c.midWins}, ${c.personalWinrate}%${c.midGames < 3 ? ", меньше 3 игр, не учитывается" : c.personalAdj === 0 ? ", ровно 50%" : ""}`} value={c.personalAdj} />
+              </>
+            ) : (
+              <div className="flex items-baseline justify-between gap-3"><span>Наигранность и твой винрейт<span className="opacity-60"> · {c.midGames > 0 ? `${c.midWins}–${c.midGames - c.midWins}, ` : ""}не в пуле, не учитываются</span></span><b className="text-muted">0</b></div>
+            )}
             <div className="flex items-baseline justify-between gap-3 border-t border-border pt-1 mt-0.5 text-foreground"><span>Итого: шанс победы</span><b className={`tabular-nums ${tone}`}>{score}%</b></div>
             <div className="opacity-60 mt-1">Его берут на эту роль в {Math.round(c.midRate * 100)}% игр героя у Immortal. Матчапы и синергии Stratz даёт только по Divine+Immortal вместе.</div>
           </div>

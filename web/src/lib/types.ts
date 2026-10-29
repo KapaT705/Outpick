@@ -48,8 +48,9 @@ export type Candidate = {
   midGames: number;
   midWins: number;
   personalWinrate: number | null; // %
-  personalAdj: number;     // pp adjustment from personal results
-  finalScore: number;      // draftScore + personalAdj (%)
+  personalAdj: number;     // pp adjustment from personal winrate on the hero (pool heroes only)
+  experienceAdj: number;   // pp bonus for how many games you played the hero on this role (наигранность), pool heroes only
+  finalScore: number;      // draftScore + personalAdj + experienceAdj (%)
   midRate: number;         // share of this hero's games played on the role at Immortal
   vsLane?: VsLane | null;  // против соперника по линии (если он известен)
   top?: TopStat | null;    // как герой идёт у Immortal на этой роли
