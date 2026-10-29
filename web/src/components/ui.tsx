@@ -1,0 +1,49 @@
+"use client";
+// Базовые элементы интерфейса: один стиль карточек, кнопок, подписей и статусов на всех страницах.
+import type { ReactNode } from "react";
+
+export function Card({ children, className = "", tone = "default" }: { children: ReactNode; className?: string; tone?: "default" | "accent" | "good" | "bad" }) {
+  const border = tone === "accent" ? "border-accent/40" : tone === "good" ? "border-good/40" : tone === "bad" ? "border-bad/40" : "border-border";
+  return <section className={`rounded-2xl border ${border} bg-panel p-4 ${className}`}>{children}</section>;
+}
+
+export function CardTitle({ children, right, hint }: { children: ReactNode; right?: ReactNode; hint?: string }) {
+  return (
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <h2 className="text-base font-semibold flex items-center gap-2">{children}{hint && <Hint text={hint} />}</h2>
+      {right}
+    </div>
+  );
+}
+
+/** Знак вопроса с подсказкой по наведению: длинные пояснения живут здесь, а не в тексте на экране. */
+export function Hint({ text }: { text: string }) {
+  return <span title={text} className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] text-muted cursor-help select-none">?</span>;
+}
+
+export function Button({ children, onClick, variant = "ghost", disabled, title, className = "", size = "md" }: { children: ReactNode; onClick?: () => void; variant?: "primary" | "ghost" | "danger" | "link"; disabled?: boolean; title?: string; className?: string; size?: "sm" | "md" }) {
+  const base = size === "sm" ? "px-2.5 py-1 text-xs" : "px-3.5 py-2 text-sm";
+  const v = variant === "primary" ? "bg-accent text-black font-semibold hover:brightness-110"
+    : variant === "danger" ? "border border-bad/50 text-bad hover:bg-bad/10"
+    : variant === "link" ? "text-accent hover:underline px-0 py-0"
+    : "border border-border text-foreground hover:border-accent/60 hover:bg-panel-2";
+  return <button onClick={onClick} disabled={disabled} title={title} className={`rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed ${variant === "link" ? "" : base} ${v} ${className}`}>{children}</button>;
+}
+
+export function Chip({ children, tone = "muted", title, className = "" }: { children: ReactNode; tone?: "muted" | "accent" | "good" | "bad" | "enemy" | "ally"; title?: string; className?: string }) {
+  const t = { muted: "bg-panel-2 text-muted", accent: "bg-accent/15 text-accent", good: "bg-good/15 text-good", bad: "bg-bad/15 text-bad", enemy: "bg-enemy/15 text-enemy", ally: "bg-ally/15 text-ally" }[tone];
+  return <span title={title} className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] leading-4 whitespace-nowrap ${t} ${className}`}>{children}</span>;
+}
+
+/** Точка состояния с подписью: зелёная — работает, серая — нет, жёлтая — ждёт. */
+export function Status({ ok, label, title, pending }: { ok: boolean; label: string; title?: string; pending?: boolean }) {
+  return (
+    <span title={title} className="inline-flex items-center gap-1.5 text-xs text-muted cursor-default">
+      <span className={`inline-block h-2 w-2 rounded-full ${ok ? "bg-good" : pending ? "bg-accent" : "bg-border"}`} />{label}
+    </span>
+  );
+}
+
+export function Empty({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted flex flex-col items-center gap-2">{children}{action}</div>;
+}

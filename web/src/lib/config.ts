@@ -10,6 +10,7 @@ export type AppConfig = {
   accounts: Account[];
   githubToken?: string;
   screenCapture?: boolean;
+  onboardingDone?: boolean; // экран первого запуска пройден или пропущен
 };
 
 const FILE = path.join(USER_DIR, "config.json");
@@ -28,6 +29,7 @@ export function readConfig(): AppConfig {
     accounts,
     githubToken: c.githubToken || "",
     screenCapture: c.screenCapture !== false, // по умолчанию включено
+    onboardingDone: c.onboardingDone === true,
   };
 }
 

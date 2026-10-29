@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Onboarding from "@/components/Onboarding";
 import { usePathname } from "next/navigation";
 
 type UpdateEvent = { type: "checking" | "available" | "none" | "progress" | "downloaded" | "installing" | "error"; version?: string; current?: string; percent?: number; message?: string };
@@ -78,6 +79,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
+      <Onboarding />
       <div className="flex-1">{children}</div>
     </div>
   );

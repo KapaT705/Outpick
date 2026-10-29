@@ -5,6 +5,7 @@ import { parseHeroText, type AliasMap } from "@/lib/aliases";
 import type { Attr, Candidate, DraftStage, Hero, LaneOpponent, Pick, PoolOverride, PredictedPicks, Role, RoleGuess, TeamNeed } from "@/lib/types";
 import type { RecognizeResult } from "@/components/AppShell";
 import { newTrackState, trackFrame } from "@/lib/draftTrack";
+import { Button, Card, CardTitle, Chip, Status } from "@/components/ui";
 
 type Zone = "bans" | "enemies" | "allies";
 const ZONES: { key: Zone; label: string; color: string; max: number; hint: string }[] = [
@@ -295,51 +296,41 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-5 flex flex-col gap-5">
-      <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-semibold">Драфт <span className="text-muted text-sm font-normal">Divine/Immortal</span></h1>
-          <div className="flex rounded-lg border border-border overflow-hidden text-xs" title="Твоя роль в этой игре: от неё зависят пул, базовые винрейты и вес матчапов по лейну">
-            {ROLES.map((r) => (
-              <button key={r} onClick={() => setRole(r)} title={ROLE_NAME[r]} className={`px-2.5 py-1.5 ${role === r ? "bg-accent/25 text-accent font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>{ROLE_FULL[r]}</button>
-            ))}
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-4">
+          <h1 className="text-xl font-semibold">Пикер</h1>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted">Моя роль</span>
+            <div className="flex rounded-lg border border-border overflow-hidden text-xs" title="От роли зависят пул, базовые винрейты и вес матчапов по линии">
+              {ROLES.map((r) => (
+                <button key={r} onClick={() => setRole(r)} title={ROLE_NAME[r]} className={`px-3 py-1.5 ${role === r ? "bg-accent/25 text-accent font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>{ROLE_FULL[r]}</button>
+              ))}
+            </div>
           </div>
         </div>
-        <div className="flex gap-4 text-sm items-center">
-          {saved && <span className="text-good text-xs">сохранил: {saved}</span>}
-          <span className="flex items-center gap-1.5 text-xs text-muted cursor-default" title={gsi?.connected ? `Дота на связи${gsi.phase ? ` · ${gsi.phase.replace("DOTA_GAMERULES_STATE_", "").toLowerCase()}` : ""}${gsi.ownHeroId ? ` · твой герой: ${byId.get(gsi.ownHeroId)?.name}` : ""}. Когда ты выберешь героя, драфт с введёнными врагами запишется в историю сам.` : "Дота не на связи: запусти игру с установленным конфигом GSI (Настройки)"}>
-            <span className={`inline-block h-2 w-2 rounded-full ${gsi?.connected ? "bg-good" : "bg-border"}`} />
-            {gsi?.connected ? "Дота" : "Дота не на связи"}
-            {captureOn && screen && <span className="ml-1 text-muted/80" title={screen.status}>· экран: {screen.found}</span>}
-          </span>
+        <div className="flex flex-wrap gap-3 text-sm items-center">
+          {saved && <Chip tone="good">записал: {saved}</Chip>}
+          <Status ok={!!gsi?.connected} label={gsi?.connected ? (gsi.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" ? "Дота: стадия пиков" : gsi.phase === "DOTA_GAMERULES_STATE_STRATEGY_TIME" ? "Дота: стратегия" : gsi.phase && gsi.phase !== "" ? "Дота: в игре" : "Дота: в меню") : "Дота не на связи"}
+            title={gsi?.connected ? `${gsi.ownHeroId ? `Твой герой: ${byId.get(gsi.ownHeroId)?.name}. ` : ""}Когда ты выберешь героя, драфт запишется в историю сам.${captureOn && screen ? ` Экран: ${screen.status}, распознано слотов: ${screen.found}.` : ""}` : "Запусти Доту с установленным конфигом (Настройки → Связь с Дотой). Пока связи нет, врагов можно вводить вручную."} />
           {!gsi?.connected && captureOn && (
             <div className="flex rounded-md border border-border overflow-hidden text-[11px]" title="Дота не на связи, поэтому укажи, за какую сторону играешь: от этого зависит, кто в распознанном драфте враги">
               <button onClick={() => setSide("radiant")} className={`px-2 py-1 ${side === "radiant" ? "bg-good/20 text-good" : "text-muted"}`}>я за Свет</button>
               <button onClick={() => setSide("dire")} className={`px-2 py-1 ${side === "dire" ? "bg-bad/20 text-bad" : "text-muted"}`}>я за Тьму</button>
             </div>
           )}
-          <button onClick={() => setPoolOpen(true)} className="text-accent hover:underline" title={acct?.current.id ? `Аккаунт ${acct.current.name ?? acct.current.id}${acct.current.source === "gsi" ? " (сообщила Дота)" : acct.current.source === "steam" ? " (под ним запущен Steam)" : " (по умолчанию из настроек)"}${acct.current.known ? "" : ": пул не загружен, общий режим"}` : "Аккаунт не известен: общий режим без пула"}>
-            {acct?.current.id ? `${acct.current.name ?? acct.current.id}: пул · ${poolSet.size}` : `Мой пул · ${poolSet.size}`}
-          </button>
-          <button onClick={reset} className="text-muted hover:text-foreground underline">Сбросить драфт</button>
+          <Button size="sm" onClick={() => setPoolOpen(true)} title={acct?.current.id ? `Аккаунт ${acct.current.name ?? acct.current.id}${acct.current.source === "gsi" ? " (сообщила Дота)" : acct.current.source === "steam" ? " (под ним запущен Steam)" : " (по умолчанию из настроек)"}${acct.current.known ? "" : ": пул не загружен, общий режим"}. Нажми, чтобы править пул.` : "Аккаунт не известен: общий режим без пула"}>
+            Мой пул · {poolSet.size}{acct?.current.id ? <span className="text-muted"> · {acct.current.name ?? acct.current.id}</span> : null}
+          </Button>
+          <Button size="sm" variant="link" onClick={reset} title="Очистить врагов, союзников и баны">Сбросить драфт</Button>
         </div>
       </header>
 
-      {setup && !setupHidden && (!setup.steam || !setup.token || !setup.gsi) && (
-        <section className="rounded-xl border border-accent/40 bg-accent/5 p-3 text-sm flex flex-wrap items-center gap-3">
-          <span className="font-semibold">Первые шаги</span>
-          <span className={setup.steam && setup.token ? "text-good" : "text-muted"}>{setup.steam && setup.token ? "✓" : "1."} Steam ID и токен Stratz</span>
-          <span className={setup.gsi ? "text-good" : "text-muted"}>{setup.gsi ? "✓" : "2."} конфиг GSI в Доту</span>
-          <a href="/settings" className="rounded-md bg-accent/20 px-2.5 py-1 text-accent hover:bg-accent/30">Открыть настройки</a>
-          <button onClick={() => { setSetupHidden(true); try { sessionStorage.setItem("draft.setupHidden", "1"); } catch {} }} className="ml-auto text-xs text-muted hover:text-foreground">Скрыть</button>
-        </section>
-      )}
-
       {acct?.current.id && !acct.current.known && (
-        <section className="rounded-xl border border-accent/40 bg-accent/5 px-3 py-2 text-sm flex flex-wrap items-center gap-3">
-          <span><span className="font-semibold">Общий режим.</span> Аккаунт {acct.current.name ?? acct.current.id}{acct.current.source === "gsi" ? " (его сообщила Дота)" : acct.current.source === "steam" ? " (под ним запущен Steam)" : ""} не знаком: советы по мете и контрпикам без твоего пула. Загрузи его историю, и появятся пул и личные винрейты.</span>
-          <button onClick={() => loadHistory(acct.current.id!)} disabled={!!loadMsg && !loadMsg.startsWith("ошибка")} className="rounded-md bg-accent/20 px-2.5 py-1 text-accent hover:bg-accent/30 disabled:opacity-50">Загрузить историю аккаунта</button>
+        <Card tone="accent" className="py-3 text-sm flex flex-wrap items-center gap-3">
+          <span><span className="font-semibold">Общий режим.</span> Аккаунт {acct.current.name ?? acct.current.id}{acct.current.source === "gsi" ? " (его сообщила Дота)" : acct.current.source === "steam" ? " (под ним запущен Steam)" : ""} ещё не знаком: советы по мете и контрпикам, но без твоего пула.</span>
+          <Button size="sm" variant="primary" onClick={() => loadHistory(acct.current.id!)} disabled={!!loadMsg && !loadMsg.startsWith("ошибка")}>Загрузить историю аккаунта</Button>
           {loadMsg && <span className="text-xs text-muted">{loadMsg}</span>}
-        </section>
+        </Card>
       )}
 
       {gsiRewritten && <section className="rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm">Конфиг GSI в Доте указывал на старый порт, я переписал его. Перезапусти Доту, чтобы точка «Дота» загорелась.</section>}
@@ -349,10 +340,11 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
       <section className="grid gap-3 md:grid-cols-3">
         {ZONES.map((z) => (
           <div key={z.key} onClick={() => setZone(z.key)}
-            className={`rounded-xl border-2 bg-panel p-3 cursor-pointer transition ${zone === z.key ? z.color : "border-border"}`}>
+            className={`rounded-2xl border-2 bg-panel p-3 cursor-pointer transition ${zone === z.key ? z.color : "border-border hover:border-border/80"}`}
+            title={zone === z.key ? "Сюда попадают герои из сетки и текстового ввода" : "Нажми, чтобы добавлять героев сюда"}>
             <div className="flex items-center justify-between mb-2">
-              <span className={`text-sm font-semibold ${z.color.split(" ")[1]}`}>{z.label}</span>
-              <span className="text-xs text-muted">{picks[z.key].length}/{z.max}{zone === z.key ? " · добавляю сюда" : ""}</span>
+              <span className={`text-sm font-semibold ${z.color.split(" ")[1]}`}>{z.label} <span className="text-muted font-normal">{picks[z.key].length}/{z.max}</span></span>
+              {zone === z.key && <Chip tone="accent">добавляю сюда</Chip>}
             </div>
             <div className="flex flex-wrap gap-2 min-h-10 mb-2">
               {picks[z.key].map((p) => {
@@ -376,7 +368,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
               })}
             </div>
             <input value={quick[z.key]} onChange={(e) => setQuick({ ...quick, [z.key]: e.target.value })} onClick={(e) => { e.stopPropagation(); setZone(z.key); }}
-              onKeyDown={(e) => { if (e.key === "Enter") submitQuick(z.key); }} placeholder={`текстом: ${z.hint}`}
+              onKeyDown={(e) => { if (e.key === "Enter") submitQuick(z.key); }} placeholder={`или напиши, например: ${z.hint}`}
               className="w-full rounded-md border border-border bg-panel-2 px-2 py-1 text-xs outline-none focus:border-accent placeholder:text-muted/60" />
             {unknown[z.key].length > 0 && <div className="mt-1 text-[11px] text-bad">не узнал: {unknown[z.key].join(", ")}</div>}
           </div>
@@ -385,7 +377,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
 
       <div className="grid gap-5 lg:grid-cols-[1fr_1.1fr]">
         <section className="rounded-xl border border-border bg-panel p-3 flex flex-col gap-3 min-w-0">
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Поиск героя (английское имя)…"
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Найти героя и добавить в выбранную зону…"
             onKeyDown={(e) => { if (e.key === "Enter" && filtered.length > 0) add(filtered.find((h) => !taken.has(h.id))?.id ?? filtered[0].id); }}
             className="w-full rounded-lg border border-border bg-panel-2 px-3 py-2 text-sm outline-none focus:border-accent" autoFocus />
           <div className="flex gap-1 border-b border-border overflow-x-auto">
@@ -410,24 +402,30 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             })}
             {filtered.length === 0 && <span className="text-sm text-muted col-span-full">Никого не нашёл</span>}
           </div>
-          <p className="text-xs text-muted">Золотая рамка — твой пул на выбранной роли, тонкая — знакомые герои (3–9 игр). Пул можно править кнопкой «Мой пул». Роль со знаком «?» предсказана по статистике, выбери в списке, если знаешь точно.</p>
+          <p className="text-xs text-muted flex flex-wrap gap-x-3 gap-y-1"><span><span className="inline-block h-2.5 w-4 rounded-sm ring-2 ring-accent align-middle mr-1" />твой пул на этой роли</span><span><span className="inline-block h-2.5 w-4 rounded-sm ring-1 ring-accent/50 align-middle mr-1" />знакомые герои</span><span>роль «?» у героя — предположение, выбери сам, если знаешь</span></p>
         </section>
 
         <section className="flex flex-col gap-4 min-w-0">
           {(picks.enemies.length > 0 || picks.allies.length > 0) && (
-            <div className="rounded-xl border border-border bg-panel px-3 py-2 text-xs text-muted flex flex-wrap gap-x-4 gap-y-1">
-              <span title="По числу известных пиков врага. Рано: врагам ещё отвечать контрпиком, поэтому героев, которых легко законтрить, пикер придерживает (штраф до 60% риска контрпика). Поздно: контрпикуем мы, штрафа нет.">
-                <span className="text-foreground">Очередь пика:</span> {stage === "early" ? "ранняя, ценю устойчивость к контрпику" : stage === "mid" ? "середина, риск контрпика учитываю наполовину" : "поздняя, выжимаю контрпики"}
-              </span>
-              {needs.length > 0 && <span title="По тегам героев союзников (без тебя). Герои, закрывающие нехватку, получают небольшой плюс."><span className="text-foreground">Команде не хватает:</span> {needs.map((n) => n.label).join(", ")}</span>}
-              {picks.allies.length > 0 && needs.length === 0 && <span><span className="text-foreground">Состав:</span> всё на месте</span>}
-            </div>
-          )}
-          {picks.enemies.length > 0 && picks.enemies.length < 5 && predicted.length > 0 && (
-            <div className="rounded-xl border border-border bg-panel px-3 py-2 text-xs text-muted flex flex-wrap gap-x-4 gap-y-1" title="Самые популярные герои Divine/Immortal на ролях, которые у врагов ещё не заняты, среди не занятых в драфте. Пока соперник по твоей линии не выбран, матчапы против вероятных героев его роли учитываются с небольшим весом.">
-              <span className="text-foreground">Враги ещё не взяли:</span>
-              {predicted.map((p) => <span key={p.role}><span className="text-enemy">{ROLE_LABEL[p.role]}</span>{p.player ? <span className="text-foreground"> {p.player}:</span> : ""} {p.heroes.map((h) => `${h.name} ${Math.round(h.share * 100)}%`).join(", ")}</span>)}
-            </div>
+            <Card className="py-3 text-xs text-muted flex flex-col gap-1.5">
+              <div className="flex flex-wrap items-center gap-2" title="По числу известных пиков врага. Рано: врагам ещё отвечать контрпиком, поэтому героев, которых легко законтрить, пикер придерживает. Поздно: контрпикуем мы.">
+                <span className="text-foreground w-36">Очередь пика</span>
+                <Chip tone={stage === "late" ? "good" : "muted"}>{stage === "early" ? "ранняя" : stage === "mid" ? "середина" : "поздняя"}</Chip>
+                <span>{stage === "early" ? "враги ещё ответят контрпиком, ценю устойчивых героев" : stage === "mid" ? "риск контрпика учитываю наполовину" : "контрпикуем мы, выжимаю матчапы"}</span>
+              </div>
+              {picks.allies.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2" title="По тегам героев союзников (без тебя). Герои, закрывающие нехватку, получают небольшой плюс.">
+                  <span className="text-foreground w-36">Команде не хватает</span>
+                  {needs.length === 0 ? <Chip tone="good">всё на месте</Chip> : needs.map((n) => <Chip key={n.key} tone="bad">{n.label}</Chip>)}
+                </div>
+              )}
+              {picks.enemies.length < 5 && predicted.length > 0 && (
+                <div className="flex flex-wrap items-start gap-2" title="Самые вероятные герои на роли, которые у врагов ещё не заняты: по любимым героям игрока, если он известен, иначе по популярности на роли. Пока соперник по твоей линии не выбран, матчапы против вероятных считаются с небольшим весом.">
+                  <span className="text-foreground w-36">Враги ещё возьмут</span>
+                  <span className="flex flex-wrap gap-x-3 gap-y-1">{predicted.map((p) => <span key={p.role}><Chip tone="enemy">{ROLE_LABEL[p.role]}</Chip>{p.player ? <span className="text-foreground"> {p.player}:</span> : ""} {p.heroes.map((h) => `${h.name} ${Math.round(h.share * 100)}%`).join(", ")}</span>)}</span>
+                </div>
+              )}
+            </Card>
           )}
           {laneOpp && <LaneCard lane={laneOpp} inPool={inPool} byId={byId} />}
           <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} items={inPool} loading={loading} byId={byId} onTake={take} lane={laneOpp} />
@@ -489,17 +487,14 @@ function LaneCard({ lane, inPool, byId }: { lane: LaneOpponent; inPool: Candidat
 
 function ResultBlock({ title, items, loading, byId, footer, onTake, lane }: { title: string; items: Candidate[]; loading: boolean; byId: Map<number, Hero>; footer?: React.ReactNode; onTake: (id: number) => void; lane?: LaneOpponent | null }) {
   return (
-    <div className="rounded-xl border border-border bg-panel p-3">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="font-semibold">{title}</h2>
-        {loading && <span className="text-xs text-muted">считаю…</span>}
-      </div>
+    <Card className="p-3">
+      <CardTitle right={loading ? <span className="text-xs text-muted">считаю…</span> : null}>{title}</CardTitle>
       <div className="flex flex-col gap-2">
         {items.map((c) => <Row key={c.heroId} c={c} byId={byId} onTake={onTake} lane={lane} />)}
-        {items.length === 0 && !loading && <span className="text-sm text-muted">Пусто</span>}
+        {items.length === 0 && !loading && <span className="text-sm text-muted">Пока нечего посоветовать: добавь врагов или загрузи историю аккаунта.</span>}
       </div>
       {footer && <div className="mt-2">{footer}</div>}
-    </div>
+    </Card>
   );
 }
 
@@ -507,9 +502,9 @@ function Row({ c, byId, onTake, lane }: { c: Candidate; byId: Map<number, Hero>;
   const [open, setOpen] = useState(false);
   const h = byId.get(c.heroId)!;
   const tone = c.finalScore >= 55 ? "text-good" : c.finalScore <= 45 ? "text-bad" : "text-foreground";
-  const tag = c.poolStatus === "pool" ? <span className="rounded bg-accent/20 px-1.5 py-0.5 text-[11px] text-accent">в пуле</span>
-    : c.poolStatus === "familiar" ? <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent/80">знакомый</span>
-    : <span className="rounded bg-panel-2 px-1.5 py-0.5 text-[11px] text-muted">вне пула</span>;
+  const tag = c.poolStatus === "pool" ? <Chip tone="accent" title="Ты играешь на нём на этой роли">в пуле</Chip>
+    : c.poolStatus === "familiar" ? <Chip tone="accent" title="3–9 игр на этой роли" className="opacity-80">знакомый</Chip>
+    : <Chip title="Ты на нём не играл на этой роли">вне пула</Chip>;
   const top = c.reasons.slice(0, 3);
   return (
     <div className="rounded-lg bg-panel-2 p-2 cursor-pointer" onClick={() => setOpen(!open)}>
@@ -531,7 +526,7 @@ function Row({ c, byId, onTake, lane }: { c: Candidate; byId: Map<number, Hero>;
           <div className={`text-xl font-semibold ${tone}`}>{Math.round(c.finalScore)}%</div>
           <div className="text-[11px] text-muted">драфт {Math.round(c.draftScore)}%</div>
         </div>
-        <button onClick={(e) => { e.stopPropagation(); onTake(c.heroId); }} title="Записать в историю, что ты взял этого героя"
+        <button onClick={(e) => { e.stopPropagation(); onTake(c.heroId); }} title="Записать в историю, что ты взял этого героя. Когда Дота на связи, это происходит само."
           className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-muted hover:border-accent hover:text-accent">Беру</button>
       </div>
       {open && (
