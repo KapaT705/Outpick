@@ -233,7 +233,7 @@ export default function SettingsForm() {
       {tab === "data" && (
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
         <div className="font-semibold flex items-center gap-2">Данные меты <Check ok={!!ref?.updatedAt} label={ref?.updatedAt ? `обновлены ${new Date(ref.updatedAt * 1000).toLocaleDateString("ru-RU")}` : "из сборки"} /></div>
-        <p className="text-xs text-muted">Матчапы, синергии, популярность героев по ролям за последние 4 недели на Divine/Immortal и отдельно у Immortal, плюс пул и личная история текущего аккаунта за год. Обновляется само раз в {ref?.autoEveryDays ?? 7} дней, когда Дота не на стадии пиков; после патча можно нажать вручную. Занимает около минуты.</p>
+        <p className="text-xs text-muted">Винрейты и популярность героев по ролям за последние 4 недели у Immortal (5420+ MMR), матчапы и синергии по Divine+Immortal (Stratz не делит их тоньше), плюс пул и личная история текущего аккаунта за год. Обновляется само раз в {ref?.autoEveryDays ?? 7} дней, когда Дота не на стадии пиков; после патча можно нажать вручную. Занимает около минуты.</p>
         <div className="flex items-center gap-3">
           <button onClick={startRefresh} disabled={!!ref?.running} className="rounded-md border border-border px-3 py-1.5 hover:border-accent disabled:opacity-50">{ref?.running ? "обновляю…" : "Обновить мету"}</button>
           <span className="text-xs text-muted">

@@ -560,10 +560,10 @@ function Row({ c, byId, onTake, lane }: { c: Candidate; byId: Map<number, Hero>;
             <span className="font-medium leading-5">{c.name}</span>{tag}
             {c.personalWinrate !== null && <Chip tone={c.poolStatus !== "pool" ? "muted" : c.personalWinrate >= 50 ? "good" : "bad"} title={`Твой счёт на нём на этой роли за год: ${c.midWins} побед, ${c.midGames - c.midWins} поражений${c.poolStatus === "pool" ? ". Учтён в оценке" : ". На оценку не влияет: герой не в пуле"}`}>ты {c.midWins}–{c.midGames - c.midWins} · {c.personalWinrate}%</Chip>}
             {lane && c.vsLane && <Chip tone={c.vsLane.value >= 1 ? "good" : c.vsLane.value <= -1 ? "bad" : "muted"} title={`Матчап против соперника по линии, ${lane.name} (${c.vsLane.games} игр в выборке)${c.vsLane.personal ? `. Твой счёт против него ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}`}>против {laneName} {signed(c.vsLane.value)}{c.vsLane.personal ? ` · ты ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}</Chip>}
-            {c.top && <Chip title={`У Immortal на этой роли за 4 недели: винрейт ${c.top.winrate}%, берут в ${c.top.rate}% игр (${c.top.games} игр)`}>Immortal {c.top.winrate}%</Chip>}
+            {c.top && <Chip title={`Популярность у Immortal на этой роли за 4 недели: ${c.top.rate}% всех пиков роли (${c.top.games} игр), винрейт ${c.top.winrate}%`}>берут {c.top.rate}%</Chip>}
           </div>
           <div className="flex items-center gap-1.5 flex-wrap text-[11px] leading-4">
-            {top.length === 0 && <span className="text-muted" title="Пока в драфте никого нет, герои идут по винрейту на этой роли у Divine/Immortal за последние недели с поправкой на твой опыт. Матчапы появятся, когда добавишь врагов или союзников.">{c.base}% винрейт на роли · врагов пока нет</span>}
+            {top.length === 0 && <span className="text-muted" title="Пока в драфте никого нет, герои идут по винрейту на этой роли у Immortal (5420+ MMR) за последние 4 недели с поправкой на твой опыт. Матчапы появятся, когда добавишь врагов или союзников.">{c.base}% винрейт на роли · врагов пока нет</span>}
             {top.map((r) => (
               <span key={`${r.kind}-${r.heroId}`} className={`${signTone(r.value)} whitespace-nowrap`} title={`${r.kind === "vs" ? "Против" : "Вместе с"} ${r.name}: ${signed(r.value, 1)} к винрейту (${r.games} игр в выборке)${r.laneOpp ? ". Твой соперник по линии, вес выше" : ""}`}>
                 {signed(r.value)} <span className="text-muted">{r.kind === "vs" ? "против" : "с"}</span> {r.name}
@@ -579,7 +579,7 @@ function Row({ c, byId, onTake, lane }: { c: Candidate; byId: Map<number, Hero>;
         <div className="mt-2 border-t border-border pt-2 text-xs text-muted grid gap-3 sm:grid-cols-2" onClick={(e) => e.stopPropagation()}>
           <div className="grid gap-1 content-start">
             <div className="text-foreground font-medium mb-0.5">Из чего сложилась оценка</div>
-            <div className="flex items-baseline justify-between gap-3"><span>Винрейт героя на этой роли у Divine/Immortal</span><b className="text-foreground tabular-nums">{c.base}%</b></div>
+            <div className="flex items-baseline justify-between gap-3"><span>Винрейт героя на этой роли у Immortal <span className="opacity-60">· 5420+ MMR, 4 недели</span></span><b className="text-foreground tabular-nums">{c.base}%</b></div>
             <Part label="Контрпики" value={c.vsTotal} />
             <Part label="Синергии" value={c.withTotal} />
             {c.predictedAdj !== 0 && <Part label="Вероятные пики врага на твою линию" note="небольшой вес, пока соперник не выбран" value={c.predictedAdj} />}
@@ -587,7 +587,7 @@ function Row({ c, byId, onTake, lane }: { c: Candidate; byId: Map<number, Hero>;
             {c.needsAdj !== 0 && <Part label="Закрывает нехватку команды" value={c.needsAdj} />}
             {c.poolStatus === "pool" ? <Part label="Твой опыт на герое" value={c.personalAdj} /> : <div className="flex items-baseline justify-between gap-3"><span>Твой опыт на герое<span className="opacity-60"> · не в пуле, не учитывается</span></span><b className="text-muted">0</b></div>}
             <div className="flex items-baseline justify-between gap-3 border-t border-border pt-1 mt-0.5 text-foreground"><span>Итого: шанс победы</span><b className={`tabular-nums ${tone}`}>{score}%</b></div>
-            <div className="opacity-60 mt-1">Его берут на эту роль в {Math.round(c.midRate * 100)}% игр героя у Divine/Immortal.</div>
+            <div className="opacity-60 mt-1">Его берут на эту роль в {Math.round(c.midRate * 100)}% игр героя у Immortal. Матчапы и синергии Stratz даёт только по Divine+Immortal вместе.</div>
           </div>
           <div className="grid gap-1 content-start">
             <div className="text-foreground font-medium mb-0.5">Матчапы в этом драфте</div>

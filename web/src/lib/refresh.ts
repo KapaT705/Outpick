@@ -54,10 +54,12 @@ export async function refreshGeneral(token: string, progress: Progress = () => {
   }
   save("matchups.json", matchups);
 
+  // мета только по Immortal (5420+ MMR): пользователь просил равняться на игроков выше ~5500, а не на Divine+Immortal.
+  // Матчапы и нормы (matchUp, stats) Stratz отдаёт лишь объединённым брекетом DIVINE_IMMORTAL, там выбора нет.
   progress("мета мида");
   type WW = { week: number; heroId: number; winCount: number; matchCount: number };
-  const mid: WW[] = (await gql(token, `{ heroStats { winWeek(positionIds: [POSITION_2], bracketIds: [DIVINE, IMMORTAL], take: 400) { week heroId winCount matchCount } } }`)).heroStats.winWeek;
-  const all: WW[] = (await gql(token, `{ heroStats { winWeek(bracketIds: [DIVINE, IMMORTAL], take: 400) { week heroId winCount matchCount } } }`)).heroStats.winWeek;
+  const mid: WW[] = (await gql(token, `{ heroStats { winWeek(positionIds: [POSITION_2], bracketIds: [IMMORTAL], take: 400) { week heroId winCount matchCount } } }`)).heroStats.winWeek;
+  const all: WW[] = (await gql(token, `{ heroStats { winWeek(bracketIds: [IMMORTAL], take: 400) { week heroId winCount matchCount } } }`)).heroStats.winWeek;
   const weeks = [...new Set(mid.map((r) => r.week))].sort().slice(-4);
   const agg = (rows: WW[]) => { const m = new Map<number, { g: number; w: number }>(); for (const r of rows) { if (!weeks.includes(r.week)) continue; const a = m.get(r.heroId) ?? { g: 0, w: 0 }; a.g += r.matchCount; a.w += r.winCount; m.set(r.heroId, a); } return m; };
   const midA = agg(mid), allA = agg(all);
@@ -66,20 +68,13 @@ export async function refreshGeneral(token: string, progress: Progress = () => {
   progress("роли героев");
   const posAgg = new Map<number, Record<string, number>>();
   const roleMeta: Record<string, { heroId: number; games: number; wins: number; winrate: number; rate: number }[]> = { 1: [], 2: [], 3: [], 4: [], 5: [] };
-  for (const pos of [1, 2, 3, 4, 5]) {
-    const rows: WW[] = (await gql(token, `{ heroStats { winWeek(positionIds: [POSITION_${pos}], bracketIds: [DIVINE, IMMORTAL], take: 400) { week heroId matchCount winCount } } }`)).heroStats.winWeek;
-    const per = new Map<number, { g: number; w: number }>();
-    for (const r of rows) { if (!weeks.includes(r.week)) continue; const a = posAgg.get(r.heroId) ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }; a[pos] += r.matchCount; posAgg.set(r.heroId, a); const q = per.get(r.heroId) ?? { g: 0, w: 0 }; q.g += r.matchCount; q.w += r.winCount ?? 0; per.set(r.heroId, q); }
-    roleMeta[pos] = [...per].map(([heroId, q]) => ({ heroId, games: q.g, wins: q.w, winrate: q.g ? q.w / q.g : 0.5, rate: q.g / (allA.get(heroId)?.g || q.g) }));
-    await sleep(200);
-  }
-  // то же только по Immortal: что реально берут и с каким винрейтом игроки верхнего брекета на каждой роли
-  progress("мета Immortal");
+  // role-meta-immortal.json: те же строки, но rate = доля пиков героя среди всех пиков роли (для чипа популярности)
   const topMeta: Record<string, { heroId: number; games: number; wins: number; winrate: number; rate: number }[]> = { 1: [], 2: [], 3: [], 4: [], 5: [] };
   for (const pos of [1, 2, 3, 4, 5]) {
     const rows: WW[] = (await gql(token, `{ heroStats { winWeek(positionIds: [POSITION_${pos}], bracketIds: [IMMORTAL], take: 400) { week heroId matchCount winCount } } }`)).heroStats.winWeek;
     const per = new Map<number, { g: number; w: number }>();
-    for (const r of rows) { if (!weeks.includes(r.week)) continue; const q = per.get(r.heroId) ?? { g: 0, w: 0 }; q.g += r.matchCount; q.w += r.winCount ?? 0; per.set(r.heroId, q); }
+    for (const r of rows) { if (!weeks.includes(r.week)) continue; const a = posAgg.get(r.heroId) ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }; a[pos] += r.matchCount; posAgg.set(r.heroId, a); const q = per.get(r.heroId) ?? { g: 0, w: 0 }; q.g += r.matchCount; q.w += r.winCount ?? 0; per.set(r.heroId, q); }
+    roleMeta[pos] = [...per].map(([heroId, q]) => ({ heroId, games: q.g, wins: q.w, winrate: q.g ? q.w / q.g : 0.5, rate: q.g / (allA.get(heroId)?.g || q.g) }));
     const total = [...per.values()].reduce((a, q) => a + q.g, 0) || 1;
     topMeta[pos] = [...per].map(([heroId, q]) => ({ heroId, games: q.g, wins: q.w, winrate: q.g ? q.w / q.g : 0.5, rate: q.g / total }));
     await sleep(200);

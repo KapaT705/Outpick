@@ -9,8 +9,8 @@ const PERSONAL_SHRINK = 30;   // personal games at which personal winrate gets h
 const PERSONAL_MIN_GAMES = 3; // меньше игр на роли: счёт показываем, но оценку не двигаем (2–0 ничего не значит)
 const PERSONAL_WEIGHT = 0.6;  // how strongly personal winrate moves the final score
 const MID_RATE_MIN = 0.15;    // hero counts as a mid hero if >= 15% of its games are mid
-const MID_GAMES_MIN = 15000;  // ...and has enough mid games in the last 4 weeks (Divine+Immortal)
-const BASE_SHRINK = 30000;    // mid games at which the hero base winrate gets half weight (niche-hero bias)
+const MID_GAMES_MIN = 4500;   // ...and has enough games on the role in the last 4 weeks (Immortal only: ~29% of the old Divine+Immortal volume, thresholds scaled)
+const BASE_SHRINK = 9000;     // role games at which the hero base winrate gets half weight (niche-hero bias); was 30000 for Divine+Immortal
 const POOL_MIN_GAMES = 10;
 const LANE_OPP_BONUS = 0.75;  // матчап против их мидера весит до 1.75x (пропорционально вероятности, что он мид)
 const LANE_OPP_BONUS_OTHER = 0.4; // на остальных ролях лейн делится с союзником, вес оппонентов по лейну меньше

@@ -40,7 +40,7 @@ export type Candidate = {
   name: string;
   short: string;
   draftScore: number;      // estimated winrate in this draft, meta only (%)
-  base: number;            // hero base mid winrate at Divine/Immortal (%)
+  base: number;            // hero base winrate on the role at Immortal (%), shrunk by games
   vsTotal: number;         // sum of counter contributions (pp)
   withTotal: number;       // sum of synergy contributions (pp)
   reasons: Reason[];
@@ -50,7 +50,7 @@ export type Candidate = {
   personalWinrate: number | null; // %
   personalAdj: number;     // pp adjustment from personal results
   finalScore: number;      // draftScore + personalAdj (%)
-  midRate: number;         // share of this hero's games played mid at Divine/Immortal
+  midRate: number;         // share of this hero's games played on the role at Immortal
   vsLane?: VsLane | null;  // против соперника по линии (если он известен)
   top?: TopStat | null;    // как герой идёт у Immortal на этой роли
   predictedAdj: number;    // поправка за вероятные пики врага на твою линию (pp)
