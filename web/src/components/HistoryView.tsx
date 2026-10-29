@@ -12,10 +12,12 @@ const fmt = (t: number) => new Date(t * 1000).toLocaleString("ru-RU", { day: "2-
 
 export default function HistoryView({ items: initial, heroes, accounts = {}, defaultAccountId = null, currentAccountId = null }: { items: DraftLog[]; heroes: Hero[]; accounts?: Record<number, string>; defaultAccountId?: number | null; currentAccountId?: number | null }) {
   const [all, setItems] = useState(initial);
-  // история только текущего аккаунта (под которым идёт игра или выбран по умолчанию в настройках); аккаунт меняется там же
+  // история по аккаунтам: открывается на текущем (под которым идёт игра или выбран по умолчанию), переключатель на любой или на все
   const accOf = (x: DraftLog) => x.accountId ?? defaultAccountId;
-  const items = currentAccountId ? all.filter((x) => accOf(x) === currentAccountId) : all;
-  const multiAccount = !currentAccountId && new Set(all.map(accOf)).size > 1;
+  const accountIds = [...new Set(all.map(accOf).filter((id): id is number => !!id))];
+  const [acc, setAcc] = useState<number | "all">(currentAccountId && accountIds.includes(currentAccountId) ? currentAccountId : accountIds.length > 1 ? "all" : (accountIds[0] ?? "all"));
+  const items = acc === "all" ? all : all.filter((x) => accOf(x) === acc);
+  const multiAccount = acc === "all" && accountIds.length > 1;
   const accName = (x: DraftLog) => { const id = accOf(x); return id ? (accounts[id] ?? String(id)) : "?"; };
   const [busy, setBusy] = useState(false);
   const [period, setPeriod] = useState<number>(30); // дней для сводки; 0 = всё время
@@ -70,7 +72,12 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
     <main className="mx-auto w-full max-w-5xl px-4 py-5 flex flex-col gap-5">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-2xl font-semibold">История драфтов <span className="text-muted text-base font-normal">{items.length} записей · с результатом {done.length}</span></h1>
-        {currentAccountId && <span className="text-xs text-muted" title="Аккаунт меняется в настройках (вкладка «Аккаунты и Stratz») или сам, когда Дота на связи">аккаунт: {accounts[currentAccountId] ?? currentAccountId}</span>}
+        {accountIds.length > 1 && (
+          <div className="flex rounded-md border border-border overflow-hidden text-xs" title="Чья история. Открывается на аккаунте, под которым сейчас играешь.">
+            {accountIds.map((id) => <button key={id} onClick={() => setAcc(id)} className={`px-2.5 py-1 ${acc === id ? "bg-accent/20 text-accent font-semibold" : "text-muted hover:text-foreground"}`}>{accounts[id] ?? id}</button>)}
+            <button onClick={() => setAcc("all")} className={`px-2.5 py-1 ${acc === "all" ? "bg-accent/20 text-accent font-semibold" : "text-muted hover:text-foreground"}`}>все</button>
+          </div>
+        )}
         <div className="flex items-center gap-3 text-sm">
           <button onClick={sync} disabled={busy} className="rounded-md border border-border px-3 py-1 hover:border-accent disabled:opacity-50">{busy ? "ищу матчи…" : "Подтянуть результаты из Stratz"}</button>
         </div>
