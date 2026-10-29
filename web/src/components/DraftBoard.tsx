@@ -300,8 +300,9 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
     saveOverride({ add, remove: rem });
   };
 
-  const inPool = result.filter((c) => c.poolStatus !== "outside");
-  const outside = result.filter((c) => c.poolStatus === "outside").slice(0, showAll ? 40 : 8);
+  // «из пула» только пул; «знакомые» (3–9 игр) идут во второй список с пометкой, их счёт на оценку не влияет
+  const inPool = result.filter((c) => c.poolStatus === "pool");
+  const outside = result.filter((c) => c.poolStatus !== "pool").slice(0, showAll ? 40 : 8);
   // порядок в окне пула постоянный (по алфавиту): отмеченные герои не перепрыгивают наверх, иначе список скачет при каждом клике
   const poolList = useMemo(() => {
     const q = poolQuery.trim().toLowerCase();
@@ -457,7 +458,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
           )}
           {laneOpp && <LaneCard lane={laneOpp} inPool={inPool} byId={byId} />}
           <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} hint="Герои, на которых ты играешь на этой роли (пул правится кнопкой «Мой пул»). Отсортированы по шансу победы в этом драфте." items={inPool} loading={loading} byId={byId} onTake={take} lane={laneOpp} />
-          <ResultBlock title="Вне пула, но хороши в этот драфт" hint="Герои, на которых ты не играешь на этой роли, но которые сильны против этого драфта. Если готов рискнуть." items={outside} loading={loading} byId={byId} onTake={take}
+          <ResultBlock title="Вне пула, но хороши в этот драфт" hint="Герои не из твоего пула на этой роли: оценка только по мете и драфту, твой счёт на них показывается, но не учитывается. «Знакомый» значит 3–9 игр за год." items={outside} loading={loading} byId={byId} onTake={take}
             footer={<button onClick={() => setShowAll(!showAll)} className="text-xs text-muted underline">{showAll ? "Показать меньше" : "Показать больше"}</button>} />
         </section>
       </div>
@@ -546,7 +547,7 @@ function Row({ c, byId, onTake, lane }: { c: Candidate; byId: Map<number, Hero>;
   const tone = score >= 55 ? "text-good" : score <= 45 ? "text-bad" : "text-foreground";
   const bar = score >= 55 ? "bg-good" : score <= 45 ? "bg-bad" : "bg-accent";
   const tag = c.poolStatus === "pool" ? <Chip tone="accent" title="Ты играешь на нём на этой роли">в пуле</Chip>
-    : c.poolStatus === "familiar" ? <Chip tone="accent" className="opacity-80" title="3–9 игр на этой роли за год">знакомый</Chip>
+    : c.poolStatus === "familiar" ? <Chip tone="accent" className="opacity-80" title="3–9 игр на этой роли за год; на оценку твой счёт не влияет">знакомый</Chip>
     : null;
   const top = c.reasons.slice(0, 3);
   const laneName = lane ? lane.name.split(" ")[0] : "";
@@ -557,7 +558,7 @@ function Row({ c, byId, onTake, lane }: { c: Candidate; byId: Map<number, Hero>;
         <div className="flex-1 min-w-0 flex flex-col gap-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-medium leading-5">{c.name}</span>{tag}
-            {c.personalWinrate !== null && <Chip tone={c.personalWinrate >= 50 ? "good" : "muted"} title={`Твой счёт на нём на этой роли за год: ${c.midWins} побед, ${c.midGames - c.midWins} поражений`}>ты {c.midWins}–{c.midGames - c.midWins} · {c.personalWinrate}%</Chip>}
+            {c.personalWinrate !== null && <Chip tone={c.poolStatus !== "pool" ? "muted" : c.personalWinrate >= 50 ? "good" : "bad"} title={`Твой счёт на нём на этой роли за год: ${c.midWins} побед, ${c.midGames - c.midWins} поражений${c.poolStatus === "pool" ? ". Учтён в оценке" : ". На оценку не влияет: герой не в пуле"}`}>ты {c.midWins}–{c.midGames - c.midWins} · {c.personalWinrate}%</Chip>}
             {lane && c.vsLane && <Chip tone={c.vsLane.value >= 1 ? "good" : c.vsLane.value <= -1 ? "bad" : "muted"} title={`Матчап против соперника по линии, ${lane.name} (${c.vsLane.games} игр в выборке)${c.vsLane.personal ? `. Твой счёт против него ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}`}>против {laneName} {signed(c.vsLane.value)}{c.vsLane.personal ? ` · ты ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}</Chip>}
             {c.top && <Chip title={`У Immortal на этой роли за 4 недели: винрейт ${c.top.winrate}%, берут в ${c.top.rate}% игр (${c.top.games} игр)`}>Immortal {c.top.winrate}%</Chip>}
           </div>
@@ -584,7 +585,7 @@ function Row({ c, byId, onTake, lane }: { c: Candidate; byId: Map<number, Hero>;
             {c.predictedAdj !== 0 && <Part label="Вероятные пики врага на твою линию" note="небольшой вес, пока соперник не выбран" value={c.predictedAdj} />}
             {c.stageAdj !== 0 && <Part label="Очередь пика" note={`риск контрпика ${c.counterRisk}`} value={c.stageAdj} />}
             {c.needsAdj !== 0 && <Part label="Закрывает нехватку команды" value={c.needsAdj} />}
-            <Part label="Твой опыт на герое" value={c.personalAdj} />
+            {c.poolStatus === "pool" ? <Part label="Твой опыт на герое" value={c.personalAdj} /> : <div className="flex items-baseline justify-between gap-3"><span>Твой опыт на герое<span className="opacity-60"> · не в пуле, не учитывается</span></span><b className="text-muted">0</b></div>}
             <div className="flex items-baseline justify-between gap-3 border-t border-border pt-1 mt-0.5 text-foreground"><span>Итого: шанс победы</span><b className={`tabular-nums ${tone}`}>{score}%</b></div>
             <div className="opacity-60 mt-1">Его берут на эту роль в {Math.round(c.midRate * 100)}% игр героя у Divine/Immortal.</div>
           </div>

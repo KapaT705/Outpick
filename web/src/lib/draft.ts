@@ -163,7 +163,8 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
     let personalAdj = 0;
     if (midGames > 0) {
       personalWinrate = (midWins / midGames) * 100;
-      if (midGames >= PERSONAL_MIN_GAMES) personalAdj = (personalWinrate - 50) * (midGames / (midGames + PERSONAL_SHRINK)) * PERSONAL_WEIGHT;
+      // личный счёт двигает оценку только у героев пула: вне пула (и у «знакомых») список про мету и драфт, счёт лишь показываем
+      if (poolStatus === "pool" && midGames >= PERSONAL_MIN_GAMES) personalAdj = (personalWinrate - 50) * (midGames / (midGames + PERSONAL_SHRINK)) * PERSONAL_WEIGHT;
     }
 
     const personalNotes: PersonalNote[] = [];
