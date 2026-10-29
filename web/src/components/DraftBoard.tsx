@@ -14,7 +14,7 @@ type Zone = "bans" | "enemies" | "allies";
 type UserZone = Exclude<Zone, "bans">;
 const ZONES: { key: UserZone; label: string; color: string; max: number; hint: string }[] = [
   { key: "enemies", label: "Враги", color: "border-enemy text-enemy", max: 5, hint: "пудж ам сф лион шейкер" },
-  { key: "allies", label: "Союзники", color: "border-ally text-ally", max: 4, hint: "акс см джага" },
+  { key: "allies", label: "Союзники", color: "border-ally text-ally", max: 5, hint: "акс см джага" }, // пятый союзник это ты: встаёт сам, когда Дота сообщит твой пик
 ];
 
 // иконки с CDN Valve: у Stratz alchemist_icon.png оказался копией dragon_knight_icon.png
@@ -138,7 +138,9 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const setRole = (r: Role) => { setRoleState(r); setOverride(loadOverride(r)); try { localStorage.setItem(ROLE_KEY, String(r)); } catch {} };
 
   const byId = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes]);
-  const taken = useMemo(() => new Set([...picks.bans, ...picks.enemies, ...picks.allies].map((p) => p.id)), [picks]);
+  // свой герой: его сообщает Дота после пика; в зоне союзников он пятый, с пометкой «ты»
+  const ownHero = gsi?.ownHeroId ? byId.get(gsi.ownHeroId) ?? null : null;
+  const taken = useMemo(() => new Set([...picks.bans, ...picks.enemies, ...picks.allies].map((p) => p.id).concat(ownHero ? [ownHero.id] : [])), [picks, ownHero]);
   const poolSet = useMemo(() => new Set([...poolIds, ...override.add].filter((id) => !override.remove.includes(id))), [poolIds, override]);
   const familiarSet = useMemo(() => new Set(familiarIds.filter((id) => !poolSet.has(id) && !override.remove.includes(id))), [familiarIds, poolSet, override]);
 
@@ -160,7 +162,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   }, [picks, override, role, acct?.current.id, gsi?.team, side]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addMany = (z: UserZone, ids: number[]) => {
-    const max = ZONES.find((x) => x.key === z)!.max;
+    const max = ZONES.find((x) => x.key === z)!.max - (z === "allies" && ownHero ? 1 : 0); // место для себя
     const next = [...picks[z]];
     for (const id of ids) {
       if (taken.has(id) || next.some((p) => p.id === id)) continue;
@@ -346,10 +348,15 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             className={`rounded-2xl border-2 bg-panel p-3 cursor-pointer transition ${zone === z.key ? z.color : "border-border hover:border-border/80"}`}
             title={zone === z.key ? "Сюда попадают герои из сетки и текстового ввода" : "Нажми, чтобы добавлять героев сюда"}>
             <div className="flex items-center justify-between mb-2">
-              <span className={`text-sm font-semibold ${z.color.split(" ")[1]}`}>{z.label} <span className="text-muted font-normal">{picks[z.key].length}/{z.max}</span></span>
+              <span className={`text-sm font-semibold ${z.color.split(" ")[1]}`}>{z.label} <span className="text-muted font-normal">{picks[z.key].length + (z.key === "allies" && ownHero ? 1 : 0)}/{z.max}</span></span>
               {zone === z.key && <Chip tone="accent">добавляю сюда</Chip>}
             </div>
             <div className="flex flex-wrap gap-2 min-h-10 mb-2">
+              {z.key === "allies" && ownHero && (
+                <div onClick={(e) => e.stopPropagation()} title={`Твой герой, его сообщила Дота. Роль ${ROLE_NAME[role]}`} className="flex items-center gap-1 rounded-md bg-panel-2 text-xs overflow-hidden pr-2 ring-1 ring-accent">
+                  <img src={icon(ownHero.short)} alt="" className="h-7 w-7" />{ownHero.name}<Chip tone="accent">ты · {ROLE_LABEL[role]}</Chip>
+                </div>
+              )}
               {picks[z.key].map((p) => {
                 const h = byId.get(p.id)!;
                 const guess = roles[z.key].find((g) => g.id === p.id);
