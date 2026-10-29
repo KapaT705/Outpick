@@ -70,6 +70,8 @@ export async function attachDetails(rec: DraftLog, ME: number) {
 
 function apply(rec: DraftLog, m: M, me: P, now: number, labels: MatchLabel[]) {
   rec.matchId = m.id; rec.won = me.isVictory; rec.durationSeconds = m.durationSeconds; rec.syncedAt = now;
+  // старые записи без аккаунта: кто из известных аккаунтов был в матче, тот и играл
+  if (!rec.accountId) { const known = readConfig().accounts.map((a) => a.id); const mine = m.players.find((p) => p.steamAccountId && known.includes(p.steamAccountId)); if (mine?.steamAccountId) rec.accountId = mine.steamAccountId; else if (me.steamAccountId) rec.accountId = me.steamAccountId; }
   // сверка игроков из server_log.txt с матчем: те же Steam ID и тот же порядок (слот 0–4 Свет, 5–9 Тьма по playerSlot)
   if (rec.players?.length === 10) {
     const bySlot = [...m.players].sort((a, b) => a.playerSlot - b.playerSlot);
