@@ -7,11 +7,14 @@ import type { RecognizeResult } from "@/components/AppShell";
 import { newTrackState, trackFrame } from "@/lib/draftTrack";
 import { Button, Card, CardTitle, Chip, Status } from "@/components/ui";
 
+// зона банов на экране не нужна: в ранговом All Pick баны заданы заранее списком и в драфте их не видно.
+// Список picks.bans живёт только внутри: туда попадают герои-конфликты (выбраны обеими командами, пропали из слота),
+// чтобы пикер их не советовал. Руками их не вводят.
 type Zone = "bans" | "enemies" | "allies";
-const ZONES: { key: Zone; label: string; color: string; max: number; hint: string }[] = [
+type UserZone = Exclude<Zone, "bans">;
+const ZONES: { key: UserZone; label: string; color: string; max: number; hint: string }[] = [
   { key: "enemies", label: "Враги", color: "border-enemy text-enemy", max: 5, hint: "пудж ам сф лион шейкер" },
   { key: "allies", label: "Союзники", color: "border-ally text-ally", max: 4, hint: "акс см джага" },
-  { key: "bans", label: "Баны", color: "border-ban text-ban", max: 24, hint: "инвокер шторм" },
 ];
 
 // иконки с CDN Valve: у Stratz alchemist_icon.png оказался копией dragon_knight_icon.png
@@ -73,7 +76,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
     };
     setTimeout(poll, 1000);
   };
-  const [zone, setZone] = useState<Zone>("enemies");
+  const [zone, setZone] = useState<UserZone>("enemies");
   const [picks, setPicks] = useState<Record<Zone, Pick[]>>({ bans: [], enemies: [], allies: [] });
   const [roles, setRoles] = useState<{ enemies: RoleGuess[]; allies: RoleGuess[] }>({ enemies: [], allies: [] });
   const [laneOpp, setLaneOpp] = useState<LaneOpponent | null>(null); // соперник по линии из оценки драфта
@@ -82,8 +85,8 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const [needs, setNeeds] = useState<TeamNeed[]>([]); // чего не хватает команде
   const [query, setQuery] = useState("");
   const [attr, setAttr] = useState<Attr>("str");
-  const [quick, setQuick] = useState<Record<Zone, string>>({ bans: "", enemies: "", allies: "" });
-  const [unknown, setUnknown] = useState<Record<Zone, string[]>>({ bans: [], enemies: [], allies: [] });
+  const [quick, setQuick] = useState<Record<UserZone, string>>({ enemies: "", allies: "" });
+  const [unknown, setUnknown] = useState<Record<UserZone, string[]>>({ enemies: [], allies: [] });
   const [result, setResult] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -156,7 +159,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
     return () => ctrl.abort();
   }, [picks, override, role, acct?.current.id, gsi?.team, side]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const addMany = (z: Zone, ids: number[]) => {
+  const addMany = (z: UserZone, ids: number[]) => {
     const max = ZONES.find((x) => x.key === z)!.max;
     const next = [...picks[z]];
     for (const id of ids) {
@@ -167,11 +170,11 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
     setPicks({ ...picks, [z]: next });
   };
   const add = (id: number) => { addMany(zone, [id]); setQuery(""); };
-  const remove = (z: Zone, id: number) => setPicks({ ...picks, [z]: picks[z].filter((x) => x.id !== id) });
-  const setPickRole = (z: Zone, id: number, r: Role | null) => setPicks({ ...picks, [z]: picks[z].map((x) => (x.id === id ? { ...x, role: r } : x)) });
-  const reset = () => { setPicks({ bans: [], enemies: [], allies: [] }); setUnknown({ bans: [], enemies: [], allies: [] }); };
+  const remove = (z: UserZone, id: number) => setPicks({ ...picks, [z]: picks[z].filter((x) => x.id !== id) });
+  const setPickRole = (z: UserZone, id: number, r: Role | null) => setPicks({ ...picks, [z]: picks[z].map((x) => (x.id === id ? { ...x, role: r } : x)) });
+  const reset = () => { setPicks({ bans: [], enemies: [], allies: [] }); setUnknown({ enemies: [], allies: [] }); };
 
-  const submitQuick = (z: Zone) => {
+  const submitQuick = (z: UserZone) => {
     const { ids, unknown: unk } = parseHeroText(quick[z], heroes, aliases);
     addMany(z, ids);
     setUnknown({ ...unknown, [z]: unk });
@@ -321,7 +324,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
           <Button size="sm" onClick={() => setPoolOpen(true)} title={acct?.current.id ? `Аккаунт ${acct.current.name ?? acct.current.id}${acct.current.source === "gsi" ? " (сообщила Дота)" : acct.current.source === "steam" ? " (под ним запущен Steam)" : " (по умолчанию из настроек)"}${acct.current.known ? "" : ": пул не загружен, общий режим"}. Нажми, чтобы править пул.` : "Аккаунт не известен: общий режим без пула"}>
             Мой пул · {poolSet.size}{acct?.current.id ? <span className="text-muted"> · {acct.current.name ?? acct.current.id}</span> : null}
           </Button>
-          <Button size="sm" variant="link" onClick={reset} title="Очистить врагов, союзников и баны">Сбросить драфт</Button>
+          <Button size="sm" variant="link" onClick={reset} title="Очистить врагов и союзников">Сбросить драфт</Button>
         </div>
       </header>
 
@@ -337,7 +340,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
 
       <DraftBar byId={byId} allies={picks.allies} enemies={picks.enemies} ownHeroId={gsi?.ownHeroId ?? null} team={gsi?.connected ? (gsi.team ?? null) : side} role={role} />
 
-      <section className="grid gap-3 md:grid-cols-3">
+      <section className="grid gap-3 md:grid-cols-2">
         {ZONES.map((z) => (
           <div key={z.key} onClick={() => setZone(z.key)}
             className={`rounded-2xl border-2 bg-panel p-3 cursor-pointer transition ${zone === z.key ? z.color : "border-border hover:border-border/80"}`}
@@ -349,13 +352,13 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             <div className="flex flex-wrap gap-2 min-h-10 mb-2">
               {picks[z.key].map((p) => {
                 const h = byId.get(p.id)!;
-                const guess = z.key === "bans" ? undefined : roles[z.key].find((g) => g.id === p.id);
+                const guess = roles[z.key].find((g) => g.id === p.id);
                 return (
                   <div key={p.id} onClick={(e) => e.stopPropagation()} className={`flex items-center rounded-md bg-panel-2 text-xs overflow-hidden ${p.auto ? "outline outline-1 outline-dashed outline-ban/70" : ""}`}>
                     <button onClick={() => remove(z.key, p.id)} title={p.auto ? "Пропал из слота: его выбрали обе команды, и он забанен. Нажми, чтобы убрать, если это не так" : "Убрать"} className="flex items-center gap-1 pr-2 hover:bg-border">
                       <img src={icon(h.short)} alt="" className="h-7 w-7" />{h.name}{p.auto && <span className="text-[10px] text-ban/80 ml-0.5">конфликт</span>}
                     </button>
-                    {z.key !== "bans" && (
+                    {(
                       <select value={p.role ?? ""} onChange={(e) => setPickRole(z.key, p.id, e.target.value ? (Number(e.target.value) as Role) : null)}
                         title={p.role ? `Роль задана тобой: ${ROLE_NAME[p.role]}` : guess ? `Предполагаю: ${ROLE_NAME[guess.role]} (${Math.round(guess.prob * 100)}%)` : "Роль (1 керри, 2 мид, 3 офлейн, 4 и 5 саппорты)"}
                         className={`h-7 border-l border-border bg-panel px-1 outline-none cursor-pointer ${p.role ? "text-foreground" : "text-muted italic"}`}>
