@@ -5,7 +5,8 @@ import type { Candidate, DraftInput, DraftStage, Hero, HeroTag, LaneOpponent, Pe
 
 // Tunables
 const PAIR_SHRINK = 150;      // games at which a matchup entry gets half weight
-const PERSONAL_SHRINK = 15;   // personal games at which personal winrate gets half weight
+const PERSONAL_SHRINK = 30;   // personal games at which personal winrate gets half weight
+const PERSONAL_MIN_GAMES = 3; // меньше игр на роли: счёт показываем, но оценку не двигаем (2–0 ничего не значит)
 const PERSONAL_WEIGHT = 0.6;  // how strongly personal winrate moves the final score
 const MID_RATE_MIN = 0.15;    // hero counts as a mid hero if >= 15% of its games are mid
 const MID_GAMES_MIN = 15000;  // ...and has enough mid games in the last 4 weeks (Divine+Immortal)
@@ -101,6 +102,9 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
   const predictedLane = laneOpponent ? [] : predicted.filter((p) => laneRoles.includes(p.role)).flatMap((p) => p.heroes);
   const topMeta = roleMetaTop.get(role);
   const stage: DraftStage = enemies.length <= 1 ? "early" : enemies.length <= 3 ? "mid" : "late";
+  // пустой драфт: ни врагов, ни союзников. Тогда порядок задаёт винрейт героя на роли (и твой опыт),
+  // без штрафа за риск контрпика и без матчапов против вероятных врагов: без пиков они только путают порядок
+  const emptyDraft = enemies.length === 0 && allies.length === 0;
   // популярность героя в целом (сумма по ролям) для веса его матчапов в риске контрпика
   const popularity = new Map<number, number>(); let popTotal = 0;
   for (const r of [1, 2, 3, 4, 5]) for (const e of roleMeta.get(r)?.values() ?? []) { popularity.set(e.heroId, (popularity.get(e.heroId) ?? 0) + e.games); popTotal += e.games; }
@@ -142,13 +146,13 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
     }
     reasons.sort((x, y) => Math.abs(y.value) - Math.abs(x.value));
     let predictedAdj = 0;
-    for (const ph of predictedLane) { const row = mu.vs.find((x) => x.h === ph.heroId); if (row) predictedAdj += row.s * (row.n / (row.n + PAIR_SHRINK)) * ph.share * PREDICT_WEIGHT; }
+    if (!emptyDraft) for (const ph of predictedLane) { const row = mu.vs.find((x) => x.h === ph.heroId); if (row) predictedAdj += row.s * (row.n / (row.n + PAIR_SHRINK)) * ph.share * PREDICT_WEIGHT; }
 
     // риск контрпика: худшие RISK_N матчапов среди не занятых популярных героев, взвешенные по популярности
     const worst = mu.vs.filter((x) => !taken.has(x.h) && x.n >= 100 && x.s < 0).map((x) => ({ v: -x.s * (x.n / (x.n + PAIR_SHRINK)), w: (popularity.get(x.h) ?? 0) / (popTotal || 1) })).sort((a, b) => b.v - a.v).slice(0, RISK_N);
     const wsum = worst.reduce((a, x) => a + x.w, 0);
     const counterRisk = wsum > 0 ? worst.reduce((a, x) => a + x.v * x.w, 0) / wsum : 0;
-    const stageAdj = -counterRisk * RISK_W[stage];
+    const stageAdj = emptyDraft ? 0 : -counterRisk * RISK_W[stage];
     let needsAdj = 0;
     for (const n of needs) { const t = (hero.roles ?? []).find((x) => x.r === n.key); if (t) needsAdj += Math.min(3, t.l) * NEED_BONUS; }
     const draftScore = clamp(50 + base + vsTotal + withTotal + predictedAdj + stageAdj + needsAdj, 20, 80);
@@ -159,7 +163,7 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
     let personalAdj = 0;
     if (midGames > 0) {
       personalWinrate = (midWins / midGames) * 100;
-      personalAdj = (personalWinrate - 50) * (midGames / (midGames + PERSONAL_SHRINK)) * PERSONAL_WEIGHT;
+      if (midGames >= PERSONAL_MIN_GAMES) personalAdj = (personalWinrate - 50) * (midGames / (midGames + PERSONAL_SHRINK)) * PERSONAL_WEIGHT;
     }
 
     const personalNotes: PersonalNote[] = [];

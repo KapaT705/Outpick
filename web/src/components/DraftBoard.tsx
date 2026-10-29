@@ -562,7 +562,7 @@ function Row({ c, byId, onTake, lane }: { c: Candidate; byId: Map<number, Hero>;
             {c.top && <Chip title={`У Immortal на этой роли за 4 недели: винрейт ${c.top.winrate}%, берут в ${c.top.rate}% игр (${c.top.games} игр)`}>Immortal {c.top.winrate}%</Chip>}
           </div>
           <div className="flex items-center gap-1.5 flex-wrap text-[11px] leading-4">
-            {top.length === 0 && <span className="text-muted">базовый винрейт на роли {c.base}%</span>}
+            {top.length === 0 && <span className="text-muted" title="Пока в драфте никого нет, герои идут по винрейту на этой роли у Divine/Immortal за последние недели с поправкой на твой опыт. Матчапы появятся, когда добавишь врагов или союзников.">{c.base}% винрейт на роли · врагов пока нет</span>}
             {top.map((r) => (
               <span key={`${r.kind}-${r.heroId}`} className={`${signTone(r.value)} whitespace-nowrap`} title={`${r.kind === "vs" ? "Против" : "Вместе с"} ${r.name}: ${signed(r.value, 1)} к винрейту (${r.games} игр в выборке)${r.laneOpp ? ". Твой соперник по линии, вес выше" : ""}`}>
                 {signed(r.value)} <span className="text-muted">{r.kind === "vs" ? "против" : "с"}</span> {r.name}
