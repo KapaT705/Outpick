@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseHeroText, type AliasMap } from "@/lib/aliases";
-import type { Attr, BanAdvice, Candidate, DraftStage, Hero, LaneOpponent, Pick, PoolOverride, PredictedPicks, Role, RoleGuess, TeamNeed } from "@/lib/types";
+import type { Attr, Candidate, DraftStage, Hero, LaneOpponent, Pick, PoolOverride, PredictedPicks, Role, RoleGuess, TeamNeed } from "@/lib/types";
 import type { RecognizeResult } from "@/components/AppShell";
 import { newTrackState, trackFrame } from "@/lib/draftTrack";
 
@@ -79,7 +79,6 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const [predicted, setPredicted] = useState<PredictedPicks[]>([]); // вероятные пики врага на незанятые роли
   const [stage, setStage] = useState<DraftStage>("early"); // очередь пика по числу известных врагов
   const [needs, setNeeds] = useState<TeamNeed[]>([]); // чего не хватает команде
-  const [bans, setBans] = useState<BanAdvice[] | null>(null); // совет по бан-листу (в окне пула)
   const [query, setQuery] = useState("");
   const [attr, setAttr] = useState<Attr>("str");
   const [quick, setQuick] = useState<Record<Zone, string>>({ bans: "", enemies: "", allies: "" });
@@ -132,12 +131,6 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   }, []);
   useEffect(() => { try { localStorage.setItem(PICKS_KEY, JSON.stringify({ at: Date.now(), picks })); } catch {} }, [picks]);
   const saveOverride = (o: PoolOverride) => { setOverride(o); storeOverride(role, o); };
-  useEffect(() => {
-    if (!poolOpen) return;
-    const ctrl = new AbortController();
-    fetch("/api/banlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role, pool: override }), signal: ctrl.signal }).then((r) => r.json()).then((d) => setBans(d.items ?? [])).catch(() => {});
-    return () => ctrl.abort();
-  }, [poolOpen, role, override]);
   const setRole = (r: Role) => { setRoleState(r); setOverride(loadOverride(r)); try { localStorage.setItem(ROLE_KEY, String(r)); } catch {} };
 
   const byId = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes]);
@@ -463,15 +456,6 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
                   </label>
                 );
               })}
-            </div>
-            <div className="rounded-lg border border-ban/40 bg-panel-2 p-2 text-xs">
-              <div className="font-semibold text-ban mb-1" title="С патча 7.35d баны задаются заранее: в Доте (Герои → бан-лист) до четырёх героев, хотя бы один из них банится в каждой твоей игре. Здесь те, кто больнее всего бьёт по твоему пулу на этой роли, с учётом того, как часто их берут.">Кого поставить в бан-лист в Доте</div>
-              {bans === null ? <span className="text-muted">считаю…</span> : bans.length === 0 ? <span className="text-muted">пул пуст или матчапов нет</span> : (
-                <div className="flex flex-wrap gap-2">
-                  {bans.map((b, i) => <span key={b.heroId} className={`flex items-center gap-1.5 rounded-md px-2 py-1 ${i < 4 ? "bg-ban/15 text-foreground" : "bg-panel text-muted"}`} title={`Берут в ${b.share}% игр. Хуже всего против: ${b.worst.map((w) => `${w.name} −${w.value}`).join(", ")}`}><img src={icon(b.short)} alt="" className="h-5 w-5 rounded" />{b.name}<span className="text-muted">{b.worst[0] ? ` · ${b.worst[0].name} −${b.worst[0].value}` : ""}</span></span>)}
-                </div>
-              )}
-              <div className="text-muted mt-1">Первые четыре — в бан-лист. Пересчитывается по пулу и роли.</div>
             </div>
             {(override.add.length > 0 || override.remove.length > 0) && (
               <button onClick={() => saveOverride(EMPTY)} className="self-start text-xs text-muted underline">Сбросить правки к автоматическому пулу</button>

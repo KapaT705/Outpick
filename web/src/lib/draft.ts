@@ -1,7 +1,7 @@
 import { loadData } from "./data";
 import { inferRoles, roleProbability } from "./roles";
 import { cachedPlayerStats, currentLobby, type PlayerStats } from "./players";
-import type { BanAdvice, Candidate, DraftInput, DraftStage, Hero, HeroTag, LaneOpponent, PersonalNote, PredictedPicks, Reason, Role, RoleGuess, TeamNeed } from "./types";
+import type { Candidate, DraftInput, DraftStage, Hero, HeroTag, LaneOpponent, PersonalNote, PredictedPicks, Reason, Role, RoleGuess, TeamNeed } from "./types";
 
 // Tunables
 const PAIR_SHRINK = 150;      // games at which a matchup entry gets half weight
@@ -195,28 +195,4 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
   }
   out.sort((a, b) => b.finalScore - a.finalScore);
   return { candidates: out, enemyRoles, allyRoles, role, laneOpponent, predicted, stage, needs };
-}
-
-/**
- * Совет по личному бан-листу (с 7.35d баны задаются заранее, до четырёх героев, хотя бы один банится в каждой игре):
- * кто больнее всего бьёт по твоему пулу на роли с учётом того, как часто его берут. Вред = Σ по пулу (вес = твои игры
- * на герое, для ручного пула 1) × проигрыш матчапа × доля пиков героя.
- */
-export function banAdvice(role: Role, poolIds: number[], accountId?: number | null): BanAdvice[] {
-  const { heroById, matchups, pool, roleMeta } = loadData(accountId);
-  const popularity = new Map<number, number>(); let popTotal = 0;
-  for (const r of [1, 2, 3, 4, 5]) for (const e of roleMeta.get(r)?.values() ?? []) { popularity.set(e.heroId, (popularity.get(e.heroId) ?? 0) + e.games); popTotal += e.games; }
-  const weight = (id: number) => { const p = pool.get(id); const g = p?.byRole?.[String(role)]?.games ?? (role === 2 ? p?.midGames ?? 0 : 0); return 1 + Math.min(30, g) / 10; };
-  const harm = new Map<number, { harm: number; worst: { heroId: number; name: string; value: number }[] }>();
-  for (const pid of poolIds) {
-    const mu = matchups.get(pid); if (!mu) continue;
-    for (const row of mu.vs) {
-      if (row.s >= 0 || row.n < 100 || poolIds.includes(row.h) || !heroById.has(row.h)) continue;
-      const v = -row.s * (row.n / (row.n + PAIR_SHRINK)) * weight(pid);
-      const e = harm.get(row.h) ?? { harm: 0, worst: [] };
-      e.harm += v; e.worst.push({ heroId: pid, name: heroById.get(pid)!.name, value: r1(-row.s) }); harm.set(row.h, e);
-    }
-  }
-  return [...harm].map(([id, e]) => { const share = (popularity.get(id) ?? 0) / (popTotal || 1); const h = heroById.get(id)!; return { heroId: id, name: h.name, short: h.short, harm: r1(e.harm * share * 100), share: Math.round(share * 1000) / 10, worst: e.worst.sort((a, b) => b.value - a.value).slice(0, 3) }; })
-    .filter((x) => x.harm > 0).sort((a, b) => b.harm - a.harm).slice(0, 8);
 }

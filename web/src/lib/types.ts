@@ -28,8 +28,6 @@ export type TopStat = { winrate: number; rate: number; games: number };
 export type DraftStage = "early" | "mid" | "late";
 /** Чего не хватает команде по тегам героев (союзники без тебя). */
 export type TeamNeed = { key: HeroTag; label: string; have: number };
-/** Совет по личному бан-листу: герой, который больнее всего бьёт по твоему пулу, с учётом популярности. */
-export type BanAdvice = { heroId: number; name: string; short: string; harm: number; share: number; worst: { heroId: number; name: string; value: number }[] };
 /** Кандидат против соперника по линии: вклад матчапа и твой личный счёт против него. */
 export type VsLane = { value: number; games: number; personal?: { games: number; wins: number } };
 
