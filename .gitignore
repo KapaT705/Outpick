@@ -7,3 +7,7 @@ web/.next/
 data/draft-log.json
 data/config.json
 data/data/
+data/player-pool.json
+data/personal-pairs.json
+data/pool-owner.json
+analysis/report-*.md

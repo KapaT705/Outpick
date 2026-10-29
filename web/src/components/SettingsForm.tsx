@@ -12,7 +12,6 @@ const Check = ({ ok, label }: { ok: boolean; label: string }) => (
 export default function SettingsForm() {
   const [steamId, setSteamId] = useState("");
   const [token, setToken] = useState("");
-  const [ghToken, setGhToken] = useState("");
   const [gsi, setGsi] = useState<{ cfg: string; dotaDirs: string[]; fileName: string; installed?: boolean; rewritten?: boolean; installedUri?: string | null } | null>(null);
   const [diag, setDiag] = useState<string | null>(null);
   const [gsiMsg, setGsiMsg] = useState<string | null>(null);
@@ -61,8 +60,8 @@ export default function SettingsForm() {
 
   const save = async () => {
     setBusy(true); setMsg(null);
-    const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stratzToken: token, githubToken: ghToken }) }).then((x) => x.json()).catch(() => null);
-    if (r?.ok) { setMsg("Сохранено"); setToken(""); setGhToken(""); reloadInfo(); } else setMsg(r?.error ?? "Ошибка");
+    const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stratzToken: token }) }).then((x) => x.json()).catch(() => null);
+    if (r?.ok) { setMsg("Сохранено"); setToken(""); reloadInfo(); } else setMsg(r?.error ?? "Ошибка");
     setBusy(false);
   };
 
@@ -106,12 +105,6 @@ export default function SettingsForm() {
           <input value={token} onChange={(e) => setToken(e.target.value)} type="password" placeholder="вставь токен со страницы stratz.com/api"
             className="rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent" />
           <span className="text-xs text-muted">Токен нужен для подтягивания результатов матчей и обновления меты. Получить: stratz.com/api, вход через Steam. Хранится только на этом компьютере.</span>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="flex items-center gap-2">Токен GitHub для обновлений программы <Check ok={!!info?.hasGithubToken} label={info?.hasGithubToken ? "сохранён" : "не задан"} /></span>
-          <input value={ghToken} onChange={(e) => setGhToken(e.target.value)} type="password" placeholder="github_pat_…"
-            className="rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent" />
-          <span className="text-xs text-muted">Репозиторий закрытый, поэтому без токена программа не сможет скачивать новые версии. GitHub → Settings → Developer settings → Fine-grained tokens: доступ к репозиторию dota-mid-helper, право Contents: Read. После сохранения перезапусти программу.</span>
         </label>
         <div className="flex items-center gap-3">
           <button onClick={save} disabled={busy} className="rounded-md bg-accent/20 px-3 py-1.5 text-accent hover:bg-accent/30 disabled:opacity-50">{busy ? "проверяю…" : "Сохранить"}</button>
@@ -173,7 +166,7 @@ export default function SettingsForm() {
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
         <div className="font-semibold">Обновления программы</div>
         <div className="flex items-center gap-3">
-          <button onClick={async () => { const d = (window as unknown as { desktop?: { checkForUpdates: () => Promise<{ ok: boolean; reason?: string }> } }).desktop; if (!d) { setUpdMsg("Проверка работает только в приложении"); return; } setUpdMsg("проверяю…"); const r = await d.checkForUpdates(); setUpdMsg(r.ok ? "запросил GitHub, результат появится полосой сверху" : r.reason === "no-token" ? "нужен токен GitHub (поле выше), затем перезапусти программу" : r.reason === "dev" ? "в режиме разработки не проверяется" : `ошибка: ${r.reason}`); }}
+          <button onClick={async () => { const d = (window as unknown as { desktop?: { checkForUpdates: () => Promise<{ ok: boolean; reason?: string }> } }).desktop; if (!d) { setUpdMsg("Проверка работает только в приложении"); return; } setUpdMsg("проверяю…"); const r = await d.checkForUpdates(); setUpdMsg(r.ok ? "запросил GitHub, результат появится полосой сверху" : r.reason === "dev" ? "в режиме разработки не проверяется" : `ошибка: ${r.reason}`); }}
             className="rounded-md border border-border px-3 py-1.5 hover:border-accent">Проверить обновления</button>
           {updMsg && <span className="text-xs text-muted">{updMsg}</span>}
         </div>

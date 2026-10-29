@@ -141,10 +141,9 @@ const send = (data) => { try { win?.webContents.send("update:event", data); } ca
 function readUserConfig() {
   try { return JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "config.json"), "utf8")); } catch { return {}; }
 }
+// репозиторий открытый: релизы читаются без токена; старый токен из настроек, если он есть, просто не используется
 function configureFeed() {
-  const token = readUserConfig().githubToken;
-  if (!token) return false;
-  autoUpdater.setFeedURL({ provider: "github", owner: "KapaT705", repo: "dota-mid-helper", private: true, token });
+  autoUpdater.setFeedURL({ provider: "github", owner: "KapaT705", repo: "dota-mid-helper" });
   return true;
 }
 function setupUpdater() {
@@ -158,13 +157,13 @@ function setupUpdater() {
   ipcMain.handle("app:version", () => app.getVersion());
   ipcMain.handle("update:check", async () => {
     if (isDev) return { ok: false, reason: "dev" };
-    if (!configureFeed()) return { ok: false, reason: "no-token" };
+    configureFeed();
     try { await autoUpdater.checkForUpdates(); return { ok: true }; } catch (e) { return { ok: false, reason: String(e?.message ?? e) }; }
   });
   ipcMain.handle("update:download", async () => { try { await autoUpdater.downloadUpdate(); return { ok: true }; } catch (e) { return { ok: false, reason: String(e?.message ?? e) }; } });
   // тихая установка (NSIS /S) и автозапуск после неё: без мастера «Далее → Готово», окно программы просто возвращается
   ipcMain.handle("update:install", () => { setTimeout(() => autoUpdater.quitAndInstall(true, true), 300); return { ok: true }; });
-  // тихая проверка при старте, если есть токен
+  // тихая проверка при старте
   if (!isDev && configureFeed()) setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 4000);
 }
 

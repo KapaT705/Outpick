@@ -21,7 +21,7 @@ export type CurrentAccount = {
   name: string | null;
 };
 
-/** Аккаунт, для которого упакованы данные пула в сборке (data/player-pool.json). */
+/** Аккаунт, для которого упакованы данные пула в сборке (data/pool-owner.json; в открытом репозитории его нет, тогда null). */
 function packagedOwner(): number | null {
   try { return Number(JSON.parse(fs.readFileSync(path.join(DATA_DIR, "pool-owner.json"), "utf8")).steamAccountId) || null; } catch { return null; }
 }
