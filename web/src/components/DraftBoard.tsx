@@ -376,12 +376,14 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
                       <img src={icon(h.short)} alt="" className="h-7 w-7" />{h.name}{p.auto && <span className="text-[10px] text-ban/80 ml-0.5">конфликт</span>}
                     </button>
                     {(
-                      <select value={p.role ?? ""} onChange={(e) => setPickRole(z.key, p.id, e.target.value ? (Number(e.target.value) as Role) : null)}
-                        title={p.role ? `Роль задана тобой: ${ROLE_NAME[p.role]}` : guess ? `Предполагаю: ${ROLE_NAME[guess.role]} (${Math.round(guess.prob * 100)}%)` : "Роль (1 керри, 2 мид, 3 офлейн, 4 и 5 саппорты)"}
-                        className={`h-7 border-l border-border bg-panel px-1 outline-none cursor-pointer ${p.role ? "text-foreground" : "text-muted italic"}`}>
-                        <option value="">{guess ? `${ROLE_LABEL[guess.role]}?` : "роль?"}</option>
-                        {ROLES.filter((r) => !(z.key === "allies" && r === role)).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]} · {ROLE_NAME[r]}</option>)}
-                      </select>
+                      <span className="relative h-7 border-l border-border bg-panel flex items-center" title={p.role ? `Роль задана тобой: ${ROLE_NAME[p.role]}` : guess ? `Предполагаю: ${ROLE_NAME[guess.role]} (${Math.round(guess.prob * 100)}%). Нажми, чтобы задать` : "Роль не известна: 1 керри, 2 мид, 3 офлейн, 4 и 5 саппорты. Нажми, чтобы задать"}>
+                        <select value={p.role ?? ""} onChange={(e) => setPickRole(z.key, p.id, e.target.value ? (Number(e.target.value) as Role) : null)}
+                          className={`appearance-none h-7 bg-transparent pl-2 pr-5 outline-none cursor-pointer font-semibold ${p.role ? "text-foreground" : "text-muted"}`}>
+                          <option value="">{guess ? `${ROLE_LABEL[guess.role]}?` : "?"}</option>
+                          {ROLES.filter((r) => !(z.key === "allies" && r === role)).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]} · {ROLE_NAME[r]}</option>)}
+                        </select>
+                        <svg className="pointer-events-none absolute right-1.5 h-3 w-3 text-muted" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 4.5l3 3 3-3" /></svg>
+                      </span>
                     )}
                   </div>
                 );
