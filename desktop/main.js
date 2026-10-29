@@ -155,6 +155,16 @@ function setupUpdater() {
   autoUpdater.on("update-downloaded", (info) => send({ type: "downloaded", version: info.version }));
   autoUpdater.on("error", (e) => send({ type: "error", message: String(e?.message ?? e) }));
   ipcMain.handle("app:version", () => app.getVersion());
+  // Тестовая сборка на маке: кнопка в настройках запускает desktop/scripts/install-mac.sh из папки проекта
+  // (собирает текущий код, подменяет программу в /Applications, перезапускает). Только macOS и только если папка есть.
+  const sourceScript = () => { const dir = process.env.DMH_SOURCE_DIR || readUserConfig().sourceDir || "/Users/arsenijbabajcev/код/dota"; const f = path.join(dir, "desktop", "scripts", "install-mac.sh"); return fs.existsSync(f) ? f : null; };
+  ipcMain.handle("dev:info", () => ({ canRebuild: process.platform === "darwin" && !!sourceScript(), source: sourceScript() }));
+  ipcMain.handle("dev:rebuild", () => {
+    const f = sourceScript();
+    if (process.platform !== "darwin" || !f) return { ok: false, reason: "только на маке с папкой проекта" };
+    try { const child = require("node:child_process").spawn("/bin/zsh", [f], { detached: true, stdio: "ignore", env: { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH ?? ""}` } }); child.unref(); console.log("[dev] пересборка из кода запущена:", f); return { ok: true }; }
+    catch (e) { return { ok: false, reason: String(e?.message ?? e) }; }
+  });
   ipcMain.handle("update:check", async () => {
     if (isDev) return { ok: false, reason: "dev" };
     configureFeed();

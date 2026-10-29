@@ -23,6 +23,9 @@ export default function SettingsForm() {
   type Current = { id: number | null; source: "gsi" | "steam" | "manual" | "none"; known: boolean; name: string | null };
   const [info, setInfo] = useState<{ steamAccountId: number | null; accounts?: Acc[]; current?: Current; hasToken: boolean; tokenTail: string; hasGithubToken?: boolean; screenCapture?: boolean } | null>(null);
   const [accMsg, setAccMsg] = useState<string | null>(null);
+  const [dev, setDev] = useState<{ canRebuild: boolean; source: string | null } | null>(null);
+  const [devMsg, setDevMsg] = useState<string | null>(null);
+  useEffect(() => { window.desktop?.devInfo?.().then(setDev).catch(() => {}); }, []);
   const reloadInfo = () => fetch("/api/settings").then((r) => r.json()).then(setInfo).catch(() => {});
   const accountAction = async (action: "add" | "load" | "default" | "remove", id: number | string) => {
     setAccMsg(action === "add" || action === "load" ? "загружаю историю…" : null);
@@ -190,6 +193,12 @@ export default function SettingsForm() {
       {tab === "data" && (
       <div className="rounded-xl border border-border bg-panel p-4 flex flex-col gap-2 text-sm">
         <div className="font-semibold">Обновления программы</div>
+        {dev?.canRebuild && (
+          <div className="rounded-lg border border-accent/40 bg-accent/5 p-2 flex flex-wrap items-center gap-3">
+            <button onClick={async () => { setDevMsg("собираю… окно закроется и откроется само через пару минут"); const r = await window.desktop!.rebuildFromSource!(); if (!r.ok) setDevMsg(`ошибка: ${r.reason}`); }} className="rounded-md bg-accent/20 px-3 py-1.5 text-accent hover:bg-accent/30">Обновить из кода (мак)</button>
+            <span className="text-xs text-muted">{devMsg ?? `Собирает текущий код из ${dev.source?.replace(/\/desktop\/scripts\/install-mac\.sh$/, "")} и подменяет программу. Только для теста на этом маке.`}</span>
+          </div>
+        )}
         <div className="flex items-center gap-3">
           <button onClick={async () => { const d = (window as unknown as { desktop?: { checkForUpdates: () => Promise<{ ok: boolean; reason?: string }> } }).desktop; if (!d) { setUpdMsg("Проверка работает только в приложении"); return; } setUpdMsg("проверяю…"); const r = await d.checkForUpdates(); setUpdMsg(r.ok ? "запросил GitHub, результат появится полосой сверху" : r.reason === "dev" ? "в режиме разработки не проверяется" : `ошибка: ${r.reason}`); }}
             className="rounded-md border border-border px-3 py-1.5 hover:border-accent">Проверить обновления</button>

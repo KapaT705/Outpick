@@ -113,5 +113,7 @@ contextBridge.exposeInMainWorld("desktop", {
     try { frame = await grab({ jpeg: false, png: true }); } catch {}
     return ipcRenderer.invoke("diag:save", frame);
   },
+  devInfo: () => ipcRenderer.invoke("dev:info"),
+  rebuildFromSource: () => ipcRenderer.invoke("dev:rebuild"),
   onUpdate: (cb) => { const h = (_e, data) => cb(data); ipcRenderer.on("update:event", h); return () => ipcRenderer.removeListener("update:event", h); },
 });
