@@ -10,11 +10,14 @@ import type { Hero } from "@/lib/types";
 const icon = (short: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${short}.png`;
 const fmt = (t: number) => new Date(t * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-export default function HistoryView({ items: initial, heroes, accounts = {}, defaultAccountId = null }: { items: DraftLog[]; heroes: Hero[]; accounts?: Record<number, string>; defaultAccountId?: number | null }) {
-  const [items, setItems] = useState(initial);
-  // записи с разных аккаунтов помечаются именем аккаунта
+export default function HistoryView({ items: initial, heroes, accounts = {}, defaultAccountId = null, currentAccountId = null }: { items: DraftLog[]; heroes: Hero[]; accounts?: Record<number, string>; defaultAccountId?: number | null; currentAccountId?: number | null }) {
+  const [all, setItems] = useState(initial);
+  // история по аккаунтам: по умолчанию текущий (под которым играешь), переключатель на любой или на все
   const accOf = (x: DraftLog) => x.accountId ?? defaultAccountId;
-  const multiAccount = new Set(items.map(accOf)).size > 1;
+  const accountIds = [...new Set(all.map(accOf).filter((id): id is number => !!id))];
+  const [acc, setAcc] = useState<number | "all">(currentAccountId && accountIds.includes(currentAccountId) ? currentAccountId : accountIds.length > 1 ? "all" : (accountIds[0] ?? "all"));
+  const items = acc === "all" ? all : all.filter((x) => accOf(x) === acc);
+  const multiAccount = acc === "all" && accountIds.length > 1;
   const accName = (x: DraftLog) => { const id = accOf(x); return id ? (accounts[id] ?? String(id)) : "?"; };
   const [busy, setBusy] = useState(false);
   const [period, setPeriod] = useState<number>(30); // дней для сводки; 0 = всё время
@@ -43,7 +46,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
   };
   const del = async (id: string) => {
     await fetch("/api/log", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
-    setItems(items.filter((x) => x.id !== id));
+    setItems(all.filter((x) => x.id !== id));
   };
 
   const since = period ? Math.floor(Date.now() / 1000) - period * 86400 : 0;
@@ -69,6 +72,12 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
     <main className="mx-auto w-full max-w-5xl px-4 py-5 flex flex-col gap-5">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-2xl font-semibold">История драфтов <span className="text-muted text-base font-normal">{items.length} записей · с результатом {done.length}</span></h1>
+        {accountIds.length > 1 && (
+          <div className="flex rounded-md border border-border overflow-hidden text-xs" title="Чья история. По умолчанию аккаунт, под которым сейчас играешь.">
+            {accountIds.map((id) => <button key={id} onClick={() => setAcc(id)} className={`px-2.5 py-1 ${acc === id ? "bg-accent/20 text-accent font-semibold" : "text-muted hover:text-foreground"}`}>{accounts[id] ?? id}</button>)}
+            <button onClick={() => setAcc("all")} className={`px-2.5 py-1 ${acc === "all" ? "bg-accent/20 text-accent font-semibold" : "text-muted hover:text-foreground"}`}>все</button>
+          </div>
+        )}
         <div className="flex items-center gap-3 text-sm">
           <button onClick={sync} disabled={busy} className="rounded-md border border-border px-3 py-1 hover:border-accent disabled:opacity-50">{busy ? "ищу матчи…" : "Подтянуть результаты из Stratz"}</button>
         </div>
