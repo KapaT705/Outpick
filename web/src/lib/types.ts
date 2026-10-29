@@ -1,5 +1,6 @@
 export type Attr = "str" | "agi" | "int" | "all";
-export type Hero = { id: number; name: string; short: string; attr: Attr };
+export type HeroTag = "CARRY" | "ESCAPE" | "NUKER" | "INITIATOR" | "DURABLE" | "DISABLER" | "SUPPORT" | "PUSHER";
+export type Hero = { id: number; name: string; short: string; attr: Attr; roles?: { r: HeroTag; l: number }[]; attackType?: string | null; complexity?: number | null };
 
 export type PairStat = { h: number; n: number; w: number; s: number };
 export type Matchup = { heroId: number; matchCountWith: number; matchCountVs: number; with: PairStat[]; vs: PairStat[] };
@@ -23,6 +24,12 @@ export type LaneOpponent = { heroId: number; name: string; short: string; role: 
 export type PredictedPicks = { role: Role; heroes: { heroId: number; name: string; short: string; share: number }[]; player?: string | null }; // player: имя игрока, если прогноз по его истории, иначе по мете
 /** Кандидат у Immortal: винрейт и доля пиков на этой роли за 4 недели. */
 export type TopStat = { winrate: number; rate: number; games: number };
+/** Стадия драфта по числу известных пиков врага: рано — врагам ещё отвечать контрпиком, поздно — контрпикуем мы. */
+export type DraftStage = "early" | "mid" | "late";
+/** Чего не хватает команде по тегам героев (союзники без тебя). */
+export type TeamNeed = { key: HeroTag; label: string; have: number };
+/** Совет по личному бан-листу: герой, который больнее всего бьёт по твоему пулу, с учётом популярности. */
+export type BanAdvice = { heroId: number; name: string; short: string; harm: number; share: number; worst: { heroId: number; name: string; value: number }[] };
 /** Кандидат против соперника по линии: вклад матчапа и твой личный счёт против него. */
 export type VsLane = { value: number; games: number; personal?: { games: number; wins: number } };
 
@@ -49,5 +56,8 @@ export type Candidate = {
   vsLane?: VsLane | null;  // против соперника по линии (если он известен)
   top?: TopStat | null;    // как герой идёт у Immortal на этой роли
   predictedAdj: number;    // поправка за вероятные пики врага на твою линию (pp)
+  counterRisk: number;     // насколько героя легко законтрить: средний проигрыш худшим популярным матчапам (pp)
+  stageAdj: number;        // поправка за очередь пика: ранний пик штрафуется за риск контрпика (pp)
+  needsAdj: number;        // поправка за то, что герой закрывает нехватку команды (контроль, пуш…) (pp)
   personalNotes: PersonalNote[];
 };

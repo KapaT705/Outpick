@@ -31,8 +31,9 @@ export async function refreshGeneral(token: string, progress: Progress = () => {
   const save = (name: string, obj: unknown) => fs.writeFileSync(path.join(USER_DATA_DIR, name), JSON.stringify(obj));
 
   progress("герои");
-  const heroesRaw = (await gql(token, `{ constants { heroes { id displayName shortName stats { primaryAttribute } } } }`)).constants.heroes as { id: number; displayName: string; shortName: string; stats?: { primaryAttribute?: string } }[];
-  const heroes = heroesRaw.map((h) => ({ id: h.id, name: h.displayName, short: h.shortName, attr: h.stats?.primaryAttribute ?? "all" }));
+  const heroesRaw = (await gql(token, `{ constants { heroes { id displayName shortName roles { roleId level } stats { primaryAttribute attackType complexity } } } }`)).constants.heroes as { id: number; displayName: string; shortName: string; roles?: { roleId: string; level: number }[]; stats?: { primaryAttribute?: string; attackType?: string; complexity?: number } }[];
+  // roles: теги героя (DISABLER, PUSHER, INITIATOR…) с уровнем 1–3 — для подсказки «чего не хватает команде»
+  const heroes = heroesRaw.map((h) => ({ id: h.id, name: h.displayName, short: h.shortName, attr: h.stats?.primaryAttribute ?? "all", roles: (h.roles ?? []).map((x) => ({ r: x.roleId, l: x.level })), attackType: h.stats?.attackType ?? null, complexity: h.stats?.complexity ?? null }));
   save("heroes.json", heroes);
   const names = new Map(heroes.map((h) => [h.id, h.name]));
 

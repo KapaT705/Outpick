@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseHeroText, type AliasMap } from "@/lib/aliases";
-import type { Attr, Candidate, Hero, LaneOpponent, Pick, PoolOverride, PredictedPicks, Role, RoleGuess } from "@/lib/types";
+import type { Attr, BanAdvice, Candidate, DraftStage, Hero, LaneOpponent, Pick, PoolOverride, PredictedPicks, Role, RoleGuess, TeamNeed } from "@/lib/types";
 import type { RecognizeResult } from "@/components/AppShell";
 import { newTrackState, trackFrame } from "@/lib/draftTrack";
 
@@ -77,6 +77,9 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const [roles, setRoles] = useState<{ enemies: RoleGuess[]; allies: RoleGuess[] }>({ enemies: [], allies: [] });
   const [laneOpp, setLaneOpp] = useState<LaneOpponent | null>(null); // соперник по линии из оценки драфта
   const [predicted, setPredicted] = useState<PredictedPicks[]>([]); // вероятные пики врага на незанятые роли
+  const [stage, setStage] = useState<DraftStage>("early"); // очередь пика по числу известных врагов
+  const [needs, setNeeds] = useState<TeamNeed[]>([]); // чего не хватает команде
+  const [bans, setBans] = useState<BanAdvice[] | null>(null); // совет по бан-листу (в окне пула)
   const [query, setQuery] = useState("");
   const [attr, setAttr] = useState<Attr>("str");
   const [quick, setQuick] = useState<Record<Zone, string>>({ bans: "", enemies: "", allies: "" });
@@ -129,6 +132,12 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   }, []);
   useEffect(() => { try { localStorage.setItem(PICKS_KEY, JSON.stringify({ at: Date.now(), picks })); } catch {} }, [picks]);
   const saveOverride = (o: PoolOverride) => { setOverride(o); storeOverride(role, o); };
+  useEffect(() => {
+    if (!poolOpen) return;
+    const ctrl = new AbortController();
+    fetch("/api/banlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role, pool: override }), signal: ctrl.signal }).then((r) => r.json()).then((d) => setBans(d.items ?? [])).catch(() => {});
+    return () => ctrl.abort();
+  }, [poolOpen, role, override]);
   const setRole = (r: Role) => { setRoleState(r); setOverride(loadOverride(r)); try { localStorage.setItem(ROLE_KEY, String(r)); } catch {} };
 
   const byId = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes]);
@@ -147,7 +156,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
     const body = { bans: picks.bans.map((p) => p.id), enemies: picks.enemies, allies: picks.allies, pool: override, role, team: gsi?.connected ? (gsi.team ?? null) : side };
     fetch("/api/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal })
       .then((r) => r.json())
-      .then((d) => { setResult(d.candidates ?? []); setRoles({ enemies: d.enemyRoles ?? [], allies: d.allyRoles ?? [] }); setLaneOpp(d.laneOpponent ?? null); setPredicted(d.predicted ?? []); })
+      .then((d) => { setResult(d.candidates ?? []); setRoles({ enemies: d.enemyRoles ?? [], allies: d.allyRoles ?? [] }); setLaneOpp(d.laneOpponent ?? null); setPredicted(d.predicted ?? []); setStage(d.stage ?? "early"); setNeeds(d.needs ?? []); })
       .catch(() => {})
       .finally(() => setLoading(false));
     return () => ctrl.abort();
@@ -412,6 +421,15 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
         </section>
 
         <section className="flex flex-col gap-4 min-w-0">
+          {(picks.enemies.length > 0 || picks.allies.length > 0) && (
+            <div className="rounded-xl border border-border bg-panel px-3 py-2 text-xs text-muted flex flex-wrap gap-x-4 gap-y-1">
+              <span title="По числу известных пиков врага. Рано: врагам ещё отвечать контрпиком, поэтому героев, которых легко законтрить, пикер придерживает (штраф до 60% риска контрпика). Поздно: контрпикуем мы, штрафа нет.">
+                <span className="text-foreground">Очередь пика:</span> {stage === "early" ? "ранняя, ценю устойчивость к контрпику" : stage === "mid" ? "середина, риск контрпика учитываю наполовину" : "поздняя, выжимаю контрпики"}
+              </span>
+              {needs.length > 0 && <span title="По тегам героев союзников (без тебя). Герои, закрывающие нехватку, получают небольшой плюс."><span className="text-foreground">Команде не хватает:</span> {needs.map((n) => n.label).join(", ")}</span>}
+              {picks.allies.length > 0 && needs.length === 0 && <span><span className="text-foreground">Состав:</span> всё на месте</span>}
+            </div>
+          )}
           {picks.enemies.length > 0 && picks.enemies.length < 5 && predicted.length > 0 && (
             <div className="rounded-xl border border-border bg-panel px-3 py-2 text-xs text-muted flex flex-wrap gap-x-4 gap-y-1" title="Самые популярные герои Divine/Immortal на ролях, которые у врагов ещё не заняты, среди не занятых в драфте. Пока соперник по твоей линии не выбран, матчапы против вероятных героев его роли учитываются с небольшим весом.">
               <span className="text-foreground">Враги ещё не взяли:</span>
@@ -445,6 +463,15 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
                   </label>
                 );
               })}
+            </div>
+            <div className="rounded-lg border border-ban/40 bg-panel-2 p-2 text-xs">
+              <div className="font-semibold text-ban mb-1" title="С патча 7.35d баны задаются заранее: в Доте (Герои → бан-лист) до четырёх героев, хотя бы один из них банится в каждой твоей игре. Здесь те, кто больнее всего бьёт по твоему пулу на этой роли, с учётом того, как часто их берут.">Кого поставить в бан-лист в Доте</div>
+              {bans === null ? <span className="text-muted">считаю…</span> : bans.length === 0 ? <span className="text-muted">пул пуст или матчапов нет</span> : (
+                <div className="flex flex-wrap gap-2">
+                  {bans.map((b, i) => <span key={b.heroId} className={`flex items-center gap-1.5 rounded-md px-2 py-1 ${i < 4 ? "bg-ban/15 text-foreground" : "bg-panel text-muted"}`} title={`Берут в ${b.share}% игр. Хуже всего против: ${b.worst.map((w) => `${w.name} −${w.value}`).join(", ")}`}><img src={icon(b.short)} alt="" className="h-5 w-5 rounded" />{b.name}<span className="text-muted">{b.worst[0] ? ` · ${b.worst[0].name} −${b.worst[0].value}` : ""}</span></span>)}
+                </div>
+              )}
+              <div className="text-muted mt-1">Первые четыре — в бан-лист. Пересчитывается по пулу и роли.</div>
             </div>
             {(override.add.length > 0 || override.remove.length > 0) && (
               <button onClick={() => saveOverride(EMPTY)} className="self-start text-xs text-muted underline">Сбросить правки к автоматическому пулу</button>
@@ -527,6 +554,7 @@ function Row({ c, byId, onTake, lane }: { c: Candidate; byId: Map<number, Hero>;
         <div className="mt-2 border-t border-border pt-2 text-xs text-muted grid gap-1">
           <div>Базовый винрейт героя на этой роли: <b className="text-foreground">{c.base}%</b> · контрпики: <b className="text-foreground">{c.vsTotal > 0 ? "+" : ""}{c.vsTotal}</b> · синергии: <b className="text-foreground">{c.withTotal > 0 ? "+" : ""}{c.withTotal}</b> · поправка на твой опыт: <b className="text-foreground">{c.personalAdj > 0 ? "+" : ""}{c.personalAdj}</b></div>
           {c.reasons.map((r) => <div key={`${r.kind}-${r.heroId}`}>{r.value > 0 ? "+" : ""}{r.value} {r.kind === "vs" ? "против" : "вместе с"} {r.name}{r.laneOpp ? <span className="text-enemy"> · твой оппонент по лейну, вес выше</span> : null} <span className="opacity-60">({r.games} игр в выборке)</span></div>)}
+          <div>Риск контрпика: <b className="text-foreground">{c.counterRisk}</b>{c.stageAdj !== 0 ? <> · поправка за очередь пика <b className="text-foreground">{c.stageAdj}</b></> : null}{c.needsAdj !== 0 ? <> · закрывает нехватку команды <b className="text-foreground">+{c.needsAdj}</b></> : null}</div>
           {c.predictedAdj !== 0 && <div>Вероятные пики врага на твою линию: <b className="text-foreground">{c.predictedAdj > 0 ? "+" : ""}{c.predictedAdj}</b> <span className="opacity-60">(с небольшим весом, пока соперник не выбран)</span></div>}
           {c.personalNotes.map((n) => <div key={`${n.ally}-${n.heroId}`} className="text-accent">Твоя история {n.ally ? "вместе с" : "против"} {n.name}: {n.wins}–{n.games - n.wins}</div>)}
           <div className="opacity-60">Доля игр героя на этой роли у Divine/Immortal: {Math.round(c.midRate * 100)}%</div>

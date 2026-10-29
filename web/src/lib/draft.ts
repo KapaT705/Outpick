@@ -1,7 +1,7 @@
 import { loadData } from "./data";
 import { inferRoles, roleProbability } from "./roles";
 import { cachedPlayerStats, currentLobby, type PlayerStats } from "./players";
-import type { Candidate, DraftInput, LaneOpponent, PersonalNote, PredictedPicks, Reason, Role, RoleGuess } from "./types";
+import type { BanAdvice, Candidate, DraftInput, DraftStage, Hero, HeroTag, LaneOpponent, PersonalNote, PredictedPicks, Reason, Role, RoleGuess, TeamNeed } from "./types";
 
 // Tunables
 const PAIR_SHRINK = 150;      // games at which a matchup entry gets half weight
@@ -16,13 +16,28 @@ const LANE_OPP_BONUS_OTHER = 0.4; // на остальных ролях лейн
 // кто стоит против тебя на лейне, по ролям
 const LANE_OPP: Record<Role, Role[]> = { 1: [3, 4], 2: [2], 3: [1, 5], 4: [1, 5], 5: [3, 4] };
 const FAMILIAR_MIN_GAMES = 3;
+// Очередь пика: пока врагов известно мало, они ответят контрпиком, и устойчивость к нему важнее лучшего матчапа
+// против уже взятых. Риск контрпика = средний проигрыш героя его худшим популярным матчапам (взвешено по популярности).
+const RISK_N = 8, RISK_W: Record<DraftStage, number> = { early: 0.6, mid: 0.3, late: 0 };
+// Нехватка команды по тегам героев: союзники (без тебя) суммарно по тегу с уровнями 1–3; ниже NEED_MIN — не хватает.
+const NEED_MIN: Partial<Record<HeroTag, number>> = { DISABLER: 3, INITIATOR: 2, PUSHER: 2, DURABLE: 2, CARRY: 2, ESCAPE: 0, NUKER: 2, SUPPORT: 0 };
+const NEED_LABEL: Record<HeroTag, string> = { DISABLER: "контроля", INITIATOR: "инициации", PUSHER: "пуша", DURABLE: "фронта", CARRY: "урона в лейте", NUKER: "бурста", ESCAPE: "мобильности", SUPPORT: "саппорта" };
+const NEED_BONUS = 0.6;       // pp за уровень тега, закрывающего нехватку (максимум 1.8 за тег)
 const PREDICT_N = 4;          // сколько вероятных героев на незанятую роль врага показываем
 const PREDICT_WEIGHT = 0.35;  // вес матчапа против вероятного соперника по линии, пока он не выбран (по долям пиков)
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const r1 = (v: number) => Math.round(v * 10) / 10;
 
-export function evaluateDraft(input: DraftInput, accountId?: number | null): { candidates: Candidate[]; enemyRoles: RoleGuess[]; allyRoles: RoleGuess[]; role: Role; laneOpponent: LaneOpponent | null; predicted: PredictedPicks[] } {
+function teamNeeds(allies: Hero[]): TeamNeed[] {
+  const have = new Map<HeroTag, number>();
+  for (const h of allies) for (const t of h.roles ?? []) have.set(t.r, (have.get(t.r) ?? 0) + t.l);
+  const out: TeamNeed[] = [];
+  for (const [key, min] of Object.entries(NEED_MIN) as [HeroTag, number][]) { if (!min) continue; const v = have.get(key) ?? 0; if (v < min) out.push({ key, label: NEED_LABEL[key], have: v }); }
+  return out;
+}
+
+export function evaluateDraft(input: DraftInput, accountId?: number | null): { candidates: Candidate[]; enemyRoles: RoleGuess[]; allyRoles: RoleGuess[]; role: Role; laneOpponent: LaneOpponent | null; predicted: PredictedPicks[]; stage: DraftStage; needs: TeamNeed[] } {
   const { heroes, heroById, matchups, pool, pairs, roleMeta, roleMetaTop } = loadData(accountId);
   const role: Role = ([1, 2, 3, 4, 5] as Role[]).includes(input.role as Role) ? (input.role as Role) : 2;
   const meta = roleMeta.get(role)!;
@@ -85,6 +100,11 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
   // пока соперник по линии не выбран: вероятные герои на его роль с небольшим весом
   const predictedLane = laneOpponent ? [] : predicted.filter((p) => laneRoles.includes(p.role)).flatMap((p) => p.heroes);
   const topMeta = roleMetaTop.get(role);
+  const stage: DraftStage = enemies.length <= 1 ? "early" : enemies.length <= 3 ? "mid" : "late";
+  // популярность героя в целом (сумма по ролям) для веса его матчапов в риске контрпика
+  const popularity = new Map<number, number>(); let popTotal = 0;
+  for (const r of [1, 2, 3, 4, 5]) for (const e of roleMeta.get(r)?.values() ?? []) { popularity.set(e.heroId, (popularity.get(e.heroId) ?? 0) + e.games); popTotal += e.games; }
+  const needs = allies.length > 0 ? teamNeeds(allies.map((a) => heroById.get(a)!)) : [];
 
   const out: Candidate[] = [];
   for (const hero of heroes) {
@@ -124,7 +144,14 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
     let predictedAdj = 0;
     for (const ph of predictedLane) { const row = mu.vs.find((x) => x.h === ph.heroId); if (row) predictedAdj += row.s * (row.n / (row.n + PAIR_SHRINK)) * ph.share * PREDICT_WEIGHT; }
 
-    const draftScore = clamp(50 + base + vsTotal + withTotal + predictedAdj, 20, 80);
+    // риск контрпика: худшие RISK_N матчапов среди не занятых популярных героев, взвешенные по популярности
+    const worst = mu.vs.filter((x) => !taken.has(x.h) && x.n >= 100 && x.s < 0).map((x) => ({ v: -x.s * (x.n / (x.n + PAIR_SHRINK)), w: (popularity.get(x.h) ?? 0) / (popTotal || 1) })).sort((a, b) => b.v - a.v).slice(0, RISK_N);
+    const wsum = worst.reduce((a, x) => a + x.w, 0);
+    const counterRisk = wsum > 0 ? worst.reduce((a, x) => a + x.v * x.w, 0) / wsum : 0;
+    const stageAdj = -counterRisk * RISK_W[stage];
+    let needsAdj = 0;
+    for (const n of needs) { const t = (hero.roles ?? []).find((x) => x.r === n.key); if (t) needsAdj += Math.min(3, t.l) * NEED_BONUS; }
+    const draftScore = clamp(50 + base + vsTotal + withTotal + predictedAdj + stageAdj + needsAdj, 20, 80);
     const tm = topMeta?.get(hero.id);
     const top = tm ? { winrate: Math.round(tm.winrate * 1000) / 10, rate: Math.round(tm.rate * 1000) / 10, games: tm.games } : null;
 
@@ -147,6 +174,7 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
       vsLane,
       top,
       predictedAdj: r1(predictedAdj),
+      counterRisk: r1(counterRisk), stageAdj: r1(stageAdj), needsAdj: r1(needsAdj),
       heroId: hero.id,
       name: hero.name,
       short: hero.short,
@@ -166,5 +194,29 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
     });
   }
   out.sort((a, b) => b.finalScore - a.finalScore);
-  return { candidates: out, enemyRoles, allyRoles, role, laneOpponent, predicted };
+  return { candidates: out, enemyRoles, allyRoles, role, laneOpponent, predicted, stage, needs };
+}
+
+/**
+ * Совет по личному бан-листу (с 7.35d баны задаются заранее, до четырёх героев, хотя бы один банится в каждой игре):
+ * кто больнее всего бьёт по твоему пулу на роли с учётом того, как часто его берут. Вред = Σ по пулу (вес = твои игры
+ * на герое, для ручного пула 1) × проигрыш матчапа × доля пиков героя.
+ */
+export function banAdvice(role: Role, poolIds: number[], accountId?: number | null): BanAdvice[] {
+  const { heroById, matchups, pool, roleMeta } = loadData(accountId);
+  const popularity = new Map<number, number>(); let popTotal = 0;
+  for (const r of [1, 2, 3, 4, 5]) for (const e of roleMeta.get(r)?.values() ?? []) { popularity.set(e.heroId, (popularity.get(e.heroId) ?? 0) + e.games); popTotal += e.games; }
+  const weight = (id: number) => { const p = pool.get(id); const g = p?.byRole?.[String(role)]?.games ?? (role === 2 ? p?.midGames ?? 0 : 0); return 1 + Math.min(30, g) / 10; };
+  const harm = new Map<number, { harm: number; worst: { heroId: number; name: string; value: number }[] }>();
+  for (const pid of poolIds) {
+    const mu = matchups.get(pid); if (!mu) continue;
+    for (const row of mu.vs) {
+      if (row.s >= 0 || row.n < 100 || poolIds.includes(row.h) || !heroById.has(row.h)) continue;
+      const v = -row.s * (row.n / (row.n + PAIR_SHRINK)) * weight(pid);
+      const e = harm.get(row.h) ?? { harm: 0, worst: [] };
+      e.harm += v; e.worst.push({ heroId: pid, name: heroById.get(pid)!.name, value: r1(-row.s) }); harm.set(row.h, e);
+    }
+  }
+  return [...harm].map(([id, e]) => { const share = (popularity.get(id) ?? 0) / (popTotal || 1); const h = heroById.get(id)!; return { heroId: id, name: h.name, short: h.short, harm: r1(e.harm * share * 100), share: Math.round(share * 1000) / 10, worst: e.worst.sort((a, b) => b.value - a.value).slice(0, 3) }; })
+    .filter((x) => x.harm > 0).sort((a, b) => b.harm - a.harm).slice(0, 8);
 }
