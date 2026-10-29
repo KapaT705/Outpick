@@ -141,6 +141,15 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   // свой герой: его сообщает Дота после пика; в зоне союзников он пятый, с пометкой «ты»
   const ownHero = gsi?.ownHeroId ? byId.get(gsi.ownHeroId) ?? null : null;
   const taken = useMemo(() => new Set([...picks.bans, ...picks.enemies, ...picks.allies].map((p) => p.id).concat(ownHero ? [ownHero.id] : [])), [picks, ownHero]);
+  // кем занят герой: подпись на погасшей плитке в сетке
+  const takenBy = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const p of picks.enemies) m.set(p.id, "враг");
+    for (const p of picks.allies) m.set(p.id, "союзник");
+    for (const p of picks.bans) m.set(p.id, "забанен");
+    if (ownHero) m.set(ownHero.id, "ты");
+    return m;
+  }, [picks, ownHero]);
   const poolSet = useMemo(() => new Set([...poolIds, ...override.add].filter((id) => !override.remove.includes(id))), [poolIds, override]);
   const familiarSet = useMemo(() => new Set(familiarIds.filter((id) => !poolSet.has(id) && !override.remove.includes(id))), [familiarIds, poolSet, override]);
 
@@ -387,7 +396,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
 
       <div className="grid gap-5 lg:grid-cols-[1fr_1.1fr]">
         <section className="rounded-xl border border-border bg-panel p-3 flex flex-col gap-3 min-w-0">
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Найти героя и добавить в выбранную зону…"
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Найти героя… Enter добавит в зону «${ZONES.find((z) => z.key === zone)!.label}»`}
             onKeyDown={(e) => { if (e.key === "Enter" && filtered.length > 0) add(filtered.find((h) => !taken.has(h.id))?.id ?? filtered[0].id); }}
             className="w-full rounded-lg border border-border bg-panel-2 px-3 py-2 text-sm outline-none focus:border-accent" autoFocus />
           <div className="flex gap-1 border-b border-border overflow-x-auto">
@@ -400,19 +409,28 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
           </div>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-2 max-h-[62vh] overflow-y-auto pr-1">
             {filtered.map((h) => {
-              const dis = taken.has(h.id);
-              const ring = poolSet.has(h.id) ? "ring-2 ring-accent" : familiarSet.has(h.id) ? "ring-1 ring-accent/50" : "";
+              const by = takenBy.get(h.id);
+              const inPool = poolSet.has(h.id);
+              const ring = inPool ? "ring-2 ring-accent" : familiarSet.has(h.id) ? "ring-1 ring-accent/50" : "";
               return (
-                <button key={h.id} onClick={() => add(h.id)} disabled={dis} title={h.name}
-                  className={`group flex flex-col items-center gap-1 rounded-md ${dis ? "opacity-25 cursor-not-allowed grayscale" : "hover:-translate-y-0.5 transition"}`}>
-                  <img src={portrait(h.short)} alt={h.name} loading="lazy" className={`w-full aspect-[16/9] object-cover rounded-md ${ring}`} />
-                  <span className="text-[11px] leading-tight text-center text-muted group-hover:text-foreground">{h.name}</span>
+                <button key={h.id} onClick={() => add(h.id)} disabled={!!by} title={by ? `${h.name}: ${by}` : `${h.name}: добавить в зону «${ZONES.find((z) => z.key === zone)!.label}»`}
+                  className={`group flex flex-col items-center gap-1 rounded-md ${by ? "cursor-not-allowed" : "hover:-translate-y-0.5 transition"}`}>
+                  <span className="relative w-full">
+                    <img src={portrait(h.short)} alt={h.name} loading="lazy" className={`w-full aspect-[16/9] object-cover rounded-md ${ring} ${by ? "opacity-25 grayscale" : ""}`} />
+                    {by && <span className={`absolute inset-0 flex items-center justify-center text-[11px] font-semibold ${by === "враг" ? "text-enemy" : by === "забанен" ? "text-ban" : "text-ally"}`}>{by}</span>}
+                    {inPool && !by && <span className="absolute left-1 top-1 h-2 w-2 rounded-full bg-accent shadow" title="В твоём пуле" />}
+                  </span>
+                  <span className={`text-[11px] leading-tight text-center ${by ? "text-muted/60" : "text-muted group-hover:text-foreground"}`}>{h.name}</span>
                 </button>
               );
             })}
             {filtered.length === 0 && <span className="text-sm text-muted col-span-full">Никого не нашёл</span>}
           </div>
-          <p className="text-xs text-muted flex flex-wrap gap-x-3 gap-y-1"><span><span className="inline-block h-2.5 w-4 rounded-sm ring-2 ring-accent align-middle mr-1" />твой пул на этой роли</span><span><span className="inline-block h-2.5 w-4 rounded-sm ring-1 ring-accent/50 align-middle mr-1" />знакомые герои</span><span>роль «?» у героя — предположение, выбери сам, если знаешь</span></p>
+          <p className="text-[11px] text-muted flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-4 rounded-sm ring-2 ring-accent" />твой пул на этой роли</span>
+            <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-4 rounded-sm ring-1 ring-accent/50" />знакомые герои</span>
+            <span>клик по плитке кладёт героя в выбранную зону, погасшие уже в драфте</span>
+          </p>
         </section>
 
         <section className="flex flex-col gap-4 min-w-0">
@@ -438,8 +456,8 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             </Card>
           )}
           {laneOpp && <LaneCard lane={laneOpp} inPool={inPool} byId={byId} />}
-          <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} items={inPool} loading={loading} byId={byId} onTake={take} lane={laneOpp} />
-          <ResultBlock title="Вне пула, но хороши в этот драфт" items={outside} loading={loading} byId={byId} onTake={take}
+          <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} hint="Герои, на которых ты играешь на этой роли (пул правится кнопкой «Мой пул»). Отсортированы по шансу победы в этом драфте." items={inPool} loading={loading} byId={byId} onTake={take} lane={laneOpp} />
+          <ResultBlock title="Вне пула, но хороши в этот драфт" hint="Герои, на которых ты не играешь на этой роли, но которые сильны против этого драфта. Если готов рискнуть." items={outside} loading={loading} byId={byId} onTake={take}
             footer={<button onClick={() => setShowAll(!showAll)} className="text-xs text-muted underline">{showAll ? "Показать меньше" : "Показать больше"}</button>} />
         </section>
       </div>
@@ -495,10 +513,10 @@ function LaneCard({ lane, inPool, byId }: { lane: LaneOpponent; inPool: Candidat
   );
 }
 
-function ResultBlock({ title, items, loading, byId, footer, onTake, lane }: { title: string; items: Candidate[]; loading: boolean; byId: Map<number, Hero>; footer?: React.ReactNode; onTake: (id: number) => void; lane?: LaneOpponent | null }) {
+function ResultBlock({ title, hint, items, loading, byId, footer, onTake, lane }: { title: string; hint?: string; items: Candidate[]; loading: boolean; byId: Map<number, Hero>; footer?: React.ReactNode; onTake: (id: number) => void; lane?: LaneOpponent | null }) {
   return (
     <Card className="p-3">
-      <CardTitle right={loading ? <span className="text-xs text-muted">считаю…</span> : null}>{title}</CardTitle>
+      <CardTitle hint={hint} right={loading ? <span className="text-xs text-muted">считаю…</span> : <span className="text-[11px] text-muted" title="Оценка шанса победы с героем в этом драфте: базовый винрейт на роли, контрпики, синергии и твой опыт. Нажми на строку, чтобы увидеть, из чего она сложилась.">шанс победы</span>}>{title}</CardTitle>
       <div className="flex flex-col gap-2">
         {items.map((c) => <Row key={c.heroId} c={c} byId={byId} onTake={onTake} lane={lane} />)}
         {items.length === 0 && !loading && <span className="text-sm text-muted">Пока нечего посоветовать: добавь врагов или загрузи историю аккаунта.</span>}
@@ -508,45 +526,79 @@ function ResultBlock({ title, items, loading, byId, footer, onTake, lane }: { ti
   );
 }
 
+const signed = (v: number, digits = 0) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(digits)}`;
+const signTone = (v: number) => (v >= 0.5 ? "text-good" : v <= -0.5 ? "text-bad" : "text-muted");
+
+/** Строка «из чего сложилась оценка» в раскрытой карточке героя. */
+function Part({ label, value, note, digits = 1 }: { label: string; value: number; note?: string; digits?: number }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span>{label}{note && <span className="opacity-60"> · {note}</span>}</span>
+      <b className={`tabular-nums ${signTone(value)}`}>{signed(value, digits)}</b>
+    </div>
+  );
+}
+
 function Row({ c, byId, onTake, lane }: { c: Candidate; byId: Map<number, Hero>; onTake: (id: number) => void; lane?: LaneOpponent | null }) {
   const [open, setOpen] = useState(false);
   const h = byId.get(c.heroId)!;
-  const tone = c.finalScore >= 55 ? "text-good" : c.finalScore <= 45 ? "text-bad" : "text-foreground";
+  const score = Math.round(c.finalScore);
+  const tone = score >= 55 ? "text-good" : score <= 45 ? "text-bad" : "text-foreground";
+  const bar = score >= 55 ? "bg-good" : score <= 45 ? "bg-bad" : "bg-accent";
   const tag = c.poolStatus === "pool" ? <Chip tone="accent" title="Ты играешь на нём на этой роли">в пуле</Chip>
-    : c.poolStatus === "familiar" ? <Chip tone="accent" title="3–9 игр на этой роли" className="opacity-80">знакомый</Chip>
-    : <Chip title="Ты на нём не играл на этой роли">вне пула</Chip>;
+    : c.poolStatus === "familiar" ? <Chip tone="accent" className="opacity-80" title="3–9 игр на этой роли за год">знакомый</Chip>
+    : null;
   const top = c.reasons.slice(0, 3);
+  const laneName = lane ? lane.name.split(" ")[0] : "";
   return (
-    <div className="rounded-lg bg-panel-2 p-2 cursor-pointer" onClick={() => setOpen(!open)}>
+    <div className={`rounded-xl bg-panel-2 p-2.5 cursor-pointer transition ${open ? "ring-1 ring-border" : "hover:bg-panel-2/70"}`} onClick={() => setOpen(!open)} title={open ? "" : "Нажми, чтобы увидеть, из чего сложилась оценка"}>
       <div className="flex items-center gap-3">
-        <img src={portrait(h.short)} alt="" className="h-10 w-[72px] rounded-md object-cover shrink-0" />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium">{c.name}</span>{tag}
-            {c.personalWinrate !== null && <span className="text-xs text-muted">ты: {c.midWins}–{c.midGames - c.midWins} ({c.personalWinrate}%)</span>}
-            {c.top && <span className="rounded bg-panel px-1.5 py-0.5 text-[11px] text-muted" title={`У Immortal на этой роли за 4 недели: винрейт ${c.top.winrate}%, доля пиков ${c.top.rate}% (${c.top.games} игр)`}>Immortal {c.top.winrate}% · {c.top.rate}%</span>}
-            {lane && c.vsLane && <span className={`rounded px-1.5 py-0.5 text-[11px] ${c.vsLane.value >= 1 ? "bg-good/15 text-good" : c.vsLane.value <= -1 ? "bg-bad/15 text-bad" : "bg-panel text-muted"}`} title={`Матчап против соперника по линии (${c.vsLane.games} игр в выборке)${c.vsLane.personal ? `, твой счёт против него ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}`}>vs {lane.name.split(" ")[0]} {c.vsLane.value > 0 ? "+" : ""}{c.vsLane.value}{c.vsLane.personal ? ` · ты ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}</span>}
+        <img src={portrait(h.short)} alt="" className="h-12 w-[86px] rounded-lg object-cover shrink-0" />
+        <div className="flex-1 min-w-0 flex flex-col gap-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-medium leading-5">{c.name}</span>{tag}
+            {c.personalWinrate !== null && <Chip tone={c.personalWinrate >= 50 ? "good" : "muted"} title={`Твой счёт на нём на этой роли за год: ${c.midWins} побед, ${c.midGames - c.midWins} поражений`}>ты {c.midWins}–{c.midGames - c.midWins} · {c.personalWinrate}%</Chip>}
+            {lane && c.vsLane && <Chip tone={c.vsLane.value >= 1 ? "good" : c.vsLane.value <= -1 ? "bad" : "muted"} title={`Матчап против соперника по линии, ${lane.name} (${c.vsLane.games} игр в выборке)${c.vsLane.personal ? `. Твой счёт против него ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}`}>против {laneName} {signed(c.vsLane.value)}{c.vsLane.personal ? ` · ты ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}</Chip>}
+            {c.top && <Chip title={`У Immortal на этой роли за 4 недели: винрейт ${c.top.winrate}%, берут в ${c.top.rate}% игр (${c.top.games} игр)`}>Immortal {c.top.winrate}%</Chip>}
           </div>
-          <div className="mt-1 h-1 w-full overflow-hidden rounded bg-panel"><div className={`h-full ${c.finalScore >= 55 ? "bg-good" : c.finalScore <= 45 ? "bg-bad" : "bg-accent"}`} style={{ width: `${Math.max(4, Math.min(100, (c.finalScore - 30) * 2.5))}%` }} /></div>
-          <div className="text-xs text-muted truncate">
-            {top.length === 0 ? `базовый винрейт на роли ${c.base}%` : top.map((r) => `${r.value > 0 ? "+" : ""}${r.value} ${r.kind === "vs" ? "против" : "с"} ${r.name}${r.laneOpp ? " (мид)" : ""}`).join(" · ")}
+          <div className="flex items-center gap-1.5 flex-wrap text-[11px] leading-4">
+            {top.length === 0 && <span className="text-muted">базовый винрейт на роли {c.base}%</span>}
+            {top.map((r) => (
+              <span key={`${r.kind}-${r.heroId}`} className={`${signTone(r.value)} whitespace-nowrap`} title={`${r.kind === "vs" ? "Против" : "Вместе с"} ${r.name}: ${signed(r.value, 1)} к винрейту (${r.games} игр в выборке)${r.laneOpp ? ". Твой соперник по линии, вес выше" : ""}`}>
+                {signed(r.value)} <span className="text-muted">{r.kind === "vs" ? "против" : "с"}</span> {r.name}
+              </span>
+            ))}
           </div>
+          <div className="h-1 w-full overflow-hidden rounded bg-panel"><div className={`h-full ${bar}`} style={{ width: `${Math.max(4, Math.min(100, (c.finalScore - 30) * 2.5))}%` }} /></div>
         </div>
-        <div className="text-right">
-          <div className={`text-xl font-semibold ${tone}`}>{Math.round(c.finalScore)}%</div>
-          <div className="text-[11px] text-muted">драфт {Math.round(c.draftScore)}%</div>
-        </div>
-        <button onClick={(e) => { e.stopPropagation(); onTake(c.heroId); }} title="Записать в историю, что ты взял этого героя. Когда Дота на связи, это происходит само."
-          className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-muted hover:border-accent hover:text-accent">Беру</button>
+        <div className={`text-2xl font-semibold tabular-nums w-14 text-right ${tone}`} title="Шанс победы с этим героем в этом драфте">{score}%</div>
+        <Button size="sm" onClick={() => onTake(c.heroId)} title="Записать в историю, что ты взял этого героя. Когда Дота на связи, это происходит само." className="shrink-0">Беру</Button>
       </div>
       {open && (
-        <div className="mt-2 border-t border-border pt-2 text-xs text-muted grid gap-1">
-          <div>Базовый винрейт героя на этой роли: <b className="text-foreground">{c.base}%</b> · контрпики: <b className="text-foreground">{c.vsTotal > 0 ? "+" : ""}{c.vsTotal}</b> · синергии: <b className="text-foreground">{c.withTotal > 0 ? "+" : ""}{c.withTotal}</b> · поправка на твой опыт: <b className="text-foreground">{c.personalAdj > 0 ? "+" : ""}{c.personalAdj}</b></div>
-          {c.reasons.map((r) => <div key={`${r.kind}-${r.heroId}`}>{r.value > 0 ? "+" : ""}{r.value} {r.kind === "vs" ? "против" : "вместе с"} {r.name}{r.laneOpp ? <span className="text-enemy"> · твой оппонент по лейну, вес выше</span> : null} <span className="opacity-60">({r.games} игр в выборке)</span></div>)}
-          <div>Риск контрпика: <b className="text-foreground">{c.counterRisk}</b>{c.stageAdj !== 0 ? <> · поправка за очередь пика <b className="text-foreground">{c.stageAdj}</b></> : null}{c.needsAdj !== 0 ? <> · закрывает нехватку команды <b className="text-foreground">+{c.needsAdj}</b></> : null}</div>
-          {c.predictedAdj !== 0 && <div>Вероятные пики врага на твою линию: <b className="text-foreground">{c.predictedAdj > 0 ? "+" : ""}{c.predictedAdj}</b> <span className="opacity-60">(с небольшим весом, пока соперник не выбран)</span></div>}
-          {c.personalNotes.map((n) => <div key={`${n.ally}-${n.heroId}`} className="text-accent">Твоя история {n.ally ? "вместе с" : "против"} {n.name}: {n.wins}–{n.games - n.wins}</div>)}
-          <div className="opacity-60">Доля игр героя на этой роли у Divine/Immortal: {Math.round(c.midRate * 100)}%</div>
+        <div className="mt-2 border-t border-border pt-2 text-xs text-muted grid gap-3 sm:grid-cols-2" onClick={(e) => e.stopPropagation()}>
+          <div className="grid gap-1 content-start">
+            <div className="text-foreground font-medium mb-0.5">Из чего сложилась оценка</div>
+            <div className="flex items-baseline justify-between gap-3"><span>Винрейт героя на этой роли у Divine/Immortal</span><b className="text-foreground tabular-nums">{c.base}%</b></div>
+            <Part label="Контрпики" value={c.vsTotal} />
+            <Part label="Синергии" value={c.withTotal} />
+            {c.predictedAdj !== 0 && <Part label="Вероятные пики врага на твою линию" note="небольшой вес, пока соперник не выбран" value={c.predictedAdj} />}
+            {c.stageAdj !== 0 && <Part label="Очередь пика" note={`риск контрпика ${c.counterRisk}`} value={c.stageAdj} />}
+            {c.needsAdj !== 0 && <Part label="Закрывает нехватку команды" value={c.needsAdj} />}
+            <Part label="Твой опыт на герое" value={c.personalAdj} />
+            <div className="flex items-baseline justify-between gap-3 border-t border-border pt-1 mt-0.5 text-foreground"><span>Итого: шанс победы</span><b className={`tabular-nums ${tone}`}>{score}%</b></div>
+            <div className="opacity-60 mt-1">Его берут на эту роль в {Math.round(c.midRate * 100)}% игр героя у Divine/Immortal.</div>
+          </div>
+          <div className="grid gap-1 content-start">
+            <div className="text-foreground font-medium mb-0.5">Матчапы в этом драфте</div>
+            {c.reasons.length === 0 && <span>известных врагов и союзников пока нет</span>}
+            {c.reasons.map((r) => (
+              <div key={`${r.kind}-${r.heroId}`} className="flex items-baseline justify-between gap-3">
+                <span>{r.kind === "vs" ? "против" : "вместе с"} <span className="text-foreground">{r.name}</span>{r.laneOpp ? <span className="text-enemy"> · по линии</span> : null} <span className="opacity-60">({r.games} игр)</span></span>
+                <b className={`tabular-nums ${signTone(r.value)}`}>{signed(r.value, 1)}</b>
+              </div>
+            ))}
+            {c.personalNotes.map((n) => <div key={`${n.ally}-${n.heroId}`} className="text-accent">Ты {n.ally ? "вместе с" : "против"} {n.name}: {n.wins}–{n.games - n.wins}</div>)}
+          </div>
         </div>
       )}
     </div>
