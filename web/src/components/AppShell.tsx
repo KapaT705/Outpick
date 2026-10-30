@@ -81,6 +81,49 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <Onboarding />
       <div className="flex-1">{children}</div>
+      <Tooltips />
     </div>
+  );
+}
+
+/** Свои подсказки вместо системных title: в Electron на маке системные появляются с задержкой и рисуются в углу окна.
+ *  При наведении title переносится в data-tip (системная больше не всплывает), текст показывается под элементом. */
+function Tooltips() {
+  const [tip, setTip] = useState<{ text: string; x: number; y: number; above: boolean } | null>(null);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cur: Element | null = null;
+    const hide = () => { clearTimeout(timer); cur = null; setTip(null); };
+    const show = (el: Element) => {
+      const text = el.getAttribute("data-tip");
+      if (!text) return;
+      const r = el.getBoundingClientRect();
+      const above = r.bottom + 120 > window.innerHeight && r.top > 140;
+      setTip({ text, x: Math.min(Math.max(r.left + r.width / 2, 170), window.innerWidth - 170), y: above ? r.top - 6 : r.bottom + 6, above });
+    };
+    const over = (e: MouseEvent) => {
+      const el = (e.target as Element | null)?.closest?.("[title],[data-tip]");
+      if (!el) { if (cur) hide(); return; }
+      const t = el.getAttribute("title");
+      if (t !== null) { el.removeAttribute("title"); if (t.trim()) el.setAttribute("data-tip", t); }
+      if (!el.getAttribute("data-tip")) { if (cur) hide(); return; }
+      if (el === cur) return;
+      clearTimeout(timer); cur = el; setTip(null);
+      timer = setTimeout(() => show(el), 350);
+    };
+    const out = (e: MouseEvent) => {
+      const to = e.relatedTarget as Element | null;
+      if (cur && !(to && cur.contains(to))) hide();
+    };
+    document.addEventListener("mouseover", over);
+    document.addEventListener("mouseout", out);
+    document.addEventListener("mousedown", hide, true);
+    document.addEventListener("scroll", hide, true);
+    return () => { document.removeEventListener("mouseover", over); document.removeEventListener("mouseout", out); document.removeEventListener("mousedown", hide, true); document.removeEventListener("scroll", hide, true); clearTimeout(timer); };
+  }, []);
+  if (!tip) return null;
+  return (
+    <div role="tooltip" className="pointer-events-none fixed z-[100] w-max max-w-[340px] -translate-x-1/2 rounded-lg border border-border bg-panel-2 px-3 py-2 text-xs leading-snug text-foreground shadow-lg"
+      style={{ left: tip.x, top: tip.above ? undefined : tip.y, bottom: tip.above ? window.innerHeight - tip.y : undefined }}>{tip.text}</div>
   );
 }

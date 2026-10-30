@@ -412,7 +412,9 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(118px,1fr))] gap-2 max-h-[62vh] overflow-y-auto pr-1">
+          {/* auto-rows-max обязателен: у плитки overflow-hidden, её минимальная высота 0, и Chromium при max-h ужимал все ряды
+              поровну под высоту сетки вместо прокрутки (в окне 785px плитки были 47px вместо 74) */}
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(118px,1fr))] auto-rows-max gap-2 max-h-[62vh] overflow-y-auto pr-1">
             {filtered.map((h) => {
               const by = takenBy.get(h.id);
               const inPool = poolSet.has(h.id);
