@@ -418,7 +418,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
           </div>
           {/* auto-rows-max обязателен: у плитки overflow-hidden, её минимальная высота 0, и Chromium при max-h ужимал все ряды
               поровну под высоту сетки вместо прокрутки (в окне 785px плитки были 47px вместо 74) */}
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(118px,1fr))] auto-rows-max gap-2 max-h-[62vh] overflow-y-auto pr-1">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(118px,1fr))] auto-rows-max gap-2 lg:max-h-[62vh] lg:overflow-y-auto lg:pr-1">
             {filtered.map((h) => {
               const by = takenBy.get(h.id);
               const inPool = poolSet.has(h.id);
@@ -694,7 +694,7 @@ function DraftBar({ byId, allies, enemies, ownHeroId, team, role, guesses }: { b
     const own = !!(p && "own" in p && p.own);
     const r = p ? (p.role ?? (side === "ours" ? guesses.allies : guesses.enemies).find((x) => x.id === p.id)?.role) : undefined;
     return (
-      <div className={`relative h-[54px] w-24 2xl:h-[63px] 2xl:w-28 shrink-0 overflow-hidden rounded-lg border ${own ? "border-accent" : side === "ours" ? "border-ally/40" : "border-enemy/40"} bg-panel-2`}
+      <div className={`relative flex-1 min-w-10 max-w-28 aspect-[16/9] overflow-hidden rounded-lg border ${own ? "border-accent" : side === "ours" ? "border-ally/40" : "border-enemy/40"} bg-panel-2`}
         title={h ? `${h.name}${r ? ` · ${ROLE_NAME[r]}` : ""}` : free ? `Свободная роль: ${ROLE_NAME[free]}` : "пусто"}>
         {h ? <img src={portrait(h.short)} alt={h.name} className="h-full w-full object-cover" /> : <div className={`flex h-full w-full items-center justify-center text-xl font-semibold ${side === "ours" ? "text-ally/50" : "text-enemy/50"}`}>{free ?? ""}</div>}
         {h && r && !own && <div className={`absolute bottom-0 right-0 rounded-tl px-2 py-0.5 text-xs font-semibold ${side === "ours" ? "bg-ally/80 text-black" : "bg-enemy/80 text-black"}`}>{r}</div>}
@@ -707,13 +707,13 @@ function DraftBar({ byId, allies, enemies, ownHeroId, team, role, guesses }: { b
   const leftFree = oursLeft ? freeOurs : freeTheirs, rightFree = oursLeft ? freeTheirs : freeOurs;
   const pad = (arr: unknown[]) => Array.from({ length: 5 }, (_, i) => arr[i]);
   return (
-    <section className="rounded-xl border border-border bg-panel px-3 py-2.5 flex items-center justify-between gap-3 overflow-x-auto">
-      <div className="flex items-center gap-1.5">
+    <section className="rounded-xl border border-border bg-panel px-3 py-2.5 flex items-center justify-between gap-3">
+      <div className="flex flex-1 min-w-0 items-center gap-1.5">
         <span className={`mr-1 text-sm font-semibold ${leftSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Свет" : "Союзники"}</span>
         {pad(left).map((p, i) => <Slot key={`l${i}`} p={p as Pick | undefined} side={leftSide} free={p ? undefined : leftFree[i - left.length]} />)}
       </div>
-      <div className="text-xs text-muted whitespace-nowrap px-1">{team ? (team === "radiant" ? "ты за Свет" : "ты за Тьму") : "команда неизвестна"}</div>
-      <div className="flex items-center gap-1.5">
+      <div className="hidden xl:block text-xs text-muted whitespace-nowrap px-1">{team ? (team === "radiant" ? "ты за Свет" : "ты за Тьму") : "команда неизвестна"}</div>
+      <div className="flex flex-1 min-w-0 items-center justify-end gap-1.5">
         {pad(right).map((p, i) => <Slot key={`r${i}`} p={p as Pick | undefined} side={rightSide} free={p ? undefined : rightFree[i - right.length]} />)}
         <span className={`ml-1 text-sm font-semibold ${rightSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Тьма" : "Враги"}</span>
       </div>

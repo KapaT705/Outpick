@@ -41,6 +41,13 @@ body {
 }
 select, input, button, textarea { font: inherit; }
 
+/* тонкий тёмный скролл вместо системного: страница и все прокручиваемые блоки */
+* { scrollbar-width: thin; scrollbar-color: #2a2f3a transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #2a2f3a; border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: #3a3f4a; background-clip: padding-box; }
+
 /* строки советов появляются плавно, чтобы список не дёргался при пересчёте */
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .animate-rise { animation: rise .18s ease-out both; }
