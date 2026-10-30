@@ -363,22 +363,22 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             </div>
             <div className="flex flex-wrap gap-2 min-h-10 mb-2">
               {z.key === "allies" && ownHero && (
-                <div onClick={(e) => e.stopPropagation()} title={`Твой герой, его сообщила Дота. Роль ${ROLE_NAME[role]}`} className="flex items-center gap-1 rounded-md bg-panel-2 text-xs overflow-hidden pr-2 ring-1 ring-accent">
-                  <img src={icon(ownHero.short)} alt="" className="h-7 w-7" />{ownHero.name}<Chip tone="accent">ты · {ROLE_LABEL[role]}</Chip>
+                <div onClick={(e) => e.stopPropagation()} title={`Твой герой, его сообщила Дота. Роль ${ROLE_NAME[role]}`} className="flex h-8 items-center gap-1.5 rounded-lg bg-panel-2 text-xs pl-1 pr-2 ring-1 ring-accent">
+                  <img src={icon(ownHero.short)} alt="" className="h-6 w-6 rounded" />{ownHero.name}<Chip tone="accent">ты · {ROLE_LABEL[role]}</Chip>
                 </div>
               )}
               {picks[z.key].map((p) => {
                 const h = byId.get(p.id)!;
                 const guess = roles[z.key].find((g) => g.id === p.id);
                 return (
-                  <div key={p.id} onClick={(e) => e.stopPropagation()} className={`flex items-center rounded-md bg-panel-2 text-xs overflow-hidden ${p.auto ? "outline outline-1 outline-dashed outline-ban/70" : ""}`}>
-                    <button onClick={() => remove(z.key, p.id)} title={p.auto ? "Пропал из слота: его выбрали обе команды, и он забанен. Нажми, чтобы убрать, если это не так" : "Убрать"} className="flex items-center gap-1 pr-2 hover:bg-border">
-                      <img src={icon(h.short)} alt="" className="h-7 w-7" />{h.name}{p.auto && <span className="text-[10px] text-ban/80 ml-0.5">конфликт</span>}
+                  <div key={p.id} onClick={(e) => e.stopPropagation()} className={`flex h-8 items-center rounded-lg bg-panel-2 text-xs ${p.auto ? "outline outline-1 outline-dashed outline-ban/70" : ""}`}>
+                    <button onClick={() => remove(z.key, p.id)} title={p.auto ? "Пропал из слота: его выбрали обе команды, и он забанен. Нажми, чтобы убрать, если это не так" : "Убрать"} className="flex h-8 items-center gap-1.5 rounded-l-lg pl-1 pr-2 hover:bg-border">
+                      <img src={icon(h.short)} alt="" className="h-6 w-6 rounded" />{h.name}{p.auto && <span className="text-[10px] text-ban/80 ml-0.5">конфликт</span>}
                     </button>
                     {(
-                      <span className="relative h-7 border-l border-border bg-panel flex items-center" title={p.role ? `Роль задана тобой: ${ROLE_NAME[p.role]}` : guess ? `Предполагаю: ${ROLE_NAME[guess.role]} (${Math.round(guess.prob * 100)}%). Нажми, чтобы задать` : "Роль не известна: 1 керри, 2 мид, 3 офлейн, 4 и 5 саппорты. Нажми, чтобы задать"}>
+                      <span className="relative h-8 border-l border-border rounded-r-lg bg-panel flex items-center" title={p.role ? `Роль задана тобой: ${ROLE_NAME[p.role]}` : guess ? `Предполагаю: ${ROLE_NAME[guess.role]} (${Math.round(guess.prob * 100)}%). Нажми, чтобы задать` : "Роль не известна: 1 керри, 2 мид, 3 офлейн, 4 и 5 саппорты. Нажми, чтобы задать"}>
                         <select value={p.role ?? ""} onChange={(e) => setPickRole(z.key, p.id, e.target.value ? (Number(e.target.value) as Role) : null)}
-                          className={`appearance-none h-7 w-11 bg-transparent pl-2 pr-4 outline-none cursor-pointer font-semibold ${p.role ? "text-foreground" : "text-muted"}`}>
+                          className={`appearance-none h-8 w-11 bg-transparent pl-2 pr-4 outline-none cursor-pointer font-semibold ${p.role ? "text-foreground" : "text-muted"}`}>
                           <option value="">{guess ? `${ROLE_LABEL[guess.role]}?` : "?"}</option>
                           {ROLES.filter((r) => !(z.key === "allies" && r === role)).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                         </select>
