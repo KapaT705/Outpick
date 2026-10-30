@@ -30,8 +30,13 @@
   --color-ban: var(--ban);
 }
 
+/* шкала текста: основной 14px, вторичный 12px (text-xs), 10–11px только подписи ячеек и бейджи */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  font-feature-settings: "tnum" 1, "cv11" 1;
 }
+select, input, button, textarea { font: inherit; }

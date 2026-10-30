@@ -153,10 +153,12 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const poolSet = useMemo(() => new Set([...poolIds, ...override.add].filter((id) => !override.remove.includes(id))), [poolIds, override]);
   const familiarSet = useMemo(() => new Set(familiarIds.filter((id) => !poolSet.has(id) && !override.remove.includes(id))), [familiarIds, poolSet, override]);
 
+  // в сетке первыми герои пула, потом знакомые, остальные по алфавиту: свои всегда под рукой
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return heroes.filter((h) => (q ? h.name.toLowerCase().includes(q) || h.short.includes(q) : h.attr === attr));
-  }, [heroes, query, attr]);
+    const rank = (h: Hero) => (poolSet.has(h.id) ? 0 : familiarSet.has(h.id) ? 1 : 2);
+    return heroes.filter((h) => (q ? h.name.toLowerCase().includes(q) || h.short.includes(q) : h.attr === attr)).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  }, [heroes, query, attr, poolSet, familiarSet]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -322,21 +324,21 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
               ))}
             </div>
           </div>
+          <Button size="sm" onClick={() => setPoolOpen(true)} title={acct?.current.id ? `Аккаунт ${acct.current.name ?? acct.current.id}${acct.current.source === "gsi" ? " (сообщила Дота)" : acct.current.source === "steam" ? " (под ним запущен Steam)" : " (по умолчанию из настроек)"}${acct.current.known ? "" : ": пул не загружен, общий режим"}. Нажми, чтобы править пул.` : "Аккаунт не известен: общий режим без пула"}>
+            Мой пул · {poolSet.size}{acct?.current.id ? <span className="text-muted"> · {acct.current.name ?? acct.current.id}</span> : null}
+          </Button>
+          <Button size="sm" variant="link" onClick={reset} title="Очистить врагов и союзников">Сбросить драфт</Button>
         </div>
         <div className="flex flex-wrap gap-3 text-sm items-center">
           {saved && <Chip tone="good">записал: {saved}</Chip>}
           <Status ok={!!gsi?.connected} label={gsi?.connected ? (gsi.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" ? "Дота: стадия пиков" : gsi.phase === "DOTA_GAMERULES_STATE_STRATEGY_TIME" ? "Дота: стратегия" : gsi.phase && gsi.phase !== "" ? "Дота: в игре" : "Дота: в меню") : "Дота не на связи"}
             title={gsi?.connected ? `${gsi.ownHeroId ? `Твой герой: ${byId.get(gsi.ownHeroId)?.name}. ` : ""}Когда ты выберешь героя, драфт запишется в историю сам.${captureOn && screen ? ` Экран: ${screen.status}, распознано слотов: ${screen.found}.` : ""}` : "Запусти Доту с установленным конфигом (Настройки → Связь с Дотой). Пока связи нет, врагов можно вводить вручную."} />
           {!gsi?.connected && captureOn && (
-            <div className="flex rounded-md border border-border overflow-hidden text-[11px]" title="Дота не на связи, поэтому укажи, за какую сторону играешь: от этого зависит, кто в распознанном драфте враги">
-              <button onClick={() => setSide("radiant")} className={`px-2 py-1 ${side === "radiant" ? "bg-good/20 text-good" : "text-muted"}`}>я за Свет</button>
-              <button onClick={() => setSide("dire")} className={`px-2 py-1 ${side === "dire" ? "bg-bad/20 text-bad" : "text-muted"}`}>я за Тьму</button>
+            <div className="flex rounded-lg border border-border overflow-hidden text-xs" title="Дота не на связи, поэтому укажи, за какую сторону играешь: от этого зависит, кто в распознанном драфте враги">
+              <button onClick={() => setSide("radiant")} className={`px-2.5 py-1.5 ${side === "radiant" ? "bg-good/20 text-good" : "text-muted hover:text-foreground"}`}>я за Свет</button>
+              <button onClick={() => setSide("dire")} className={`px-2.5 py-1.5 ${side === "dire" ? "bg-bad/20 text-bad" : "text-muted hover:text-foreground"}`}>я за Тьму</button>
             </div>
           )}
-          <Button size="sm" onClick={() => setPoolOpen(true)} title={acct?.current.id ? `Аккаунт ${acct.current.name ?? acct.current.id}${acct.current.source === "gsi" ? " (сообщила Дота)" : acct.current.source === "steam" ? " (под ним запущен Steam)" : " (по умолчанию из настроек)"}${acct.current.known ? "" : ": пул не загружен, общий режим"}. Нажми, чтобы править пул.` : "Аккаунт не известен: общий режим без пула"}>
-            Мой пул · {poolSet.size}{acct?.current.id ? <span className="text-muted"> · {acct.current.name ?? acct.current.id}</span> : null}
-          </Button>
-          <Button size="sm" variant="link" onClick={reset} title="Очистить врагов и союзников">Сбросить драфт</Button>
         </div>
       </header>
 
@@ -392,13 +394,13 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             <input value={quick[z.key]} onChange={(e) => setQuick({ ...quick, [z.key]: e.target.value })} onClick={(e) => { e.stopPropagation(); setZone(z.key); }}
               onKeyDown={(e) => { if (e.key === "Enter") submitQuick(z.key); }} placeholder={`или напиши, например: ${z.hint}`}
               className="w-full rounded-md border border-border bg-panel-2 px-2 py-1 text-xs outline-none focus:border-accent placeholder:text-muted/60" />
-            {unknown[z.key].length > 0 && <div className="mt-1 text-[11px] text-bad">не узнал: {unknown[z.key].join(", ")}</div>}
+            {unknown[z.key].length > 0 && <div className="mt-1 text-xs text-bad">не узнал: {unknown[z.key].join(", ")}</div>}
           </div>
         ))}
       </section>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_1.1fr]">
-        <section className="rounded-xl border border-border bg-panel p-3 flex flex-col gap-3 min-w-0">
+        <Card className="p-3 flex flex-col gap-3 min-w-0">
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Найти героя… Enter добавит в зону «${ZONES.find((z) => z.key === zone)!.label}»`}
             onKeyDown={(e) => { if (e.key === "Enter" && filtered.length > 0) add(filtered.find((h) => !taken.has(h.id))?.id ?? filtered[0].id); }}
             className="w-full rounded-lg border border-border bg-panel-2 px-3 py-2 text-sm outline-none focus:border-accent" autoFocus />
@@ -410,31 +412,29 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-2 max-h-[62vh] overflow-y-auto pr-1">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(118px,1fr))] gap-2 max-h-[62vh] overflow-y-auto pr-1">
             {filtered.map((h) => {
               const by = takenBy.get(h.id);
               const inPool = poolSet.has(h.id);
               const ring = inPool ? "ring-2 ring-accent" : familiarSet.has(h.id) ? "ring-1 ring-accent/50" : "";
               return (
                 <button key={h.id} onClick={() => add(h.id)} disabled={!!by} title={by ? `${h.name}: ${by}` : `${h.name}: добавить в зону «${ZONES.find((z) => z.key === zone)!.label}»`}
-                  className={`group flex flex-col items-center gap-1 rounded-md ${by ? "cursor-not-allowed" : "hover:-translate-y-0.5 transition"}`}>
-                  <span className="relative w-full">
-                    <img src={portrait(h.short)} alt={h.name} loading="lazy" className={`w-full aspect-[16/9] object-cover rounded-md ${ring} ${by ? "opacity-25 grayscale" : ""}`} />
-                    {by && <span className={`absolute inset-0 flex items-center justify-center text-[11px] font-semibold ${by === "враг" ? "text-enemy" : by === "забанен" ? "text-ban" : "text-ally"}`}>{by}</span>}
-                    {inPool && !by && <span className="absolute left-1 top-1 h-2 w-2 rounded-full bg-accent shadow" title="В твоём пуле" />}
-                  </span>
-                  <span className={`text-[11px] leading-tight text-center ${by ? "text-muted/60" : "text-muted group-hover:text-foreground"}`}>{h.name}</span>
+                  className={`group relative w-full aspect-[16/9] overflow-hidden rounded-lg ${ring} ${by ? "cursor-not-allowed" : "hover:-translate-y-0.5 transition"}`}>
+                  <img src={portrait(h.short)} alt={h.name} loading="lazy" className={`absolute inset-0 h-full w-full object-cover ${by ? "opacity-25 grayscale" : ""}`} />
+                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-1.5 pb-1 pt-4 text-left text-xs leading-tight text-white/90 truncate">{h.name}</span>
+                  {by && <span className={`absolute inset-0 flex items-center justify-center text-xs font-semibold ${by === "враг" ? "text-enemy" : by === "забанен" ? "text-ban" : "text-ally"}`}>{by}</span>}
+                  {inPool && !by && <span className="absolute left-1.5 top-1.5 h-2 w-2 rounded-full bg-accent shadow" title="В твоём пуле" />}
                 </button>
               );
             })}
             {filtered.length === 0 && <span className="text-sm text-muted col-span-full">Никого не нашёл</span>}
           </div>
-          <p className="text-[11px] text-muted flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-4 rounded-sm ring-2 ring-accent" />твой пул на этой роли</span>
+          <p className="text-xs text-muted flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-4 rounded-sm ring-2 ring-accent" />твой пул на этой роли, они первые</span>
             <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-4 rounded-sm ring-1 ring-accent/50" />знакомые герои</span>
-            <span>клик по плитке кладёт героя в выбранную зону, погасшие уже в драфте</span>
+            <span>клик кладёт героя в выбранную зону, погасшие уже в драфте</span>
           </p>
-        </section>
+        </Card>
 
         <section className="flex flex-col gap-4 min-w-0">
           {(picks.enemies.length > 0 || picks.allies.length > 0) && (
@@ -459,7 +459,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             </Card>
           )}
           {laneOpp && <LaneCard lane={laneOpp} inPool={inPool} byId={byId} />}
-          <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} hint="Герои, на которых ты играешь на этой роли (пул правится кнопкой «Мой пул»). Отсортированы по шансу победы в этом драфте." items={inPool} loading={loading} byId={byId} onTake={take} lane={laneOpp} />
+          <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} hint="Герои, на которых ты играешь на этой роли (пул правится кнопкой «Мой пул»). Отсортированы по шансу победы в этом драфте." items={inPool} loading={loading} byId={byId} onTake={take} lane={laneOpp} featured />
           <ResultBlock title="Вне пула, но хороши в этот драфт" hint="Герои не из твоего пула на этой роли: оценка только по мете и драфту, твой счёт на них показывается, но не учитывается. «Знакомый» значит 3–9 игр за год." items={outside} loading={loading} byId={byId} onTake={take}
             footer={<button onClick={() => setShowAll(!showAll)} className="text-xs text-muted underline">{showAll ? "Показать меньше" : "Показать больше"}</button>} />
         </section>
@@ -516,12 +516,12 @@ function LaneCard({ lane, inPool, byId }: { lane: LaneOpponent; inPool: Candidat
   );
 }
 
-function ResultBlock({ title, hint, items, loading, byId, footer, onTake, lane }: { title: string; hint?: string; items: Candidate[]; loading: boolean; byId: Map<number, Hero>; footer?: React.ReactNode; onTake: (id: number) => void; lane?: LaneOpponent | null }) {
+function ResultBlock({ title, hint, items, loading, byId, footer, onTake, lane, featured }: { title: string; hint?: string; items: Candidate[]; loading: boolean; byId: Map<number, Hero>; footer?: React.ReactNode; onTake: (id: number) => void; lane?: LaneOpponent | null; featured?: boolean }) {
   return (
     <Card className="p-3">
-      <CardTitle hint={hint} right={loading ? <span className="text-xs text-muted">считаю…</span> : <span className="text-[11px] text-muted" title="Оценка шанса победы с героем в этом драфте: базовый винрейт на роли, контрпики, синергии и твой опыт. Нажми на строку, чтобы увидеть, из чего она сложилась.">шанс победы</span>}>{title}</CardTitle>
+      <CardTitle hint={hint} right={loading ? <span className="text-xs text-muted">считаю…</span> : <span className="text-xs text-muted" title="Оценка шанса победы с героем в этом драфте: винрейт на роли, контрпики, синергии, наигранность и твой винрейт. Нажми на строку, чтобы увидеть, из чего она сложилась.">шанс победы</span>}>{title}</CardTitle>
       <div className="flex flex-col gap-2">
-        {items.map((c) => <Row key={c.heroId} c={c} byId={byId} onTake={onTake} lane={lane} />)}
+        {items.map((c, i) => <Row key={c.heroId} c={c} byId={byId} onTake={onTake} lane={lane} featured={featured && i === 0} />)}
         {items.length === 0 && !loading && <span className="text-sm text-muted">Пока нечего посоветовать: добавь врагов или загрузи историю аккаунта.</span>}
       </div>
       {footer && <div className="mt-2">{footer}</div>}
@@ -542,41 +542,72 @@ function Part({ label, value, note, digits = 1 }: { label: string; value: number
   );
 }
 
-function Row({ c, byId, onTake, lane }: { c: Candidate; byId: Map<number, Hero>; onTake: (id: number) => void; lane?: LaneOpponent | null }) {
+/** Одна фраза «почему» для крупной карточки: два главных матчапа и твой счёт. */
+function why(c: Candidate, lane?: LaneOpponent | null): string {
+  const parts: string[] = [];
+  const top = c.reasons.slice(0, 2);
+  if (top.length) parts.push(top.map((r) => `${signed(r.value)} ${r.kind === "vs" ? "против" : "с"} ${r.name}${lane && r.heroId === lane.heroId ? " по линии" : ""}`).join(", "));
+  else parts.push(`${c.base}% винрейт на роли у Immortal`);
+  if (c.poolStatus === "pool" && c.midGames >= 3) parts.push(`у тебя ${c.midWins}–${c.midGames - c.midWins} за год`);
+  if (c.needsAdj > 0) parts.push("закрывает нехватку команды");
+  return parts.join(" · ");
+}
+
+function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<number, Hero>; onTake: (id: number) => void; lane?: LaneOpponent | null; featured?: boolean }) {
   const [open, setOpen] = useState(false);
   const h = byId.get(c.heroId)!;
   const score = Math.round(c.finalScore);
   const tone = score >= 55 ? "text-good" : score <= 45 ? "text-bad" : "text-foreground";
   const bar = score >= 55 ? "bg-good" : score <= 45 ? "bg-bad" : "bg-accent";
-  const tag = c.poolStatus === "pool" ? <Chip tone="accent" title="Ты играешь на нём на этой роли">в пуле</Chip>
-    : c.poolStatus === "familiar" ? <Chip tone="accent" className="opacity-80" title="3–9 игр на этой роли за год; на оценку твой счёт не влияет">знакомый</Chip>
-    : null;
-  const top = c.reasons.slice(0, 3);
   const laneName = lane ? lane.name.split(" ")[0] : "";
+  // в строке не больше двух чипов: статус пула и самое важное из (матчап по линии, твой счёт, популярность); остальное в раскрытии
+  const chips: React.ReactNode[] = [];
+  if (c.poolStatus === "familiar") chips.push(<Chip key="fam" tone="accent" className="opacity-80" title="3–9 игр на этой роли за год; на оценку твой счёт не влияет">знакомый</Chip>);
+  if (lane && c.vsLane) chips.push(<Chip key="lane" tone={c.vsLane.value >= 1 ? "good" : c.vsLane.value <= -1 ? "bad" : "muted"} title={`Матчап против соперника по линии, ${lane.name} (${c.vsLane.games} игр в выборке)${c.vsLane.personal ? `. Твой счёт против него ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}`}>против {laneName} {signed(c.vsLane.value)}{c.vsLane.personal ? ` · ты ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}</Chip>);
+  if (c.personalWinrate !== null) chips.push(<Chip key="me" tone={c.poolStatus !== "pool" ? "muted" : c.personalWinrate >= 50 ? "good" : "bad"} title={`Твой счёт на нём на этой роли за год: ${c.midWins} побед, ${c.midGames - c.midWins} поражений${c.poolStatus === "pool" ? ". Учтён в оценке" : ". На оценку не влияет: герой не в пуле"}`}>ты {c.midWins}–{c.midGames - c.midWins} · {c.personalWinrate}%</Chip>);
+  if (c.top) chips.push(<Chip key="top" title={`Популярность у Immortal на этой роли за 4 недели: ${c.top.rate}% всех пиков роли (${c.top.games} игр), винрейт ${c.top.winrate}%`}>берут {c.top.rate}%</Chip>);
+  const shown = chips.slice(0, 2);
+  const top = c.reasons.slice(0, 3);
   return (
-    <div className={`rounded-xl bg-panel-2 p-2.5 cursor-pointer transition ${open ? "ring-1 ring-border" : "hover:bg-panel-2/70"}`} onClick={() => setOpen(!open)} title={open ? "" : "Нажми, чтобы увидеть, из чего сложилась оценка"}>
-      <div className="flex items-center gap-3">
-        <img src={portrait(h.short)} alt="" className="h-12 w-[86px] rounded-lg object-cover shrink-0" />
-        <div className="flex-1 min-w-0 flex flex-col gap-1">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-medium leading-5">{c.name}</span>{tag}
-            {c.personalWinrate !== null && <Chip tone={c.poolStatus !== "pool" ? "muted" : c.personalWinrate >= 50 ? "good" : "bad"} title={`Твой счёт на нём на этой роли за год: ${c.midWins} побед, ${c.midGames - c.midWins} поражений${c.poolStatus === "pool" ? ". Учтён в оценке" : ". На оценку не влияет: герой не в пуле"}`}>ты {c.midWins}–{c.midGames - c.midWins} · {c.personalWinrate}%</Chip>}
-            {lane && c.vsLane && <Chip tone={c.vsLane.value >= 1 ? "good" : c.vsLane.value <= -1 ? "bad" : "muted"} title={`Матчап против соперника по линии, ${lane.name} (${c.vsLane.games} игр в выборке)${c.vsLane.personal ? `. Твой счёт против него ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}`}>против {laneName} {signed(c.vsLane.value)}{c.vsLane.personal ? ` · ты ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}</Chip>}
-            {c.top && <Chip title={`Популярность у Immortal на этой роли за 4 недели: ${c.top.rate}% всех пиков роли (${c.top.games} игр), винрейт ${c.top.winrate}%`}>берут {c.top.rate}%</Chip>}
+    <div className={`rounded-xl cursor-pointer transition ${featured ? "bg-panel-2 p-3 ring-1 ring-accent/40" : "bg-panel-2 p-2.5"} ${open ? "ring-1 ring-border" : featured ? "" : "hover:bg-panel-2/70"}`} onClick={() => setOpen(!open)} title={open ? "" : "Нажми, чтобы увидеть, из чего сложилась оценка"}>
+      {featured ? (
+        <div className="flex items-center gap-4">
+          <img src={portrait(h.short)} alt="" className="h-[76px] w-[136px] rounded-lg object-cover shrink-0" />
+          <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-lg font-semibold leading-6">{c.name}</span>
+              <Chip tone="accent" title="Лучший вариант в этом драфте по оценке пикера">лучший выбор</Chip>
+              {shown}
+            </div>
+            <div className="text-sm text-muted">{why(c, lane)}</div>
+            <div className="h-1.5 w-full overflow-hidden rounded bg-panel"><div className={`h-full ${bar}`} style={{ width: `${Math.max(4, Math.min(100, (c.finalScore - 30) * 2.5))}%` }} /></div>
           </div>
-          <div className="flex items-center gap-1.5 flex-wrap text-[11px] leading-4">
-            {top.length === 0 && <span className="text-muted" title="Пока в драфте никого нет, герои идут по винрейту на этой роли у Immortal (5420+ MMR) за последние 4 недели с поправкой на твой опыт. Матчапы появятся, когда добавишь врагов или союзников.">{c.base}% винрейт на роли · врагов пока нет</span>}
-            {top.map((r) => (
-              <span key={`${r.kind}-${r.heroId}`} className={`${signTone(r.value)} whitespace-nowrap`} title={`${r.kind === "vs" ? "Против" : "Вместе с"} ${r.name}: ${signed(r.value, 1)} к винрейту (${r.games} игр в выборке)${r.laneOpp ? ". Твой соперник по линии, вес выше" : ""}`}>
-                {signed(r.value)} <span className="text-muted">{r.kind === "vs" ? "против" : "с"}</span> {r.name}
-              </span>
-            ))}
+          <div className="text-right shrink-0">
+            <div className={`text-4xl font-semibold tabular-nums leading-none ${tone}`} title="Шанс победы с этим героем в этом драфте">{score}%</div>
+            <Button size="sm" variant="primary" onClick={() => onTake(c.heroId)} title="Записать в историю, что ты взял этого героя. Когда Дота на связи, это происходит само." className="mt-2">Беру</Button>
           </div>
-          <div className="h-1 w-full overflow-hidden rounded bg-panel"><div className={`h-full ${bar}`} style={{ width: `${Math.max(4, Math.min(100, (c.finalScore - 30) * 2.5))}%` }} /></div>
         </div>
-        <div className={`text-2xl font-semibold tabular-nums w-14 text-right ${tone}`} title="Шанс победы с этим героем в этом драфте">{score}%</div>
-        <Button size="sm" onClick={() => onTake(c.heroId)} title="Записать в историю, что ты взял этого героя. Когда Дота на связи, это происходит само." className="shrink-0">Беру</Button>
-      </div>
+      ) : (
+        <div className="flex items-center gap-3">
+          <img src={portrait(h.short)} alt="" className="h-12 w-[86px] rounded-lg object-cover shrink-0" />
+          <div className="flex-1 min-w-0 flex flex-col gap-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-medium leading-5">{c.name}</span>{shown}
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap text-xs leading-4">
+              {top.length === 0 && <span className="text-muted" title="Пока в драфте никого нет, герои идут по винрейту на этой роли у Immortal (5420+ MMR) за последние 4 недели с поправкой на наигранность и твой винрейт. Матчапы появятся, когда добавишь врагов или союзников.">{c.base}% винрейт на роли · врагов пока нет</span>}
+              {top.map((r) => (
+                <span key={`${r.kind}-${r.heroId}`} className={`${signTone(r.value)} whitespace-nowrap`} title={`${r.kind === "vs" ? "Против" : "Вместе с"} ${r.name}: ${signed(r.value, 1)} к винрейту (${r.games} игр в выборке)${r.laneOpp ? ". Твой соперник по линии, вес выше" : ""}`}>
+                  {signed(r.value)} <span className="text-muted">{r.kind === "vs" ? "против" : "с"}</span> {r.name}
+                </span>
+              ))}
+            </div>
+            <div className="h-1 w-full overflow-hidden rounded bg-panel"><div className={`h-full ${bar}`} style={{ width: `${Math.max(4, Math.min(100, (c.finalScore - 30) * 2.5))}%` }} /></div>
+          </div>
+          <div className={`text-2xl font-semibold tabular-nums w-14 text-right ${tone}`} title="Шанс победы с этим героем в этом драфте">{score}%</div>
+          <Button size="sm" onClick={() => onTake(c.heroId)} title="Записать в историю, что ты взял этого героя. Когда Дота на связи, это происходит само." className="shrink-0">Беру</Button>
+        </div>
+      )}
       {open && (
         <div className="mt-2 border-t border-border pt-2 text-xs text-muted grid gap-3 sm:grid-cols-2" onClick={(e) => e.stopPropagation()}>
           <div className="grid gap-1 content-start">
@@ -596,7 +627,7 @@ function Row({ c, byId, onTake, lane }: { c: Candidate; byId: Map<number, Hero>;
               <div className="flex items-baseline justify-between gap-3"><span>Наигранность и твой винрейт<span className="opacity-60"> · {c.midGames > 0 ? `${c.midWins}–${c.midGames - c.midWins}, ` : ""}не в пуле, не учитываются</span></span><b className="text-muted">0</b></div>
             )}
             <div className="flex items-baseline justify-between gap-3 border-t border-border pt-1 mt-0.5 text-foreground"><span>Итого: шанс победы</span><b className={`tabular-nums ${tone}`}>{score}%</b></div>
-            <div className="opacity-60 mt-1">Его берут на эту роль в {Math.round(c.midRate * 100)}% игр героя у Immortal. Матчапы и синергии Stratz даёт только по Divine+Immortal вместе.</div>
+            <div className="opacity-60 mt-1">Его берут на эту роль в {Math.round(c.midRate * 100)}% игр героя у Immortal{c.top ? `, это ${c.top.rate}% всех пиков роли` : ""}. Матчапы и синергии Stratz даёт только по Divine+Immortal вместе.</div>
           </div>
           <div className="grid gap-1 content-start">
             <div className="text-foreground font-medium mb-0.5">Матчапы в этом драфте</div>
@@ -636,13 +667,13 @@ function DraftBar({ byId, allies, enemies, ownHeroId, team, role }: { byId: Map<
   return (
     <section className="rounded-xl border border-border bg-panel px-3 py-2 flex items-center justify-between gap-3 overflow-x-auto">
       <div className="flex items-center gap-1.5">
-        <span className={`mr-1 text-[11px] font-semibold ${leftSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Свет" : "Союзники"}</span>
+        <span className={`mr-1 text-xs font-semibold ${leftSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Свет" : "Союзники"}</span>
         {pad(left).map((p, i) => <Slot key={`l${i}`} p={p as Pick | undefined} side={leftSide} />)}
       </div>
       <div className="text-xs text-muted whitespace-nowrap">{team ? (team === "radiant" ? "ты за Свет" : "ты за Тьму") : "команда неизвестна"}</div>
       <div className="flex items-center gap-1.5">
         {pad(right).map((p, i) => <Slot key={`r${i}`} p={p as Pick | undefined} side={rightSide} />)}
-        <span className={`ml-1 text-[11px] font-semibold ${rightSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Тьма" : "Враги"}</span>
+        <span className={`ml-1 text-xs font-semibold ${rightSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Тьма" : "Враги"}</span>
       </div>
     </section>
   );

@@ -32,7 +32,7 @@ export function Button({ children, onClick, variant = "ghost", disabled, title, 
 
 export function Chip({ children, tone = "muted", title, className = "" }: { children: ReactNode; tone?: "muted" | "accent" | "good" | "bad" | "enemy" | "ally"; title?: string; className?: string }) {
   const t = { muted: "bg-panel-2 text-muted", accent: "bg-accent/15 text-accent", good: "bg-good/15 text-good", bad: "bg-bad/15 text-bad", enemy: "bg-enemy/15 text-enemy", ally: "bg-ally/15 text-ally" }[tone];
-  return <span title={title} className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] leading-4 whitespace-nowrap ${t} ${className}`}>{children}</span>;
+  return <span title={title} className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs leading-4 whitespace-nowrap ${t} ${className}`}>{children}</span>;
 }
 
 /** Точка состояния с подписью: зелёная — работает, серая — нет, жёлтая — ждёт. */
