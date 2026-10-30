@@ -418,16 +418,16 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
               const inPool = poolSet.has(h.id);
               const ring = inPool ? "ring-2 ring-accent" : familiarSet.has(h.id) ? "ring-1 ring-accent/50" : "";
               return (
-                <button key={h.id} onClick={() => add(h.id)} disabled={!!by} title={by ? `${h.name}: ${by}` : `${h.name}: добавить в зону «${ZONES.find((z) => z.key === zone)!.label}»`}
-                  className={`group block w-full overflow-hidden rounded-lg ${ring} ${by ? "cursor-not-allowed" : "hover:-translate-y-0.5 transition"}`}>
-                  {/* пропорция на внутреннем блоке, а не на кнопке: Chromium у кнопок aspect-ratio держит ненадёжно, плитки наезжали друг на друга */}
-                  <span className="relative block w-full aspect-[16/9]">
-                    <img src={portrait(h.short)} alt={h.name} loading="lazy" className={`absolute inset-0 h-full w-full object-cover ${by ? "opacity-25 grayscale" : ""}`} />
-                    <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-1.5 pb-1 pt-4 text-left text-xs leading-tight text-white/90 truncate">{h.name}</span>
-                    {by && <span className={`absolute inset-0 flex items-center justify-center text-xs font-semibold ${by === "враг" ? "text-enemy" : by === "забанен" ? "text-ban" : "text-ally"}`}>{by}</span>}
-                    {inPool && !by && <span className="absolute left-1.5 top-1.5 h-2 w-2 rounded-full bg-accent shadow" title="В твоём пуле" />}
-                  </span>
-                </button>
+                <div key={h.id} role="button" tabIndex={by ? -1 : 0} aria-disabled={!!by} onClick={() => { if (!by) add(h.id); }} onKeyDown={(e) => { if (!by && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); add(h.id); } }}
+                  title={by ? `${h.name}: ${by}` : `${h.name}: добавить в зону «${ZONES.find((z) => z.key === zone)!.label}»`}
+                  className={`group relative w-full overflow-hidden rounded-lg ${ring} ${by ? "cursor-not-allowed" : "cursor-pointer hover:-translate-y-0.5 transition"}`}>
+                  {/* плитка не <button>: Chromium раскладывает содержимое кнопок по-своему, в окне приложения плитки получались ниже картинки.
+                      Картинка в потоке с aspect-ratio задаёт высоту, подпись и метки поверх неё */}
+                  <img src={portrait(h.short)} alt={h.name} loading="lazy" className={`block w-full aspect-[16/9] object-cover ${by ? "opacity-25 grayscale" : ""}`} />
+                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-1.5 pb-1 pt-4 text-left text-xs leading-tight text-white/90 truncate">{h.name}</span>
+                  {by && <span className={`absolute inset-0 flex items-center justify-center text-xs font-semibold ${by === "враг" ? "text-enemy" : by === "забанен" ? "text-ban" : "text-ally"}`}>{by}</span>}
+                  {inPool && !by && <span className="absolute left-1.5 top-1.5 h-2 w-2 rounded-full bg-accent shadow" title="В твоём пуле" />}
+                </div>
               );
             })}
             {filtered.length === 0 && <span className="text-sm text-muted col-span-full">Никого не нашёл</span>}
