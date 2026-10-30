@@ -7,8 +7,8 @@ import AppShell from "@/components/AppShell";
 const inter = Inter({ subsets: ["latin", "cyrillic"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Драфт-помощник",
-  description: "Подбор мид-героя под драфт с учётом личного пула",
+  title: "Outpick",
+  description: "Пикер для Dota 2 под твой пул: контрпики, синергии, разбор матчей",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

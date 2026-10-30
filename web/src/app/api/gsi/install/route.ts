@@ -8,7 +8,7 @@ import { GSI_TOKEN } from "@/lib/gsi";
 export const dynamic = "force-dynamic";
 
 export function cfgText(origin: string) {
-  return `"Dota Mid Helper"
+  return `"Outpick"
 {
   "uri"       "${origin}/api/gsi"
   "timeout"   "5.0"

@@ -28,6 +28,24 @@ let serverPort = null;
 const { autoUpdater } = require("electron-updater");
 const path = require("node:path");
 const net = require("node:net");
+
+// Переименование в Outpick (0.10): папка данных пользователя раньше звалась «Dota Mid Helper» (по productName).
+// appId не менялся, поэтому установщик и обновления те же, а историю, настройки и кадры переносим один раз сюда.
+// Делается до whenReady, пока в новую папку никто не писал.
+function migrateUserData() {
+  try {
+    const cur = app.getPath("userData");
+    const old = path.join(path.dirname(cur), "Dota Mid Helper");
+    if (!fs.existsSync(old) || fs.existsSync(path.join(cur, "config.json"))) return;
+    fs.mkdirSync(cur, { recursive: true });
+    for (const name of fs.readdirSync(old)) {
+      const from = path.join(old, name), to = path.join(cur, name);
+      if (fs.existsSync(to)) continue;
+      try { fs.renameSync(from, to); } catch { fs.cpSync(from, to, { recursive: true }); }
+    }
+    console.log(`[app] данные перенесены из «${old}» в «${cur}»`);
+  } catch (e) { console.warn("[app] перенос данных не удался:", e?.message ?? e); }
+}
 const fs = require("node:fs");
 
 const isDev = !app.isPackaged;
@@ -102,7 +120,7 @@ async function createWindow() {
   win = new BrowserWindow({
     width: 1280, height: 860, minWidth: 900, minHeight: 600,
     backgroundColor: "#0f1115",
-    title: "Dota Mid Helper",
+    title: "Outpick",
     autoHideMenuBar: true, // на Windows меню скрыто, Alt показывает
     icon: path.join(__dirname, "icon.png"),
     // backgroundThrottling: false — во время пиков окно за Дотой, а видеопоток и таймеры страницы должны работать
@@ -342,7 +360,7 @@ ipcMain.handle("diag:save", async (_e, f) => {
     for (const f of frames.diagFiles(2)) { try { zip.addFile(f.zipPath, fs.readFileSync(f.file)); nFrames++; } catch {} }
     zip.addFile("learned.json", Buffer.from(JSON.stringify(frames.learnedInfo(), null, 1)));
     try { zip.addFile("pick-labels.json", fs.readFileSync(frames.labelsFile)); } catch {}
-    const file = path.join(app.getPath("downloads"), `dota-mid-helper-diag-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.zip`);
+    const file = path.join(app.getPath("downloads"), `outpick-diag-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.zip`);
     zip.writeZip(file);
     shell.showItemInFolder(file);
     return { ok: true, file, frames: nFrames };
@@ -355,10 +373,11 @@ ipcMain.handle("draft:sources", async () => {
   try { const sources = await desktopCapturer.getSources({ types: ["window", "screen"], thumbnailSize: { width: 0, height: 0 } }); return sources.map((s) => ({ id: s.id, name: s.name })); } catch (e) { return [{ id: "error", name: String(e?.message ?? e) }]; }
 });
 
+migrateUserData();
 app.whenReady().then(() => {
   if (process.platform === "darwin") {
     Menu.setApplicationMenu(Menu.buildFromTemplate([
-      { label: "Dota Mid Helper", submenu: [{ role: "reload" }, { role: "toggleDevTools" }, { type: "separator" }, { role: "quit" }] },
+      { label: "Outpick", submenu: [{ role: "reload" }, { role: "toggleDevTools" }, { type: "separator" }, { role: "quit" }] },
       { role: "editMenu" },
     ]));
   } else {

@@ -45,8 +45,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <nav className="sticky top-0 z-30 border-b border-border bg-panel/95 backdrop-blur">
         <div className="mx-auto w-full max-w-7xl px-4 h-12 flex items-center gap-4">
           <a href="/" className="flex items-center gap-2 font-semibold tracking-tight">
-            <span className="inline-block h-5 w-5 rotate-45 rounded-sm bg-accent" />
-            <span>Dota Mid Helper</span>
+            <img src="/logo.png" alt="" className="h-6 w-6 rounded-md" />
+            <span>Outpick</span>
           </a>
           <div className="flex items-center gap-1 ml-2">
             {NAV.map((n) => (

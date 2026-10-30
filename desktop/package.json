@@ -1,9 +1,9 @@
 {
   "name": "dota-mid-helper",
-  "productName": "Dota Mid Helper",
+  "productName": "Outpick",
   "license": "AGPL-3.0-only",
   "version": "0.9.1",
-  "description": "Драфт-помощник для мида: пикер, роли, история драфтов",
+  "description": "Outpick: пикер для Dota 2 под твой пул, разбор матчей и история драфтов",
   "author": "KapaT",
   "main": "main.js",
   "private": true,
@@ -19,7 +19,7 @@
   },
   "build": {
     "appId": "ru.kapat.dotamidhelper",
-    "productName": "Dota Mid Helper",
+    "productName": "Outpick",
     "directories": {
       "output": "dist"
     },
@@ -67,13 +67,13 @@
       ]
     },
     "portable": {
-      "artifactName": "DotaMidHelper-${version}-portable.exe"
+      "artifactName": "Outpick-${version}-portable.exe"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "artifactName": "DotaMidHelper-${version}-setup.exe"
+      "artifactName": "Outpick-${version}-setup.exe"
     },
     "mac": {
       "target": [

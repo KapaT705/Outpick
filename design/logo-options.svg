@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" width="960" height="400">
+  <rect width="960" height="400" fill="#0f1115"/>
+  <style>
+    text { font-family: Inter, -apple-system, "Segoe UI", sans-serif; fill: #e6e8ee; }
+    .cap { font-size: 14px; fill: #8b93a7; }
+    .name { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+  </style>
+
+  <!-- A: ромб с вырезом-стрелкой (пик = выбор, указание) -->
+  <g transform="translate(80,60)">
+    <rect width="160" height="160" rx="36" fill="#171a21"/>
+    <path d="M80 22 L138 80 L80 138 L22 80 Z" fill="#e0a526"/>
+    <path d="M80 54 L106 80 L80 106 L54 80 Z" fill="#171a21"/>
+    <path d="M80 70 L98 80 L80 90 L74 80 Z" fill="#e0a526"/>
+    <text x="80" y="200" text-anchor="middle" class="name">A</text>
+    <text x="80" y="224" text-anchor="middle" class="cap">ромб и стрелка «пик»</text>
+  </g>
+
+  <!-- B: ромб из двух половин, Свет и Тьма, с янтарным швом -->
+  <g transform="translate(400,60)">
+    <rect width="160" height="160" rx="36" fill="#171a21"/>
+    <path d="M80 22 L138 80 L80 138 Z" fill="#ff6b6b"/>
+    <path d="M80 22 L22 80 L80 138 Z" fill="#5aa9ff"/>
+    <path d="M80 14 L92 80 L80 146 L68 80 Z" fill="#e0a526"/>
+    <text x="80" y="200" text-anchor="middle" class="name">B</text>
+    <text x="80" y="224" text-anchor="middle" class="cap">две стороны, твой пик между ними</text>
+  </g>
+
+  <!-- C: три ромба-слота, средний выбран -->
+  <g transform="translate(720,60)">
+    <rect width="160" height="160" rx="36" fill="#171a21"/>
+    <path d="M44 80 L62 62 L80 80 L62 98 Z" fill="none" stroke="#8b93a7" stroke-width="6"/>
+    <path d="M80 44 L116 80 L80 116 L44 80 Z" fill="#e0a526"/>
+    <path d="M80 80 L98 62 L116 80 L98 98 Z" fill="none" stroke="#8b93a7" stroke-width="6"/>
+    <text x="80" y="200" text-anchor="middle" class="name">C</text>
+    <text x="80" y="224" text-anchor="middle" class="cap">слоты драфта, выбран твой</text>
+  </g>
+
+  <!-- строка с названием: как выглядит в шапке -->
+  <g transform="translate(80,320)">
+    <path d="M18 2 L34 18 L18 34 L2 18 Z" fill="#e0a526"/>
+    <path d="M18 11 L25 18 L18 25 L11 18 Z" fill="#171a21"/>
+    <text x="48" y="25" class="name" style="font-size:22px">Outpick</text>
+    <text x="150" y="25" class="cap">·  переиграй драфт</text>
+  </g>
+  <g transform="translate(400,320)">
+    <path d="M18 2 L34 18 L18 34 Z" fill="#ff6b6b"/><path d="M18 2 L2 18 L18 34 Z" fill="#5aa9ff"/><path d="M18 0 L21 18 L18 36 L15 18 Z" fill="#e0a526"/>
+    <text x="48" y="25" class="name" style="font-size:22px">Draftmate</text>
+  </g>
+  <g transform="translate(720,320)">
+    <path d="M18 2 L34 18 L18 34 L2 18 Z" fill="#e0a526"/>
+    <text x="48" y="25" class="name" style="font-size:22px">Pickline</text>
+  </g>
+</svg>
