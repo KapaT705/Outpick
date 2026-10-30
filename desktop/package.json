@@ -2,7 +2,7 @@
   "name": "outpick",
   "productName": "Outpick",
   "license": "AGPL-3.0-only",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Outpick: пикер для Dota 2 под твой пул, разбор матчей и история драфтов",
   "author": "KapaT",
   "main": "main.js",
