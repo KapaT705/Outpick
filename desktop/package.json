@@ -1,5 +1,5 @@
 {
-  "name": "dota-mid-helper",
+  "name": "outpick",
   "productName": "Outpick",
   "license": "AGPL-3.0-only",
   "version": "0.9.1",
@@ -92,7 +92,7 @@
     "publish": {
       "provider": "github",
       "owner": "KapaT705",
-      "repo": "dota-mid-helper",
+      "repo": "outpick",
       "releaseType": "release"
     }
   },

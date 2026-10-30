@@ -163,7 +163,7 @@ function readUserConfig() {
 }
 // репозиторий открытый: релизы читаются без токена; старый токен из настроек, если он есть, просто не используется
 function configureFeed() {
-  autoUpdater.setFeedURL({ provider: "github", owner: "KapaT705", repo: "dota-mid-helper" });
+  autoUpdater.setFeedURL({ provider: "github", owner: "KapaT705", repo: "outpick" });
   return true;
 }
 function setupUpdater() {

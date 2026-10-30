@@ -47,7 +47,7 @@ export async function stratzDetails(id: string | number, me: number, heroId: num
 export async function openDotaDetails(id: string | number, me: number, heroId: number): Promise<MatchDetails | null> {
   try {
     const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 20_000);
-    const r = await fetch(`https://api.opendota.com/api/matches/${id}`, { headers: { "User-Agent": "dota-mid-helper" }, signal: ctrl.signal }).finally(() => clearTimeout(t));
+    const r = await fetch(`https://api.opendota.com/api/matches/${id}`, { headers: { "User-Agent": "outpick" }, signal: ctrl.signal }).finally(() => clearTimeout(t));
     if (!r.ok) return null;
     type P = { account_id?: number | null; hero_id: number; player_slot: number; lane?: number | null; lane_role?: number | null; kills: number; deaths: number; assists: number; gold_per_min: number; xp_per_min: number; last_hits: number; denies: number; level: number; hero_damage?: number; tower_damage?: number; lh_t?: number[]; gold_t?: number[]; deaths_log?: { time: number }[] };
     const d = await r.json() as { players?: P[] };

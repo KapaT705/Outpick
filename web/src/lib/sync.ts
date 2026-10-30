@@ -34,7 +34,7 @@ async function stratzMatch(token: string, id: string): Promise<M | null> {
 async function openDotaMatch(id: string): Promise<M | null> {
   try {
     const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 20_000);
-    const r = await fetch(`https://api.opendota.com/api/matches/${id}`, { headers: { "User-Agent": "dota-mid-helper" }, signal: ctrl.signal }).finally(() => clearTimeout(t));
+    const r = await fetch(`https://api.opendota.com/api/matches/${id}`, { headers: { "User-Agent": "outpick" }, signal: ctrl.signal }).finally(() => clearTimeout(t));
     if (!r.ok) return null;
     const d = await r.json() as { match_id?: number; radiant_win?: boolean; duration?: number; start_time?: number; players?: { player_slot: number; hero_id: number; account_id?: number | null }[] };
     if (!d?.match_id || !Array.isArray(d.players) || d.players.length === 0 || typeof d.radiant_win !== "boolean") return null;
