@@ -163,7 +163,7 @@ function readUserConfig() {
 }
 // репозиторий открытый: релизы читаются без токена; старый токен из настроек, если он есть, просто не используется
 function configureFeed() {
-  autoUpdater.setFeedURL({ provider: "github", owner: "KapaT705", repo: "outpick" });
+  autoUpdater.setFeedURL({ provider: "github", owner: "KapaT705", repo: "Outpick" });
   return true;
 }
 function setupUpdater() {

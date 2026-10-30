@@ -92,7 +92,7 @@
     "publish": {
       "provider": "github",
       "owner": "KapaT705",
-      "repo": "outpick",
+      "repo": "Outpick",
       "releaseType": "release"
     }
   },
