@@ -101,9 +101,10 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const [captureOn, setCaptureOn] = useState(true);
   const [setup, setSetup] = useState<{ steam: boolean; token: boolean; gsi: boolean } | null>(null);
   const [setupHidden, setSetupHidden] = useState(false);
-  const [side, setSideState] = useState<"radiant" | "dire">("radiant"); // своя сторона, если Дота не на связи
+  // своя сторона, когда Дота не на связи: переключатель из интерфейса убран (пользователь просил меньше кнопок),
+  // по умолчанию Свет; при связи с Дотой сторону сообщает она сама
+  const [side, setSideState] = useState<"radiant" | "dire">("radiant");
   const [gsiRewritten, setGsiRewritten] = useState(false);
-  const setSide = (v: "radiant" | "dire") => { setSideState(v); try { localStorage.setItem("draft.side.v1", v); } catch {} };
   useEffect(() => {
     fetch("/api/settings").then((r) => r.json()).then((c) => { setCaptureOn(c.screenCapture !== false); setSetup((p) => ({ steam: !!c.steamAccountId, token: !!c.hasToken, gsi: p?.gsi ?? false })); }).catch(() => {});
     fetch("/api/gsi/install").then((r) => r.json()).then((g) => { setSetup((p) => ({ steam: p?.steam ?? false, token: p?.token ?? false, gsi: !!g.installed })); if (g.rewritten) setGsiRewritten(true); }).catch(() => {});
@@ -337,12 +338,6 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
           {saved && <Chip tone="good">записал: {saved}</Chip>}
           <Status ok={!!gsi?.connected} label={gsi?.connected ? (gsi.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" ? "Дота: стадия пиков" : gsi.phase === "DOTA_GAMERULES_STATE_STRATEGY_TIME" ? "Дота: стратегия" : gsi.phase && gsi.phase !== "" ? "Дота: в игре" : "Дота: в меню") : "Дота не на связи"}
             title={gsi?.connected ? `${gsi.ownHeroId ? `Твой герой: ${byId.get(gsi.ownHeroId)?.name}. ` : ""}Когда ты выберешь героя, драфт запишется в историю сам.${captureOn && screen ? ` Экран: ${screen.status}, распознано слотов: ${screen.found}.` : ""}` : "Запусти Доту с установленным конфигом (Настройки → Связь с Дотой). Пока связи нет, врагов можно вводить вручную."} />
-          {!gsi?.connected && captureOn && (
-            <div className="flex rounded-lg border border-border overflow-hidden text-xs" title="Дота не на связи, поэтому укажи, за какую сторону играешь: от этого зависит, кто в распознанном драфте враги">
-              <button onClick={() => setSide("radiant")} className={`px-2.5 py-1.5 ${side === "radiant" ? "bg-good/20 text-good" : "text-muted hover:text-foreground"}`}>я за Свет</button>
-              <button onClick={() => setSide("dire")} className={`px-2.5 py-1.5 ${side === "dire" ? "bg-bad/20 text-bad" : "text-muted hover:text-foreground"}`}>я за Тьму</button>
-            </div>
-          )}
         </div>
       </header>
 
