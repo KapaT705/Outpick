@@ -93,32 +93,36 @@ function Tooltips() {
   const [tip, setTip] = useState<{ text: string; x: number; y: number; above: boolean } | null>(null);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let cur: Element | null = null;
-    const hide = () => { clearTimeout(timer); cur = null; setTip(null); };
-    const show = (el: Element) => {
-      const text = el.getAttribute("data-tip");
-      if (!text || !el.isConnected) return;
-      const r = el.getBoundingClientRect();
+    let cur: Element | null = null;   // элемент под курсором, у которого title снят на время наведения
+    let curText = "";                 // его текст подсказки
+    // title снимается только пока курсор на элементе (иначе всплывёт системная подсказка) и возвращается при уходе:
+    // постоянной копии нет, поэтому когда React убирает title (строка раскрыта), подсказка тоже исчезает
+    const restore = () => { if (cur && cur.isConnected && curText && !cur.hasAttribute("title")) cur.setAttribute("title", curText); };
+    const hide = () => { clearTimeout(timer); setTip(null); };
+    const leave = () => { hide(); restore(); cur = null; curText = ""; };
+    const show = () => {
+      if (!cur || !cur.isConnected || !curText) return;
+      const r = cur.getBoundingClientRect();
       const above = r.bottom + 120 > window.innerHeight && r.top > 140;
-      setTip({ text, x: Math.min(Math.max(r.left + r.width / 2, 170), window.innerWidth - 170), y: above ? r.top - 6 : r.bottom + 6, above });
+      setTip({ text: curText, x: Math.min(Math.max(r.left + r.width / 2, 170), window.innerWidth - 170), y: above ? r.top - 6 : r.bottom + 6, above });
     };
     const over = (e: MouseEvent) => {
-      const el = (e.target as Element | null)?.closest?.("[title],[data-tip]");
-      if (!el) { if (cur) hide(); return; }
-      const t = el.getAttribute("title");
-      if (t !== null) { el.removeAttribute("title"); if (t.trim()) el.setAttribute("data-tip", t); else el.removeAttribute("data-tip"); }
-      if (!el.getAttribute("data-tip")) { if (cur) hide(); return; }
+      const el = (e.target as Element | null)?.closest?.("[title]");
       if (el === cur) return;
-      clearTimeout(timer); cur = el; setTip(null);
-      timer = setTimeout(() => show(el), 350);
+      if (cur) leave();
+      if (!el) return;
+      const t = el.getAttribute("title") ?? "";
+      if (!t.trim()) return;
+      cur = el; curText = t; el.removeAttribute("title");
+      timer = setTimeout(show, 350);
     };
     const out = (e: MouseEvent) => {
       const to = e.relatedTarget as Element | null;
-      if (cur && !(to && cur.contains(to))) hide();
+      if (cur && !(to && cur.contains(to))) leave();
     };
     document.addEventListener("mouseover", over);
     document.addEventListener("mouseout", out);
-    document.addEventListener("mousedown", hide, true);
+    document.addEventListener("mousedown", hide, true); // клик: подсказка прячется, title вернётся при уходе курсора
     document.addEventListener("scroll", hide, true);
     return () => { document.removeEventListener("mouseover", over); document.removeEventListener("mouseout", out); document.removeEventListener("mousedown", hide, true); document.removeEventListener("scroll", hide, true); clearTimeout(timer); };
   }, []);
