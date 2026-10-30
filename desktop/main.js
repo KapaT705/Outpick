@@ -177,7 +177,7 @@ function setupUpdater() {
   ipcMain.handle("app:version", () => app.getVersion());
   // Тестовая сборка на маке: кнопка в настройках запускает desktop/scripts/install-mac.sh из папки проекта
   // (собирает текущий код, подменяет программу в /Applications, перезапускает). Только macOS и только если папка есть.
-  const sourceScript = () => { const dir = process.env.DMH_SOURCE_DIR || readUserConfig().sourceDir || "/Users/arsenijbabajcev/код/dota"; const f = path.join(dir, "desktop", "scripts", "install-mac.sh"); return fs.existsSync(f) ? f : null; };
+  const sourceScript = () => { const dir = process.env.DMH_SOURCE_DIR || readUserConfig().sourceDir || [path.join(os.homedir(), "код", "Outpick"), path.join(os.homedir(), "код", "dota")].find((d) => fs.existsSync(path.join(d, "desktop", "scripts", "install-mac.sh"))) || path.join(os.homedir(), "код", "Outpick"); const f = path.join(dir, "desktop", "scripts", "install-mac.sh"); return fs.existsSync(f) ? f : null; };
   ipcMain.handle("dev:info", () => ({ canRebuild: process.platform === "darwin" && !!sourceScript(), source: sourceScript() }));
   ipcMain.handle("dev:rebuild", () => {
     const f = sourceScript();
