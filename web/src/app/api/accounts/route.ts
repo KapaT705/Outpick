@@ -10,12 +10,16 @@ export const dynamic = "force-dynamic";
 function poolSummary(accountId: number | null) {
   const { pool } = loadData(accountId);
   const games = (p: { midGames: number; byRole?: Record<string, { games: number }> }, r: number) => p.byRole?.[String(r)]?.games ?? (r === 2 ? p.midGames : 0);
+  const wins = (p: { midWins: number; byRole?: Record<string, { wins: number }> }, r: number) => p.byRole?.[String(r)]?.wins ?? (r === 2 ? p.midWins : 0);
   const poolByRole: Record<number, number[]> = {}, familiarByRole: Record<number, number[]> = {};
+  // счёт по героям на роли за год: окно «Мой пул» показывает, почему герой в пуле (10+ игр) и как на нём идёт
+  const recordByRole: Record<number, Record<number, { games: number; wins: number }>> = {};
   for (const r of [1, 2, 3, 4, 5]) {
     poolByRole[r] = [...pool.values()].filter((p) => games(p, r) >= 10).map((p) => p.heroId);
     familiarByRole[r] = [...pool.values()].filter((p) => games(p, r) >= 3 && games(p, r) < 10).map((p) => p.heroId);
+    recordByRole[r] = Object.fromEntries([...pool.values()].filter((p) => games(p, r) > 0).map((p) => [p.heroId, { games: games(p, r), wins: wins(p, r) }]));
   }
-  return { poolByRole, familiarByRole };
+  return { poolByRole, familiarByRole, recordByRole };
 }
 
 /** Кто играет сейчас, список аккаунтов и пул текущего. */

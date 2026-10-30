@@ -74,7 +74,7 @@ export default function SettingsForm() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 py-5 flex flex-col gap-4">
+    <main className="mx-auto w-full max-w-2xl px-4 py-5 flex flex-col gap-5">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">Настройки</h1>
       </header>

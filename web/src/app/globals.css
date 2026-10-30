@@ -40,3 +40,7 @@ body {
   font-feature-settings: "tnum" 1, "cv11" 1;
 }
 select, input, button, textarea { font: inherit; }
+
+/* строки советов появляются плавно, чтобы список не дёргался при пересчёте */
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.animate-rise { animation: rise .18s ease-out both; }

@@ -54,7 +54,7 @@ const ROLE_KEY = "draft.role.v1";
 const POOL_KEY_V2 = "draft.poolOverride.v2"; // { [role]: {add, remove} }
 
 type AccountInfo = { id: number | null; source: "gsi" | "steam" | "manual" | "none"; known: boolean; name: string | null };
-type AccountsState = { current: AccountInfo; accounts: { id: number; name?: string; known: boolean }[]; poolByRole: Record<number, number[]>; familiarByRole: Record<number, number[]> };
+type AccountsState = { current: AccountInfo; accounts: { id: number; name?: string; known: boolean }[]; poolByRole: Record<number, number[]>; familiarByRole: Record<number, number[]>; recordByRole?: Record<number, Record<number, { games: number; wins: number }>> };
 
 export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliases: AliasMap }) {
   const [role, setRoleState] = useState<Role>(2);
@@ -352,7 +352,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
 
       {gsiRewritten && <section className="rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm">Конфиг GSI в Доте указывал на старый порт, я переписал его. Перезапусти Доту, чтобы точка «Дота» загорелась.</section>}
 
-      <DraftBar byId={byId} allies={picks.allies} enemies={picks.enemies} ownHeroId={gsi?.ownHeroId ?? null} team={gsi?.connected ? (gsi.team ?? null) : side} role={role} />
+      <DraftBar byId={byId} allies={picks.allies} enemies={picks.enemies} ownHeroId={gsi?.ownHeroId ?? null} team={gsi?.connected ? (gsi.team ?? null) : side} role={role} guesses={roles} />
 
       <section className="grid gap-3 md:grid-cols-2">
         {ZONES.map((z) => (
@@ -444,60 +444,78 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
 
         <section className="flex flex-col gap-4 min-w-0">
           {(picks.enemies.length > 0 || picks.allies.length > 0) && (
-            <Card className="py-3 text-xs text-muted flex flex-col gap-1.5">
-              <div className="flex flex-wrap items-center gap-2" title="По числу известных пиков врага. Рано: врагам ещё отвечать контрпиком, поэтому героев, которых легко законтрить, пикер придерживает. Поздно: контрпикуем мы.">
-                <span className="text-foreground w-36">Очередь пика</span>
-                <Chip tone={stage === "late" ? "good" : "muted"}>{stage === "early" ? "ранняя" : stage === "mid" ? "середина" : "поздняя"}</Chip>
-                <span>{stage === "early" ? "враги ещё ответят контрпиком, ценю устойчивых героев" : stage === "mid" ? "риск контрпика учитываю наполовину" : "контрпикуем мы, выжимаю матчапы"}</span>
-              </div>
+            <Card className="py-2.5 text-xs flex flex-wrap items-center gap-x-5 gap-y-2">
+              <span className="inline-flex items-center gap-1.5" title={`Очередь пика по числу известных пиков врага. ${stage === "early" ? "Рано: враги ещё ответят контрпиком, пикер придерживает героев, которых легко законтрить." : stage === "mid" ? "Середина: риск контрпика учитывается наполовину." : "Поздно: контрпикуем мы, матчапы в полный вес."}`}>
+                <span className="text-muted">Очередь</span>
+                <Chip tone={stage === "late" ? "good" : stage === "mid" ? "accent" : "muted"}>{stage === "early" ? "ранняя" : stage === "mid" ? "середина" : "поздняя"}</Chip>
+              </span>
               {picks.allies.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2" title="По тегам героев союзников (без тебя). Герои, закрывающие нехватку, получают небольшой плюс.">
-                  <span className="text-foreground w-36">Команде не хватает</span>
+                <span className="inline-flex items-center gap-1.5 flex-wrap" title="По тегам героев союзников без тебя. Герои, закрывающие нехватку, получают небольшой плюс к оценке.">
+                  <span className="text-muted">Команде не хватает</span>
                   {needs.length === 0 ? <Chip tone="good">всё на месте</Chip> : needs.map((n) => <Chip key={n.key} tone="bad">{n.label}</Chip>)}
-                </div>
+                </span>
               )}
               {picks.enemies.length < 5 && predicted.length > 0 && (
-                <div className="flex flex-wrap items-start gap-2" title="Самые вероятные герои на роли, которые у врагов ещё не заняты: по любимым героям игрока, если он известен, иначе по популярности на роли. Пока соперник по твоей линии не выбран, матчапы против вероятных считаются с небольшим весом.">
-                  <span className="text-foreground w-36">Враги ещё возьмут</span>
-                  <span className="flex flex-wrap gap-x-3 gap-y-1">{predicted.map((p) => <span key={p.role}><Chip tone="enemy">{ROLE_LABEL[p.role]}</Chip>{p.player ? <span className="text-foreground"> {p.player}:</span> : ""} {p.heroes.map((h) => `${h.name} ${Math.round(h.share * 100)}%`).join(", ")}</span>)}</span>
-                </div>
+                <span className="inline-flex items-center gap-1.5 flex-wrap" title="Самые вероятные герои врага на ещё не занятые роли: по любимым героям игрока, если он известен, иначе по популярности роли. Пока соперник по твоей линии не выбран, матчапы против вероятных считаются с небольшим весом.">
+                  <span className="text-muted">Враги ещё возьмут</span>
+                  {predicted.map((p) => <Chip key={p.role} tone="enemy" title={`Роль ${ROLE_NAME[p.role]}${p.player ? `, игрок ${p.player}` : ""}: ${p.heroes.map((h) => `${h.name} ${Math.round(h.share * 100)}%`).join(", ")}`}>{ROLE_LABEL[p.role]} · {p.heroes.slice(0, 2).map((h) => h.name).join(", ")}</Chip>)}
+                </span>
               )}
             </Card>
           )}
           {laneOpp && <LaneCard lane={laneOpp} inPool={inPool} byId={byId} />}
-          <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} hint="Герои, на которых ты играешь на этой роли (пул правится кнопкой «Мой пул»). Отсортированы по шансу победы в этом драфте." items={inPool} loading={loading} byId={byId} onTake={take} lane={laneOpp} featured />
-          <ResultBlock title="Вне пула, но хороши в этот драфт" hint="Герои не из твоего пула на этой роли: оценка только по мете и драфту, твой счёт на них показывается, но не учитывается. «Знакомый» значит 3–9 игр за год." items={outside} loading={loading} byId={byId} onTake={take}
+          <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} hint="Герои, на которых ты играешь на этой роли (пул правится кнопкой «Мой пул»). Отсортированы по шансу победы в этом драфте." items={inPool} loading={loading} byId={byId} onTake={take} lane={laneOpp} featured canTake={!gsi?.connected} />
+          <ResultBlock title="Вне пула, но хороши в этот драфт" hint="Герои не из твоего пула на этой роли: оценка только по мете и драфту, твой счёт на них показывается, но не учитывается. «Знакомый» значит 3–9 игр за год." items={outside} loading={loading} byId={byId} onTake={take} canTake={!gsi?.connected}
             footer={<button onClick={() => setShowAll(!showAll)} className="text-xs text-muted underline">{showAll ? "Показать меньше" : "Показать больше"}</button>} />
         </section>
       </div>
 
-      {poolOpen && (
+      {poolOpen && (() => {
+        const rec = acct?.recordByRole?.[role] ?? {};
+        return (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setPoolOpen(false)}>
-          <div className="w-full max-w-2xl rounded-xl border border-border bg-panel p-4 flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold">Мой пул · {ROLE_FULL[role]} · {poolSet.size} героев</h2>
-              <button onClick={() => setPoolOpen(false)} className="text-muted hover:text-foreground">Закрыть</button>
+          <Card className="w-full max-w-3xl flex flex-col gap-3" tone="default">
+            <div onClick={(e) => e.stopPropagation()} className="flex flex-col gap-3">
+              <CardTitle right={<Button size="sm" onClick={() => setPoolOpen(false)}>Закрыть</Button>} hint="Пул отдельный для каждой роли. Сам по себе в нём герои с 10 и больше играми на этой роли за год; «знакомые» с 3–9 играми идут отдельно. Отметь тех, на ком реально играешь: они попадут в список «Из твоего пула», их наигранность и винрейт учитываются в оценке. Правки хранятся в этом браузере.">
+                Мой пул · {ROLE_FULL[role]} · {poolSet.size} {poolSet.size % 10 === 1 && poolSet.size % 100 !== 11 ? "герой" : poolSet.size % 10 >= 2 && poolSet.size % 10 <= 4 && (poolSet.size % 100 < 10 || poolSet.size % 100 >= 20) ? "героя" : "героев"}
+              </CardTitle>
+              <div className="flex flex-wrap items-center gap-2">
+                <input value={poolQuery} onChange={(e) => setPoolQuery(e.target.value)} placeholder="Найти героя…" autoFocus className="flex-1 min-w-48 rounded-lg border border-border bg-panel-2 px-3 py-2 text-sm outline-none focus:border-accent placeholder:text-muted/60" />
+                <span className="text-xs text-muted flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-4 rounded-sm ring-2 ring-accent" />в пуле</span>
+                  <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-4 rounded-sm ring-1 ring-accent/50" />знакомый</span>
+                  <span>клик добавляет или убирает</span>
+                </span>
+              </div>
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] auto-rows-max gap-2 max-h-[62vh] overflow-y-auto pr-1">
+                {poolList.map((h) => {
+                  const on = poolSet.has(h.id);
+                  const fam = !on && familiarSet.has(h.id);
+                  const r = rec[h.id];
+                  const wr = r && r.games > 0 ? Math.round((r.wins / r.games) * 100) : null;
+                  return (
+                    <div key={h.id} role="checkbox" aria-checked={on} tabIndex={0} onClick={() => togglePool(h.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); togglePool(h.id); } }}
+                      className={`relative overflow-hidden rounded-lg cursor-pointer transition hover:-translate-y-0.5 ${on ? "ring-2 ring-accent" : fam ? "ring-1 ring-accent/50" : "ring-1 ring-border/60"}`}>
+                      <span className="block w-full pt-[56.25%]" />
+                      <img src={portrait(h.short)} alt={h.name} loading="lazy" className={`absolute inset-0 h-full w-full object-cover ${on || fam ? "" : "opacity-60 grayscale-[.4]"}`} />
+                      <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-1.5 pb-1 pt-5 text-left leading-tight">
+                        <span className="block truncate text-xs text-white/90">{h.name}</span>
+                        <span className={`block text-[11px] ${r ? (wr !== null && wr >= 50 ? "text-good" : "text-bad") : "text-white/50"}`}>{r ? `${r.wins}–${r.games - r.wins} · ${wr}% · ${r.games} ${r.games % 10 === 1 && r.games % 100 !== 11 ? "игра" : r.games % 10 >= 2 && r.games % 10 <= 4 && (r.games % 100 < 10 || r.games % 100 >= 20) ? "игры" : "игр"}` : "игр на роли нет"}</span>
+                      </span>
+                      {on && <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-black">✓</span>}
+                    </div>
+                  );
+                })}
+                {poolList.length === 0 && <span className="text-sm text-muted col-span-full">Никого не нашёл</span>}
+              </div>
+              {(override.add.length > 0 || override.remove.length > 0) && (
+                <Button size="sm" variant="link" onClick={() => saveOverride(EMPTY)} className="self-start">Сбросить правки к автоматическому пулу</Button>
+              )}
             </div>
-            <p className="text-xs text-muted">Пул отдельный для каждой роли. По умолчанию в нём герои с 10+ играми на этой роли за год. Отметь тех, на ком реально играешь: они попадут в список «Из твоего пула». Правки хранятся в этом браузере.</p>
-            <input value={poolQuery} onChange={(e) => setPoolQuery(e.target.value)} placeholder="Найти героя…" className="w-full rounded-lg border border-border bg-panel-2 px-3 py-2 text-sm outline-none focus:border-accent" />
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 max-h-[60vh] overflow-y-auto pr-1">
-              {poolList.map((h) => {
-                const on = poolSet.has(h.id);
-                return (
-                  <label key={h.id} className={`flex items-center gap-2 rounded-md px-2 py-1 text-sm cursor-pointer ${on ? "bg-accent/15" : "hover:bg-panel-2"}`}>
-                    <input type="checkbox" checked={on} onChange={() => togglePool(h.id)} className="accent-[var(--accent)]" />
-                    <img src={icon(h.short)} alt="" className="h-6 w-6 rounded" />
-                    <span className="truncate">{h.name}</span>
-                  </label>
-                );
-              })}
-            </div>
-            {(override.add.length > 0 || override.remove.length > 0) && (
-              <button onClick={() => saveOverride(EMPTY)} className="self-start text-xs text-muted underline">Сбросить правки к автоматическому пулу</button>
-            )}
-          </div>
+          </Card>
         </div>
-      )}
+        );
+      })()}
     </main>
   );
 }
@@ -522,12 +540,12 @@ function LaneCard({ lane, inPool, byId }: { lane: LaneOpponent; inPool: Candidat
   );
 }
 
-function ResultBlock({ title, hint, items, loading, byId, footer, onTake, lane, featured }: { title: string; hint?: string; items: Candidate[]; loading: boolean; byId: Map<number, Hero>; footer?: React.ReactNode; onTake: (id: number) => void; lane?: LaneOpponent | null; featured?: boolean }) {
+function ResultBlock({ title, hint, items, loading, byId, footer, onTake, lane, featured, canTake }: { title: string; hint?: string; items: Candidate[]; loading: boolean; byId: Map<number, Hero>; footer?: React.ReactNode; onTake: (id: number) => void; lane?: LaneOpponent | null; featured?: boolean; canTake: boolean }) {
   return (
     <Card className="p-3">
       <CardTitle hint={hint} right={loading ? <span className="text-xs text-muted">считаю…</span> : <span className="text-xs text-muted" title="Оценка шанса победы с героем в этом драфте: винрейт на роли, контрпики, синергии, наигранность и твой винрейт. Нажми на строку, чтобы увидеть, из чего она сложилась.">шанс победы</span>}>{title}</CardTitle>
       <div className="flex flex-col gap-2">
-        {items.map((c, i) => <Row key={c.heroId} c={c} byId={byId} onTake={onTake} lane={lane} featured={featured && i === 0} />)}
+        {items.map((c, i) => <Row key={c.heroId} c={c} byId={byId} onTake={canTake ? onTake : undefined} lane={lane} featured={featured && i === 0} />)}
         {items.length === 0 && !loading && <span className="text-sm text-muted">Пока нечего посоветовать: добавь врагов или загрузи историю аккаунта.</span>}
       </div>
       {footer && <div className="mt-2">{footer}</div>}
@@ -560,7 +578,7 @@ function why(c: Candidate, lane?: LaneOpponent | null): string {
   return parts.join(" · ");
 }
 
-function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<number, Hero>; onTake: (id: number) => void; lane?: LaneOpponent | null; featured?: boolean }) {
+function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<number, Hero>; onTake?: (id: number) => void; lane?: LaneOpponent | null; featured?: boolean }) {
   const [open, setOpen] = useState(false);
   const h = byId.get(c.heroId)!;
   const score = Math.round(c.finalScore);
@@ -576,7 +594,7 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
   const shown = chips.slice(0, 2);
   const top = c.reasons.slice(0, 3);
   return (
-    <div className={`rounded-xl cursor-pointer transition ${featured ? "bg-panel-2 p-3 ring-1 ring-accent/40" : "bg-panel-2 p-2.5"} ${open ? "ring-1 ring-border" : featured ? "" : "hover:bg-panel-2/70"}`} onClick={() => setOpen(!open)} title={open ? "" : "Нажми, чтобы увидеть, из чего сложилась оценка"}>
+    <div className={`rounded-xl cursor-pointer transition animate-rise ${featured ? "bg-panel-2 p-3 ring-1 ring-accent/40" : "bg-panel-2 p-2.5"} ${open ? "ring-1 ring-border" : featured ? "" : "hover:bg-panel-2/70"}`} onClick={() => setOpen(!open)} title={open ? "" : "Нажми, чтобы увидеть, из чего сложилась оценка"}>
       {featured ? (
         <div className="flex items-center gap-4">
           <img src={portrait(h.short)} alt="" className="h-[76px] w-[136px] rounded-lg object-cover shrink-0" />
@@ -591,7 +609,7 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
           </div>
           <div className="text-right shrink-0">
             <div className={`text-4xl font-semibold tabular-nums leading-none ${tone}`} title="Шанс победы с этим героем в этом драфте">{score}%</div>
-            <Button size="sm" variant="primary" onClick={() => onTake(c.heroId)} title="Записать в историю, что ты взял этого героя. Когда Дота на связи, это происходит само." className="mt-2">Беру</Button>
+            {onTake && <Button size="sm" variant="primary" onClick={() => onTake(c.heroId)} title="Записать в историю, что ты взял этого героя. Когда Дота на связи, это происходит само." className="mt-2">Беру</Button>}
           </div>
         </div>
       ) : (
@@ -612,7 +630,7 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
             <div className="h-1 w-full overflow-hidden rounded bg-panel"><div className={`h-full ${bar}`} style={{ width: `${Math.max(4, Math.min(100, (c.finalScore - 30) * 2.5))}%` }} /></div>
           </div>
           <div className={`text-2xl font-semibold tabular-nums w-14 text-right ${tone}`} title="Шанс победы с этим героем в этом драфте">{score}%</div>
-          <Button size="sm" onClick={() => onTake(c.heroId)} title="Записать в историю, что ты взял этого героя. Когда Дота на связи, это происходит само." className="shrink-0">Беру</Button>
+          {onTake && <Button size="sm" onClick={() => onTake(c.heroId)} title="Записать в историю, что ты взял этого героя. Когда Дота на связи, это происходит само." className="shrink-0">Беру</Button>}
         </div>
       )}
       {open && (
@@ -654,32 +672,44 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
 }
 
 
-function DraftBar({ byId, allies, enemies, ownHeroId, team, role }: { byId: Map<number, Hero>; allies: Pick[]; enemies: Pick[]; ownHeroId: number | null; team: "radiant" | "dire" | null; role: Role }) {
+function DraftBar({ byId, allies, enemies, ownHeroId, team, role, guesses }: { byId: Map<number, Hero>; allies: Pick[]; enemies: Pick[]; ownHeroId: number | null; team: "radiant" | "dire" | null; role: Role; guesses: { enemies: RoleGuess[]; allies: RoleGuess[] } }) {
   const oursLeft = team !== "dire"; // Свет слева, как в игре; если команда неизвестна, свои слева
   const ours: (Pick | { id: number; role: Role | null; own: true })[] = [...allies];
   if (ownHeroId && !ours.some((p) => p.id === ownHeroId)) ours.unshift({ id: ownHeroId, role, own: true });
-  const Slot = ({ p, side }: { p?: Pick | { id: number; role: Role | null; own?: true }; side: "ours" | "theirs" }) => {
+  // пустые слоты подписаны номерами ещё не занятых ролей: заданная вручную роль, иначе предположение пикера
+  const freeRoles = (picksList: Pick[], g: RoleGuess[], extra: Role[]): Role[] => {
+    const taken = new Set<Role>(extra);
+    for (const p of picksList) { const r = p.role ?? g.find((x) => x.id === p.id)?.role; if (r) taken.add(r); }
+    return ROLES.filter((r) => !taken.has(r));
+  };
+  const freeOurs = freeRoles(allies, guesses.allies, ownHeroId ? [role] : []);
+  const freeTheirs = freeRoles(enemies, guesses.enemies, []);
+  const Slot = ({ p, side, free }: { p?: Pick | { id: number; role: Role | null; own?: true }; side: "ours" | "theirs"; free?: Role }) => {
     const h = p ? byId.get(p.id) : undefined;
     const own = !!(p && "own" in p && p.own);
+    const r = p ? (p.role ?? (side === "ours" ? guesses.allies : guesses.enemies).find((x) => x.id === p.id)?.role) : undefined;
     return (
-      <div className={`relative h-10 w-[72px] shrink-0 overflow-hidden rounded-md border ${own ? "border-accent" : side === "ours" ? "border-ally/40" : "border-enemy/40"} bg-panel-2`} title={h?.name ?? "пусто"}>
-        {h ? <img src={portrait(h.short)} alt={h.name} className="h-full w-full object-cover" /> : <div className="h-full w-full bg-gradient-to-b from-panel-2 to-panel" />}
-        {own && <div className="absolute bottom-0 inset-x-0 bg-accent/80 text-[9px] text-black text-center font-semibold">ты</div>}
+      <div className={`relative h-10 w-[72px] shrink-0 overflow-hidden rounded-md border ${own ? "border-accent" : side === "ours" ? "border-ally/40" : "border-enemy/40"} bg-panel-2`}
+        title={h ? `${h.name}${r ? ` · ${ROLE_NAME[r]}` : ""}` : free ? `Свободная роль: ${ROLE_NAME[free]}` : "пусто"}>
+        {h ? <img src={portrait(h.short)} alt={h.name} className="h-full w-full object-cover" /> : <div className={`flex h-full w-full items-center justify-center text-sm font-semibold ${side === "ours" ? "text-ally/50" : "text-enemy/50"}`}>{free ?? ""}</div>}
+        {h && r && !own && <div className={`absolute bottom-0 right-0 rounded-tl px-1 text-[9px] font-semibold ${side === "ours" ? "bg-ally/80 text-black" : "bg-enemy/80 text-black"}`}>{r}</div>}
+        {own && <div className="absolute bottom-0 inset-x-0 bg-accent/80 text-[9px] text-black text-center font-semibold">ты · {role}</div>}
       </div>
     );
   };
   const left = oursLeft ? ours : enemies, right = oursLeft ? enemies : ours;
   const leftSide = oursLeft ? "ours" : "theirs", rightSide = oursLeft ? "theirs" : "ours";
+  const leftFree = oursLeft ? freeOurs : freeTheirs, rightFree = oursLeft ? freeTheirs : freeOurs;
   const pad = (arr: unknown[]) => Array.from({ length: 5 }, (_, i) => arr[i]);
   return (
     <section className="rounded-xl border border-border bg-panel px-3 py-2 flex items-center justify-between gap-3 overflow-x-auto">
       <div className="flex items-center gap-1.5">
         <span className={`mr-1 text-xs font-semibold ${leftSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Свет" : "Союзники"}</span>
-        {pad(left).map((p, i) => <Slot key={`l${i}`} p={p as Pick | undefined} side={leftSide} />)}
+        {pad(left).map((p, i) => <Slot key={`l${i}`} p={p as Pick | undefined} side={leftSide} free={p ? undefined : leftFree[i - left.length]} />)}
       </div>
       <div className="text-xs text-muted whitespace-nowrap">{team ? (team === "radiant" ? "ты за Свет" : "ты за Тьму") : "команда неизвестна"}</div>
       <div className="flex items-center gap-1.5">
-        {pad(right).map((p, i) => <Slot key={`r${i}`} p={p as Pick | undefined} side={rightSide} />)}
+        {pad(right).map((p, i) => <Slot key={`r${i}`} p={p as Pick | undefined} side={rightSide} free={p ? undefined : rightFree[i - right.length]} />)}
         <span className={`ml-1 text-xs font-semibold ${rightSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Тьма" : "Враги"}</span>
       </div>
     </section>
