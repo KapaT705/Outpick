@@ -305,11 +305,14 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   // «из пула» только пул; «знакомые» (3–9 игр) идут во второй список с пометкой, их счёт на оценку не влияет
   const inPool = result.filter((c) => c.poolStatus === "pool");
   const outside = result.filter((c) => c.poolStatus !== "pool").slice(0, showAll ? 40 : 8);
-  // порядок в окне пула постоянный (по алфавиту): отмеченные герои не перепрыгивают наверх, иначе список скачет при каждом клике
+  // порядок в окне пула: сначала по числу игр на роли за год, потом по алфавиту. От галочек порядок не зависит,
+  // поэтому список не скачет при клике, а свои герои всегда наверху
   const poolList = useMemo(() => {
     const q = poolQuery.trim().toLowerCase();
-    return heroes.filter((h) => !q || h.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
-  }, [heroes, poolQuery]);
+    const rec = acct?.recordByRole?.[role] ?? {};
+    const g = (h: Hero) => rec[h.id]?.games ?? 0;
+    return heroes.filter((h) => !q || h.name.toLowerCase().includes(q)).sort((a, b) => g(b) - g(a) || a.name.localeCompare(b.name));
+  }, [heroes, poolQuery, acct, role]);
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-5 flex flex-col gap-5">
@@ -442,7 +445,8 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
           </p>
         </Card>
 
-        <section className="flex flex-col gap-4 min-w-0">
+        {/* на узком окне (второй монитор) советы выше сетки героев: до них не нужно крутить */}
+        <section className="flex flex-col gap-4 min-w-0 order-first lg:order-none">
           {(picks.enemies.length > 0 || picks.allies.length > 0) && (
             <Card className="py-2.5 text-xs flex flex-wrap items-center gap-x-5 gap-y-2">
               <span className="inline-flex items-center gap-1.5" title={`Очередь пика по числу известных пиков врага. ${stage === "early" ? "Рано: враги ещё ответят контрпиком, пикер придерживает героев, которых легко законтрить." : stage === "mid" ? "Середина: риск контрпика учитывается наполовину." : "Поздно: контрпикуем мы, матчапы в полный вес."}`}>
