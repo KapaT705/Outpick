@@ -574,9 +574,9 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
         <div className="flex items-center gap-4">
           <img src={portrait(h.short)} alt="" className="h-[76px] w-[136px] rounded-lg object-cover shrink-0" />
           <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-accent leading-none" title="Лучший вариант в этом драфте по оценке пикера">лучший выбор</div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-lg font-semibold leading-6">{c.name}</span>
-              <Chip tone="accent" title="Лучший вариант в этом драфте по оценке пикера">лучший выбор</Chip>
               {shown}
             </div>
             <div className="text-sm text-muted">{why(c, lane)}</div>

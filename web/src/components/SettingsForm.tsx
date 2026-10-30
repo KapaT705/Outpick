@@ -79,12 +79,12 @@ export default function SettingsForm() {
         <h1 className="text-xl font-semibold">Настройки</h1>
       </header>
       {/* вкладки вместо длинной прокрутки: у каждой точка состояния (зелёная = настроено) */}
-      <nav className="flex flex-wrap gap-1 rounded-xl border border-border bg-panel p-1 text-sm">
+      <nav className="flex flex-wrap gap-0.5 rounded-xl border border-border bg-panel p-1 text-sm">
         {([
-          ["accounts", "Аккаунты и Stratz", !!info?.hasToken && !!info?.accounts?.length],
+          ["accounts", "Аккаунты", !!info?.hasToken && !!info?.accounts?.length],
           ["screen", "Экран пиков", info?.screenCapture !== false],
           ["dota", "Связь с Дотой", !!gsi?.installed],
-          ["data", "Данные и обновления", !!ref?.updatedAt && !ref?.due],
+          ["data", "Данные", !!ref?.updatedAt && !ref?.due],
           ["diag", "Диагностика", true],
         ] as [Tab, string, boolean][]).map(([key, label, ok]) => (
           <button key={key} onClick={() => setTab(key)} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 ${tab === key ? "bg-accent/20 text-accent font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>
@@ -106,7 +106,7 @@ export default function SettingsForm() {
                   <span className="text-muted">{a.name ? a.id : ""}{a.isDefault ? " · по умолчанию" : ""}{info?.current?.id === a.id ? " · сейчас" : ""}</span>
                   <span className={a.known ? "text-good" : "text-muted"}>{a.known ? `пул загружен${a.updatedAt ? ` ${new Date(a.updatedAt * 1000).toLocaleDateString("ru-RU")}` : ""}` : "пул не загружен"}</span>
                   {a.anonymous && <span className="text-bad" title="В Доте выключено «Expose Public Match Data» (Настройки → Социальные). Stratz не видит матчи такого аккаунта: пул не собирается, результаты в историю подтягиваются по номеру матча через OpenDota.">профиль закрыт</span>}
-                  <span className="ml-auto flex gap-2">
+                  <span className="ml-auto flex gap-2 shrink-0 whitespace-nowrap">
                     <button onClick={() => accountAction("load", a.id)} disabled={!!ref?.running} className="text-accent hover:underline disabled:opacity-50">{a.known ? "обновить" : "загрузить историю"}</button>
                     {!a.isDefault && <button onClick={() => accountAction("default", a.id)} className="text-muted hover:text-foreground hover:underline">по умолчанию</button>}
                     <button onClick={() => { if (confirm(`Убрать аккаунт ${a.name ?? a.id} вместе с его пулом?`)) accountAction("remove", a.id); }} className="text-muted hover:text-bad hover:underline">убрать</button>
