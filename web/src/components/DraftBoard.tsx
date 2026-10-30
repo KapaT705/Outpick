@@ -5,7 +5,7 @@ import { parseHeroText, type AliasMap } from "@/lib/aliases";
 import type { Attr, Candidate, DraftStage, Hero, LaneOpponent, Pick, PoolOverride, PredictedPicks, Role, RoleGuess, TeamNeed } from "@/lib/types";
 import type { RecognizeResult } from "@/components/AppShell";
 import { newTrackState, trackFrame } from "@/lib/draftTrack";
-import { Button, Card, CardTitle, Chip, Status } from "@/components/ui";
+import { Button, Card, CardTitle, Chip, Empty, Status } from "@/components/ui";
 import Crystals from "@/components/Crystals";
 
 // зона банов на экране не нужна: в ранговом All Pick баны заданы заранее списком и в драфте их не видно.
@@ -329,7 +329,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             <span className="hidden lg:inline text-xs text-muted">Моя роль</span>
             <div className="flex rounded-lg border border-border overflow-hidden text-xs" title="От роли зависят пул, базовые винрейты и вес матчапов по линии">
               {ROLES.map((r) => (
-                <button key={r} onClick={() => setRole(r)} title={ROLE_NAME[r]} className={`px-2.5 xl:px-3 py-1.5 ${role === r ? "bg-accent/25 text-accent font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}><span className="xl:hidden">{ROLE_LABEL[r]}</span><span className="hidden xl:inline">{ROLE_FULL[r]}</span></button>
+                <button key={r} onClick={() => setRole(r)} title={ROLE_NAME[r]} className={`px-2.5 xl:px-3 py-1.5 ${role === r ? "bg-panel-2 text-foreground font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}><span className="xl:hidden">{ROLE_LABEL[r]}</span><span className="hidden xl:inline">{ROLE_FULL[r]}</span></button>
               ))}
             </div>
           </div>
@@ -364,7 +364,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             title={zone === z.key ? "Сюда попадают герои из сетки и текстового ввода" : "Нажми, чтобы добавлять героев сюда"}>
             <div className="flex items-center justify-between mb-2">
               <span className={`text-sm font-semibold ${z.color.split(" ")[1]}`}>{z.label} <span className="text-muted font-normal">{picks[z.key].length + (z.key === "allies" && ownHero ? 1 : 0)}/{z.max}</span></span>
-              {zone === z.key && <Chip tone="accent">добавляю сюда</Chip>}
+              {zone === z.key && <Chip tone="muted" className="text-foreground">добавляю сюда</Chip>}
             </div>
             <div className="flex flex-wrap gap-2 min-h-10 mb-2">
               {z.key === "allies" && ownHero && (
@@ -436,7 +436,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
                 </div>
               );
             })}
-            {filtered.length === 0 && <span className="text-sm text-muted col-span-full">Никого не нашёл</span>}
+            {filtered.length === 0 && <div className="col-span-full"><Empty compact>Никого не нашёл</Empty></div>}
           </div>
           <p className="text-xs text-muted flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="inline-flex items-center gap-1"><span className="inline-block h-2.5 w-4 rounded-sm ring-2 ring-accent" />твой пул на этой роли, они первые</span>
@@ -511,7 +511,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
                     </div>
                   );
                 })}
-                {poolList.length === 0 && <span className="text-sm text-muted col-span-full">Никого не нашёл</span>}
+                {poolList.length === 0 && <div className="col-span-full"><Empty compact>Никого не нашёл</Empty></div>}
               </div>
               {(override.add.length > 0 || override.remove.length > 0) && (
                 <Button size="sm" variant="link" onClick={() => saveOverride(EMPTY)} className="self-start">Сбросить правки к автоматическому пулу</Button>
@@ -552,7 +552,7 @@ function ResultBlock({ title, hint, items, loading, byId, footer, onTake, lane, 
       <CardTitle hint={hint} right={loading ? <Crystals size={11} label="считаю" /> : <span className="text-xs text-muted" title="Оценка шанса победы с героем в этом драфте: винрейт на роли, контрпики, синергии, наигранность и твой винрейт. Нажми на строку, чтобы увидеть, из чего она сложилась.">шанс победы</span>}>{title}</CardTitle>
       <div className="flex flex-col gap-2">
         {items.map((c, i) => <Row key={c.heroId} c={c} byId={byId} onTake={canTake ? onTake : undefined} lane={lane} featured={featured && i === 0} />)}
-        {items.length === 0 && !loading && <span className="text-sm text-muted">Пока нечего посоветовать: добавь врагов или загрузи историю аккаунта.</span>}
+        {items.length === 0 && !loading && <Empty compact>Пока нечего посоветовать: добавь врагов или загрузи историю аккаунта.</Empty>}
       </div>
       {footer && <div className="mt-2">{footer}</div>}
     </Card>

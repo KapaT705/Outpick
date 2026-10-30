@@ -19,8 +19,8 @@ export default function Crystals({ progress, size = 18, label, className = "" }:
           return (
             <g key={i} className={cls} style={progress == null ? { animationDelay: `${i * 0.18}s` } : undefined}>
               {/* гнездо */}
-              <path d={`M${x + w * 0.1} ${bottom} L${x + w * 0.9} ${bottom} L${x + w} ${h} L${x} ${h} Z`} className="fill-[#2a2f3a]" />
-              <path d={`M${x + w * 0.22} ${bottom} L${cx} ${bottom - h * 0.1} L${x + w * 0.78} ${bottom}`} className="fill-[#1f232c]" />
+              <path d={`M${x + w * 0.1} ${bottom} L${x + w * 0.9} ${bottom} L${x + w} ${h} L${x} ${h} Z`} className="fill-[#2e2a34]" />
+              <path d={`M${x + w * 0.22} ${bottom} L${cx} ${bottom - h * 0.1} L${x + w * 0.78} ${bottom}`} className="fill-[#221f26]" />
               {/* кристалл */}
               <path d={`M${cx} ${top} L${x + w * 0.92} ${mid - h * 0.06} L${cx} ${bottom + h * 0.02} L${x + w * 0.08} ${mid - h * 0.06} Z`} className="crystal-body" />
               <path d={`M${cx} ${top} L${x + w * 0.92} ${mid - h * 0.06} L${cx} ${mid - h * 0.02} Z`} className="crystal-face" />

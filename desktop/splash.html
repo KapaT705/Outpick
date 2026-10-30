@@ -1,14 +1,14 @@
 <!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><title>Outpick</title>
 <style>
-  html, body { height: 100%; margin: 0; background: #0f1115; color: #8b93a7; font: 14px/1.4 -apple-system, "Segoe UI", Inter, sans-serif; }
+  html, body { height: 100%; margin: 0; background: #121014; color: #958e9e; font: 14px/1.4 -apple-system, "Segoe UI", Inter, sans-serif; }
   .wrap { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; -webkit-app-region: drag; }
   .name { color: #e6e8ee; font-weight: 600; font-size: 18px; letter-spacing: -.3px; }
   svg { overflow: visible; }
-  .body { fill: #3a3f4a; animation: pulse 1.1s ease-in-out infinite; }
-  .face { fill: #4a505d; animation: pulseFace 1.1s ease-in-out infinite; }
-  @keyframes pulse { 0%, 100% { fill: #3a3f4a; filter: none; } 50% { fill: #e0a526; filter: drop-shadow(0 0 6px rgba(224,165,38,.8)); } }
-  @keyframes pulseFace { 0%, 100% { fill: #4a505d; } 50% { fill: #ffd766; } }
+  .body { fill: #3a3540; animation: pulse 1.1s ease-in-out infinite; }
+  .face { fill: #4a4452; animation: pulseFace 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { fill: #3a3540; filter: none; } 50% { fill: #e0a526; filter: drop-shadow(0 0 6px rgba(224,165,38,.8)); } }
+  @keyframes pulseFace { 0%, 100% { fill: #4a4452; } 50% { fill: #ffd766; } }
 </style></head>
 <body><div class="wrap">
   <img src="icon.png" alt="" width="96" height="96" style="border-radius:22px">
@@ -22,8 +22,8 @@
   for (let i = 0; i < 5; i++) {
     const x = i * (W + G), cx = x + W / 2, top = H * .04, mid = H * .52, bottom = H * .74;
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g"); g.style.animationDelay = (i * .18) + "s";
-    g.innerHTML = `<path d="M${x + W * .1} ${bottom} L${x + W * .9} ${bottom} L${x + W} ${H} L${x} ${H} Z" fill="#2a2f3a"/>` +
-      `<path d="M${x + W * .22} ${bottom} L${cx} ${bottom - H * .1} L${x + W * .78} ${bottom}" fill="#1f232c"/>` +
+    g.innerHTML = `<path d="M${x + W * .1} ${bottom} L${x + W * .9} ${bottom} L${x + W} ${H} L${x} ${H} Z" fill="#2e2a34"/>` +
+      `<path d="M${x + W * .22} ${bottom} L${cx} ${bottom - H * .1} L${x + W * .78} ${bottom}" fill="#221f26"/>` +
       `<path class="body" style="animation-delay:${i * .18}s" d="M${cx} ${top} L${x + W * .92} ${mid - H * .06} L${cx} ${bottom + H * .02} L${x + W * .08} ${mid - H * .06} Z"/>` +
       `<path class="face" style="animation-delay:${i * .18}s" d="M${cx} ${top} L${x + W * .92} ${mid - H * .06} L${cx} ${mid - H * .02} Z"/>`;
     svg.appendChild(g);

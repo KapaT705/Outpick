@@ -119,7 +119,7 @@ async function startServer() {
 async function createWindow() {
   win = new BrowserWindow({
     width: 1280, height: 860, minWidth: 900, minHeight: 600,
-    backgroundColor: "#0f1115",
+    backgroundColor: "#121014",
     title: "Outpick",
     autoHideMenuBar: true, // на Windows меню скрыто, Alt показывает
     icon: path.join(__dirname, "icon.png"),
@@ -152,7 +152,7 @@ async function createWindow() {
       if (process.env.DIAG_TEST) setTimeout(() => win.webContents.executeJavaScript("window.desktop.saveDiagnostics()").then((v) => console.log(`[app] diag: ${JSON.stringify(v)}`)).catch((e) => console.log(`[app] diag error: ${e}`)), 3000);
     }
   } catch (err) {
-    await win.loadURL(`data:text/html;charset=utf-8,<body style="font-family:sans-serif;background:#0f1115;color:#eee;padding:24px"><h2>Не удалось запустить сервер</h2><pre>${String(err.message)}</pre></body>`);
+    await win.loadURL(`data:text/html;charset=utf-8,<body style="font-family:sans-serif;background:#121014;color:#eee;padding:24px"><h2>Не удалось запустить сервер</h2><pre>${String(err.message)}</pre></body>`);
   }
 }
 

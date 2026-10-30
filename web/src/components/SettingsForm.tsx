@@ -99,7 +99,7 @@ export default function SettingsForm() {
           ["data", "Данные", !!ref?.updatedAt && !ref?.due],
           ["diag", "Диагностика", true],
         ] as [Tab, string, boolean][]).map(([key, label, ok]) => (
-          <button key={key} onClick={() => setTab(key)} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 ${tab === key ? "bg-accent/20 text-accent font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>
+          <button key={key} onClick={() => setTab(key)} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 ${tab === key ? "bg-panel-2 text-foreground font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>
             <span className={`inline-block h-1.5 w-1.5 rounded-full ${ok ? "bg-good" : "bg-border"}`} />{label}
           </button>
         ))}

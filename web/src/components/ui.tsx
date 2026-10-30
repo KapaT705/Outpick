@@ -31,7 +31,7 @@ export function Button({ children, onClick, variant = "ghost", disabled, title, 
   const base = size === "sm" ? "px-2.5 py-1 text-xs" : "px-3.5 py-2 text-sm";
   const v = variant === "primary" ? "bg-accent text-black font-semibold hover:brightness-110"
     : variant === "danger" ? "border border-bad/50 text-bad hover:bg-bad/10"
-    : variant === "link" ? "text-accent hover:underline px-0 py-0"
+    : variant === "link" ? "text-muted hover:text-foreground hover:underline px-0 py-0"
     : "border border-border text-foreground hover:border-accent/60 hover:bg-panel-2";
   return <button onClick={onClick} disabled={disabled} title={title} className={`rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed ${variant === "link" ? "" : base} ${v} ${className}`}>{children}</button>;
 }
@@ -50,6 +50,24 @@ export function Status({ ok, label, title, pending }: { ok: boolean; label: stri
   );
 }
 
-export function Empty({ children, action }: { children: ReactNode; action?: ReactNode }) {
-  return <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted flex flex-col items-center gap-2">{children}{action}</div>;
+/** Погасший кристалл из знака Outpick: для пустых состояний. */
+export function CrystalMark({ size = 28, className = "" }: { size?: number; className?: string }) {
+  const w = size, h = size * 1.35;
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className={`shrink-0 ${className}`} aria-hidden="true">
+      <path d={`M${w * 0.1} ${h * 0.74} L${w * 0.9} ${h * 0.74} L${w} ${h} L0 ${h} Z`} fill="#2d2933" />
+      <path d={`M${w * 0.22} ${h * 0.74} L${w / 2} ${h * 0.64} L${w * 0.78} ${h * 0.74}`} fill="#211e25" />
+      <path d={`M${w / 2} ${h * 0.04} L${w * 0.92} ${h * 0.46} L${w / 2} ${h * 0.76} L${w * 0.08} ${h * 0.46} Z`} fill="#3a3540" />
+      <path d={`M${w / 2} ${h * 0.04} L${w * 0.92} ${h * 0.46} L${w / 2} ${h * 0.5} Z`} fill="#4a4452" />
+    </svg>
+  );
+}
+
+export function Empty({ children, action, compact }: { children: ReactNode; action?: ReactNode; compact?: boolean }) {
+  return (
+    <div className={`rounded-xl border border-dashed border-border text-center text-sm text-muted flex flex-col items-center gap-2 ${compact ? "px-3 py-4" : "px-4 py-6"}`}>
+      <CrystalMark size={compact ? 20 : 28} className="opacity-80" />
+      <span>{children}</span>{action}
+    </div>
+  );
 }

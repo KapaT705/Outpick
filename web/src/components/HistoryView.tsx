@@ -81,8 +81,8 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
           <span className="text-xs text-muted">{items.length} {plural(items.length, "драфт", "драфта", "драфтов")} · с результатом {items.filter((x) => x.won !== undefined).length}</span>
           {accountIds.length > 1 && (
             <div className="flex rounded-lg border border-border overflow-hidden text-xs" title="Чья история. Открывается на аккаунте, под которым сейчас играешь.">
-              {accountIds.map((id) => <button key={id} onClick={() => setAcc(id)} className={`px-3 py-1.5 ${acc === id ? "bg-accent/25 text-accent font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>{accounts[id] ?? id}</button>)}
-              <button onClick={() => setAcc("all")} className={`px-3 py-1.5 ${acc === "all" ? "bg-accent/25 text-accent font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>все</button>
+              {accountIds.map((id) => <button key={id} onClick={() => setAcc(id)} className={`px-3 py-1.5 ${acc === id ? "bg-panel-2 text-foreground font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>{accounts[id] ?? id}</button>)}
+              <button onClick={() => setAcc("all")} className={`px-3 py-1.5 ${acc === "all" ? "bg-panel-2 text-foreground font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>все</button>
             </div>
           )}
         </div>
@@ -115,7 +115,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
       <section className="flex flex-wrap items-center gap-3 text-xs">
         <span className="text-muted">Сводка за</span>
         <div className="flex rounded-lg border border-border overflow-hidden">
-          {[7, 30, 90, 0].map((d) => <button key={d} onClick={() => setPeriod(d)} className={`px-3 py-1.5 ${period === d ? "bg-accent/25 text-accent font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>{d ? `${d} дней` : "всё время"}</button>)}
+          {[7, 30, 90, 0].map((d) => <button key={d} onClick={() => setPeriod(d)} className={`px-3 py-1.5 ${period === d ? "bg-panel-2 text-foreground font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>{d ? `${d} дней` : "всё время"}</button>)}
         </div>
         {done.length > 0 ? (
           <span className="flex flex-wrap items-center gap-2">
