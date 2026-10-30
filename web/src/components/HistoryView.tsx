@@ -130,7 +130,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
         <Stat title="Взял первого по совету" hint="Матчи, где ты взял героя, которого пикер ставил первым" s={top1} />
         <Stat title="Взял из топ-3" hint="Матчи, где взятый герой был в первой тройке совета" s={top3} />
         <Stat title="Взял ниже топ-3" hint="Матчи, где взятый герой стоял ниже третьего места или не оценивался" s={below} />
-        <Stat title="Взял лучшего из пула" hint="Матчи, где ты взял первого героя из списка «Из твоего пула»" s={poolTop} />
+        <Stat title="Взял лучшего из пула" hint="Матчи, где ты взял первого героя из списка «Из твоего пула»" hintAlign="right" s={poolTop} />
       </section>
 
       {heroRows.length > 0 && (
@@ -249,10 +249,10 @@ function MatchStats({ d, b, byId }: { d: MatchDetails; b: Bench | null; byId: Ma
   );
 }
 
-function Stat({ title, hint, s }: { title: string; hint?: string; s: { n: number; w: number; wr: number | null } }) {
+function Stat({ title, hint, hintAlign, s }: { title: string; hint?: string; hintAlign?: "left" | "right"; s: { n: number; w: number; wr: number | null } }) {
   return (
     <Card className="p-3">
-      <div className="text-xs text-muted flex items-center gap-1.5">{title}{hint && <Hint text={hint} />}</div>
+      <div className="text-xs text-muted flex items-center gap-1.5">{title}{hint && <Hint text={hint} align={hintAlign} />}</div>
       <div className={`text-2xl font-semibold tabular-nums ${s.wr === null ? "text-muted" : s.wr >= 55 ? "text-good" : s.wr <= 45 ? "text-bad" : ""}`}>{s.wr === null ? "—" : `${s.wr}%`}</div>
       <div className="text-xs text-muted">{s.n ? `${s.w}–${s.n - s.w} · ${s.n} ${plural(s.n, "игра", "игры", "игр")}` : "игр нет"}</div>
     </Card>

@@ -16,9 +16,15 @@ export function CardTitle({ children, right, hint }: { children: ReactNode; righ
   );
 }
 
-/** Знак вопроса с подсказкой по наведению: длинные пояснения живут здесь, а не в тексте на экране. */
-export function Hint({ text }: { text: string }) {
-  return <span title={text} className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] text-muted cursor-help select-none">?</span>;
+/** Знак вопроса с подсказкой по наведению: длинные пояснения живут здесь, а не в тексте на экране.
+ *  Подсказка своя, а не системный title: в Electron системная появляется с задержкой и рисуется в углу окна. */
+export function Hint({ text, align = "left" }: { text: string; align?: "left" | "right" }) {
+  return (
+    <span className="group/hint relative inline-flex">
+      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] text-muted cursor-help select-none group-hover/hint:border-accent group-hover/hint:text-accent">?</span>
+      <span role="tooltip" className={`pointer-events-none absolute top-full z-50 mt-1.5 hidden w-72 rounded-lg border border-border bg-panel-2 px-3 py-2 text-xs font-normal leading-snug text-foreground shadow-lg group-hover/hint:block ${align === "right" ? "right-0" : "left-0"}`}>{text}</span>
+    </span>
+  );
 }
 
 export function Button({ children, onClick, variant = "ghost", disabled, title, className = "", size = "md" }: { children: ReactNode; onClick?: () => void; variant?: "primary" | "ghost" | "danger" | "link"; disabled?: boolean; title?: string; className?: string; size?: "sm" | "md" }) {

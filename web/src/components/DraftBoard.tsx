@@ -542,14 +542,15 @@ function Part({ label, value, note, digits = 1 }: { label: string; value: number
   );
 }
 
-/** Одна фраза «почему» для крупной карточки: два главных матчапа и твой счёт. */
+/** Одна фраза «почему» для крупной карточки. Чипы уже показывают матчап по линии и твой счёт, поэтому здесь остальное:
+ *  другие матчапы, винрейт на роли, нехватка команды. */
 function why(c: Candidate, lane?: LaneOpponent | null): string {
   const parts: string[] = [];
-  const top = c.reasons.slice(0, 2);
-  if (top.length) parts.push(top.map((r) => `${signed(r.value)} ${r.kind === "vs" ? "против" : "с"} ${r.name}${lane && r.heroId === lane.heroId ? " по линии" : ""}`).join(", "));
-  else parts.push(`${c.base}% винрейт на роли у Immortal`);
-  if (c.poolStatus === "pool" && c.midGames >= 3) parts.push(`у тебя ${c.midWins}–${c.midGames - c.midWins} за год`);
+  const rest = c.reasons.filter((r) => !(lane && c.vsLane && r.kind === "vs" && r.heroId === lane.heroId)).slice(0, 2);
+  if (rest.length) parts.push(rest.map((r) => `${signed(r.value)} ${r.kind === "vs" ? "против" : "с"} ${r.name}`).join(", "));
+  parts.push(`${c.base}% винрейт на роли у Immortal`);
   if (c.needsAdj > 0) parts.push("закрывает нехватку команды");
+  if (c.poolStatus === "pool" && c.midGames > 0) parts.push(`${c.midGames} игр за год`);
   return parts.join(" · ");
 }
 
