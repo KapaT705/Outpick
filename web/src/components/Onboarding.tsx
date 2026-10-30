@@ -109,8 +109,8 @@ export default function Onboarding() {
               </>
             ) : (
               <>
-                <p className="text-sm">Нужен твой Steam ID: число из ссылки на профиль на Dotabuff или Stratz. <Hint text="Например, stratz.com/players/401776935 → 401776935. Можно и 64-битный id из Steam." /> Когда Дота на связи, аккаунт определяется сам, и этот шаг не нужен.</p>
-                <input value={steamId} onChange={(e) => setSteamId(e.target.value)} placeholder="например 401776935" className="rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent" />
+                <p className="text-sm">Нужен твой Steam ID: число из ссылки на профиль на Dotabuff или Stratz. <Hint text="Например, stratz.com/players/123456789 → 123456789. Можно и 64-битный id из Steam." /> Когда Дота на связи, аккаунт определяется сам, и этот шаг не нужен.</p>
+                <input value={steamId} onChange={(e) => setSteamId(e.target.value)} placeholder="например 123456789" className="rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent" />
                 <div className="flex items-center gap-3"><Button variant="primary" onClick={() => loadAccount(steamId.trim())} disabled={busy || !steamId.trim()}>{busy ? "загружаю…" : "Добавить и загрузить историю"}</Button>{busy ? <Crystals size={12} label={msg ?? undefined} /> : msg && <span className="text-xs text-muted">{msg}</span>}</div>
               </>
             )}

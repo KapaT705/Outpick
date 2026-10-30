@@ -128,7 +128,7 @@ export default function SettingsForm() {
             </div>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <input value={steamId} onChange={(e) => setSteamId(e.target.value)} placeholder="Steam ID нового аккаунта, например 401776935"
+            <input value={steamId} onChange={(e) => setSteamId(e.target.value)} placeholder="Steam ID нового аккаунта, например 123456789"
               className={`flex-1 min-w-56 ${INPUT}`} />
             <button onClick={() => { if (steamId.trim()) accountAction("add", steamId.trim()); }} disabled={!steamId.trim() || !!ref?.running || !info?.hasToken} title={info?.hasToken ? "" : "Сначала сохрани токен Stratz"} className="rounded-lg border border-border px-3.5 py-2 text-sm hover:border-accent/60 hover:bg-panel-2 disabled:opacity-50 disabled:cursor-not-allowed transition">Добавить и загрузить историю</button>
           </div>
