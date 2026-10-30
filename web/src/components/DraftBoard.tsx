@@ -358,7 +358,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
 
       <DraftBar byId={byId} allies={picks.allies} enemies={picks.enemies} ownHeroId={gsi?.ownHeroId ?? null} team={gsi?.connected ? (gsi.team ?? null) : side} role={role} guesses={roles} />
 
-      <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-[1fr_1.1fr]">
+      <section className="grid gap-4 md:grid-cols-2">
         {ZONES.map((z) => (
           <div key={z.key} onClick={() => setZone(z.key)}
             className={`rounded-2xl border-2 bg-panel p-3 cursor-pointer transition ${zone === z.key ? z.color : "border-border hover:border-border/80"}`}
@@ -403,7 +403,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
         ))}
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_1.1fr]">
+      <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-3 flex flex-col gap-3 min-w-0">
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Найти героя… Enter добавит в зону «${ZONES.find((z) => z.key === zone)!.label}»`}
             onKeyDown={(e) => { if (e.key === "Enter" && filtered.length > 0) add(filtered.find((h) => !taken.has(h.id))?.id ?? filtered[0].id); }}
