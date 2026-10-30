@@ -5,9 +5,16 @@ import type { DebugCapture, LearnedInfo } from "@/components/AppShell";
 import { Card, Chip } from "@/components/ui";
 import Crystals from "@/components/Crystals";
 
-// доля выполнения обновления по сообщению шага (lib/refresh.ts): кристаллы загораются по мере продвижения
-const STEP_PROGRESS: Record<string, number> = { "старт": 0.05, "герои": 0.15, "матчапы": 0.35, "мета мида": 0.55, "роли героев": 0.72, "имя аккаунта": 0.82, "история аккаунта": 0.9, "готово": 1 };
-const stepProgress = (m: string | undefined) => (m && m in STEP_PROGRESS ? STEP_PROGRESS[m] : null);
+// доля выполнения обновления по сообщению шага (lib/refresh.ts): у шага свой отрезок, счётчик «50/127» двигает внутри него
+const STEPS: [string, number, number][] = [["старт", 0, 0.05], ["герои", 0.05, 0.12], ["матчапы", 0.12, 0.55], ["мета мида", 0.55, 0.65], ["роли героев", 0.65, 0.76], ["имя аккаунта", 0.76, 0.8], ["матчи", 0.8, 0.98], ["готово", 1, 1]];
+function stepProgress(m: string | undefined): number | null {
+  if (!m) return null;
+  const st = STEPS.find(([k]) => m.startsWith(k));
+  if (!st) return null;
+  const c = m.match(/(\d+)\/(\d+)/);
+  const f = c && Number(c[2]) > 0 ? Number(c[1]) / Number(c[2]) : 0;
+  return st[1] + (st[2] - st[1]) * f;
+}
 
 /** Состояние пункта настроек: зелёный чип, когда настроено. */
 const Check = ({ ok, label }: { ok: boolean; label: string }) => <Chip tone={ok ? "good" : "muted"}>{ok ? "✓" : "○"} {label}</Chip>;
