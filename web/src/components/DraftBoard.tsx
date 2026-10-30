@@ -368,22 +368,22 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             </div>
             <div className="flex flex-wrap gap-2 min-h-10 mb-2">
               {z.key === "allies" && ownHero && (
-                <div onClick={(e) => e.stopPropagation()} title={`Твой герой, его сообщила Дота. Роль ${ROLE_NAME[role]}`} className="flex h-11 items-center gap-2 rounded-lg bg-panel-2 text-sm pl-1 pr-2.5 ring-1 ring-accent">
-                  <img src={portrait(ownHero.short)} alt="" className="h-9 w-16 rounded-md object-cover" />{ownHero.name}<Chip tone="accent">ты · {ROLE_LABEL[role]}</Chip>
+                <div onClick={(e) => e.stopPropagation()} title={`Твой герой, его сообщила Дота. Роль ${ROLE_NAME[role]}`} className="flex h-8 items-center gap-1.5 rounded-lg bg-panel-2 text-xs pl-1 pr-2 ring-1 ring-accent">
+                  <img src={icon(ownHero.short)} alt="" className="h-6 w-6 rounded" />{ownHero.name}<Chip tone="accent">ты · {ROLE_LABEL[role]}</Chip>
                 </div>
               )}
               {picks[z.key].map((p) => {
                 const h = byId.get(p.id)!;
                 const guess = roles[z.key].find((g) => g.id === p.id);
                 return (
-                  <div key={p.id} onClick={(e) => e.stopPropagation()} className={`flex h-11 items-center rounded-lg bg-panel-2 text-sm ${p.auto ? "outline outline-1 outline-dashed outline-ban/70" : ""}`}>
-                    <button onClick={() => remove(z.key, p.id)} title={p.auto ? "Пропал из слота: его выбрали обе команды, и он забанен. Нажми, чтобы убрать, если это не так" : "Убрать"} className="flex h-11 items-center gap-2 rounded-l-lg pl-1 pr-2.5 hover:bg-border">
-                      <img src={portrait(h.short)} alt="" className="h-9 w-16 rounded-md object-cover" />{h.name}{p.auto && <span className="text-[10px] text-ban/80 ml-0.5">конфликт</span>}
+                  <div key={p.id} onClick={(e) => e.stopPropagation()} className={`flex h-8 items-center rounded-lg bg-panel-2 text-xs ${p.auto ? "outline outline-1 outline-dashed outline-ban/70" : ""}`}>
+                    <button onClick={() => remove(z.key, p.id)} title={p.auto ? "Пропал из слота: его выбрали обе команды, и он забанен. Нажми, чтобы убрать, если это не так" : "Убрать"} className="flex h-8 items-center gap-1.5 rounded-l-lg pl-1 pr-2 hover:bg-border">
+                      <img src={icon(h.short)} alt="" className="h-6 w-6 rounded" />{h.name}{p.auto && <span className="text-[10px] text-ban/80 ml-0.5">конфликт</span>}
                     </button>
                     {(
-                      <span className="relative h-11 border-l border-border rounded-r-lg bg-panel flex items-center" title={p.role ? `Роль задана тобой: ${ROLE_NAME[p.role]}` : guess ? `Предполагаю: ${ROLE_NAME[guess.role]} (${Math.round(guess.prob * 100)}%). Нажми, чтобы задать` : "Роль не известна: 1 керри, 2 мид, 3 офлейн, 4 и 5 саппорты. Нажми, чтобы задать"}>
+                      <span className="relative h-8 border-l border-border rounded-r-lg bg-panel flex items-center" title={p.role ? `Роль задана тобой: ${ROLE_NAME[p.role]}` : guess ? `Предполагаю: ${ROLE_NAME[guess.role]} (${Math.round(guess.prob * 100)}%). Нажми, чтобы задать` : "Роль не известна: 1 керри, 2 мид, 3 офлейн, 4 и 5 саппорты. Нажми, чтобы задать"}>
                         <select value={p.role ?? ""} onChange={(e) => setPickRole(z.key, p.id, e.target.value ? (Number(e.target.value) as Role) : null)}
-                          className={`appearance-none h-11 w-12 bg-transparent pl-2.5 pr-4 outline-none cursor-pointer font-semibold ${p.role ? "text-foreground" : "text-muted"}`}>
+                          className={`appearance-none h-8 w-11 bg-transparent pl-2 pr-4 outline-none cursor-pointer font-semibold ${p.role ? "text-foreground" : "text-muted"}`}>
                           <option value="">{guess ? `${ROLE_LABEL[guess.role]}?` : "?"}</option>
                           {ROLES.filter((r) => !(z.key === "allies" && r === role)).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                         </select>
@@ -693,11 +693,11 @@ function DraftBar({ byId, allies, enemies, ownHeroId, team, role, guesses }: { b
     const own = !!(p && "own" in p && p.own);
     const r = p ? (p.role ?? (side === "ours" ? guesses.allies : guesses.enemies).find((x) => x.id === p.id)?.role) : undefined;
     return (
-      <div className={`relative h-14 w-[100px] shrink-0 overflow-hidden rounded-lg border ${own ? "border-accent" : side === "ours" ? "border-ally/40" : "border-enemy/40"} bg-panel-2`}
+      <div className={`relative h-[72px] w-[128px] shrink-0 overflow-hidden rounded-lg border ${own ? "border-accent" : side === "ours" ? "border-ally/40" : "border-enemy/40"} bg-panel-2`}
         title={h ? `${h.name}${r ? ` · ${ROLE_NAME[r]}` : ""}` : free ? `Свободная роль: ${ROLE_NAME[free]}` : "пусто"}>
-        {h ? <img src={portrait(h.short)} alt={h.name} className="h-full w-full object-cover" /> : <div className={`flex h-full w-full items-center justify-center text-base font-semibold ${side === "ours" ? "text-ally/50" : "text-enemy/50"}`}>{free ?? ""}</div>}
-        {h && r && !own && <div className={`absolute bottom-0 right-0 rounded-tl px-1.5 text-[11px] font-semibold ${side === "ours" ? "bg-ally/80 text-black" : "bg-enemy/80 text-black"}`}>{r}</div>}
-        {own && <div className="absolute bottom-0 inset-x-0 bg-accent/80 text-[11px] text-black text-center font-semibold">ты · {role}</div>}
+        {h ? <img src={portrait(h.short)} alt={h.name} className="h-full w-full object-cover" /> : <div className={`flex h-full w-full items-center justify-center text-xl font-semibold ${side === "ours" ? "text-ally/50" : "text-enemy/50"}`}>{free ?? ""}</div>}
+        {h && r && !own && <div className={`absolute bottom-0 right-0 rounded-tl px-2 py-0.5 text-xs font-semibold ${side === "ours" ? "bg-ally/80 text-black" : "bg-enemy/80 text-black"}`}>{r}</div>}
+        {own && <div className="absolute bottom-0 inset-x-0 bg-accent/80 text-xs text-black text-center font-semibold">ты · {role}</div>}
       </div>
     );
   };
@@ -706,15 +706,15 @@ function DraftBar({ byId, allies, enemies, ownHeroId, team, role, guesses }: { b
   const leftFree = oursLeft ? freeOurs : freeTheirs, rightFree = oursLeft ? freeTheirs : freeOurs;
   const pad = (arr: unknown[]) => Array.from({ length: 5 }, (_, i) => arr[i]);
   return (
-    <section className="rounded-xl border border-border bg-panel px-3 py-2 flex items-center justify-between gap-3 overflow-x-auto">
+    <section className="rounded-xl border border-border bg-panel px-3 py-2.5 flex items-center justify-between gap-3 overflow-x-auto">
       <div className="flex items-center gap-1.5">
-        <span className={`mr-1 text-xs font-semibold ${leftSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Свет" : "Союзники"}</span>
+        <span className={`mr-1 text-sm font-semibold ${leftSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Свет" : "Союзники"}</span>
         {pad(left).map((p, i) => <Slot key={`l${i}`} p={p as Pick | undefined} side={leftSide} free={p ? undefined : leftFree[i - left.length]} />)}
       </div>
       <div className="text-xs text-muted whitespace-nowrap">{team ? (team === "radiant" ? "ты за Свет" : "ты за Тьму") : "команда неизвестна"}</div>
       <div className="flex items-center gap-1.5">
         {pad(right).map((p, i) => <Slot key={`r${i}`} p={p as Pick | undefined} side={rightSide} free={p ? undefined : rightFree[i - right.length]} />)}
-        <span className={`ml-1 text-xs font-semibold ${rightSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Тьма" : "Враги"}</span>
+        <span className={`ml-1 text-sm font-semibold ${rightSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Тьма" : "Враги"}</span>
       </div>
     </section>
   );
