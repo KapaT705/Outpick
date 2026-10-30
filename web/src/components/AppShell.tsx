@@ -44,7 +44,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-full flex flex-col">
       <nav className="sticky top-0 z-30 border-b border-border bg-panel/95 backdrop-blur">
-        <div className="mx-auto w-full max-w-[1480px] px-4 h-12 flex items-center gap-4">
+        <div className="w-full px-5 h-12 flex items-center gap-4">
           <a href="/" className="flex items-center gap-2 font-semibold tracking-tight">
             <img src="/logo.png" alt="" className="h-6 w-6 rounded-md" />
             <span>Outpick</span>
@@ -60,7 +60,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {banner && (
         <div className={`border-b ${banner.type === "error" ? "border-bad/40 bg-bad/10" : "border-accent/40 bg-accent/10"}`}>
-          <div className="mx-auto w-full max-w-[1480px] px-4 py-2 flex flex-wrap items-center gap-3 text-sm">
+          <div className="w-full px-5 py-2 flex flex-wrap items-center gap-3 text-sm">
             {banner.type === "available" && <>
               <span>Доступна версия <b>{banner.version}</b>{banner.current ? <span className="text-muted"> (сейчас {banner.current})</span> : null}</span>
               <button onClick={() => window.desktop?.downloadUpdate()} className="rounded-md bg-accent px-3 py-1 text-xs font-semibold text-black hover:brightness-110">Скачать</button>

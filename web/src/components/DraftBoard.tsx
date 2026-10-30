@@ -316,7 +316,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   }, [heroes, poolQuery, acct, role]);
 
   return (
-    <main className="mx-auto w-full max-w-[1480px] px-4 py-5 flex flex-col gap-5">
+    <main className="w-full px-5 py-5 flex flex-col gap-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-4">
           <h1 className="text-xl font-semibold">Пикер</h1>
