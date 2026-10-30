@@ -93,6 +93,13 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const [showAll, setShowAll] = useState(false);
   const [override, setOverride] = useState<PoolOverride>(EMPTY);
   const [poolOpen, setPoolOpen] = useState(false);
+  // окно пула закрывается по Escape, как и клик по затемнению
+  useEffect(() => {
+    if (!poolOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPoolOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [poolOpen]);
   const [poolQuery, setPoolQuery] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
   const auto = true; // связь с Дотой работает всегда, когда программа открыта
