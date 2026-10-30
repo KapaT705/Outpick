@@ -18,10 +18,14 @@ export async function POST(req: Request) {
     if (!n) return NextResponse.json({ error: "Steam ID должен быть числом (32-битный id из ссылки Dotabuff/Stratz)" }, { status: 400 });
     steamAccountId = n;
   }
-  // проверим токен запросом к Stratz
-  if (token) {
-    const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: "{ constants { gameVersions { id } } }" }) }).catch(() => null);
-    if (!r || r.status !== 200) return NextResponse.json({ error: `Stratz не принял токен (HTTP ${r?.status ?? "нет ответа"})` }, { status: 400 });
+  // новый токен проверяем запросом к Stratz; уже сохранённый не перепроверяем, иначе без интернета
+  // не сохранить даже галочку чтения экрана
+  const newToken = typeof body.stratzToken === "string" && body.stratzToken.trim() ? body.stratzToken.trim() : null;
+  if (newToken) {
+    const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${newToken}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: "{ constants { gameVersions { id } } }" }) }).catch(() => null);
+    if (!r) return NextResponse.json({ error: "Stratz не отвечает: проверь интернет и попробуй ещё раз" }, { status: 400 });
+    if (r.status === 401 || r.status === 403) return NextResponse.json({ error: "Stratz не принял токен: проверь, что скопирован целиком со страницы stratz.com/api" }, { status: 400 });
+    if (r.status !== 200) return NextResponse.json({ error: `Stratz ответил ошибкой HTTP ${r.status}, попробуй позже` }, { status: 400 });
   }
   const githubToken = typeof body.githubToken === "string" && body.githubToken.trim() ? body.githubToken.trim() : cur.githubToken;
   const screenCapture = typeof body.screenCapture === "boolean" ? body.screenCapture : cur.screenCapture !== false;
