@@ -322,10 +322,10 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
         <div className="flex flex-wrap items-center gap-4">
           <h1 className="text-xl font-semibold">Пикер</h1>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted">Моя роль</span>
+            <span className="hidden lg:inline text-xs text-muted">Моя роль</span>
             <div className="flex rounded-lg border border-border overflow-hidden text-xs" title="От роли зависят пул, базовые винрейты и вес матчапов по линии">
               {ROLES.map((r) => (
-                <button key={r} onClick={() => setRole(r)} title={ROLE_NAME[r]} className={`px-3 py-1.5 ${role === r ? "bg-accent/25 text-accent font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>{ROLE_FULL[r]}</button>
+                <button key={r} onClick={() => setRole(r)} title={ROLE_NAME[r]} className={`px-2.5 xl:px-3 py-1.5 ${role === r ? "bg-accent/25 text-accent font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}><span className="xl:hidden">{ROLE_LABEL[r]}</span><span className="hidden xl:inline">{ROLE_FULL[r]}</span></button>
               ))}
             </div>
           </div>
