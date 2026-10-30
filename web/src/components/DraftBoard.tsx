@@ -315,7 +315,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   }, [heroes, poolQuery, acct, role]);
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-5 flex flex-col gap-5">
+    <main className="mx-auto w-full max-w-[1480px] px-4 py-5 flex flex-col gap-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-4">
           <h1 className="text-xl font-semibold">Пикер</h1>
@@ -693,7 +693,7 @@ function DraftBar({ byId, allies, enemies, ownHeroId, team, role, guesses }: { b
     const own = !!(p && "own" in p && p.own);
     const r = p ? (p.role ?? (side === "ours" ? guesses.allies : guesses.enemies).find((x) => x.id === p.id)?.role) : undefined;
     return (
-      <div className={`relative h-[54px] w-24 xl:h-[72px] xl:w-32 shrink-0 overflow-hidden rounded-lg border ${own ? "border-accent" : side === "ours" ? "border-ally/40" : "border-enemy/40"} bg-panel-2`}
+      <div className={`relative h-[54px] w-24 2xl:h-[63px] 2xl:w-28 shrink-0 overflow-hidden rounded-lg border ${own ? "border-accent" : side === "ours" ? "border-ally/40" : "border-enemy/40"} bg-panel-2`}
         title={h ? `${h.name}${r ? ` · ${ROLE_NAME[r]}` : ""}` : free ? `Свободная роль: ${ROLE_NAME[free]}` : "пусто"}>
         {h ? <img src={portrait(h.short)} alt={h.name} className="h-full w-full object-cover" /> : <div className={`flex h-full w-full items-center justify-center text-xl font-semibold ${side === "ours" ? "text-ally/50" : "text-enemy/50"}`}>{free ?? ""}</div>}
         {h && r && !own && <div className={`absolute bottom-0 right-0 rounded-tl px-2 py-0.5 text-xs font-semibold ${side === "ours" ? "bg-ally/80 text-black" : "bg-enemy/80 text-black"}`}>{r}</div>}
