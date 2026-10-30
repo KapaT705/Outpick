@@ -63,7 +63,8 @@ function dedupe(items: DraftLog[]): DraftLog[] {
     if (x.matchId == null) { out.push(x); continue; }
     const prev = byMatch.get(x.matchId);
     if (!prev) { byMatch.set(x.matchId, x); out.push(x); continue; }
-    if (richness(x) > richness(prev)) { out[out.indexOf(prev)] = x; byMatch.set(x.matchId, x); }
+    // при равной полноте остаётся более поздняя запись: повторное «Беру» в том же матче исправляет первое
+    if (richness(x) > richness(prev) || (richness(x) === richness(prev) && x.createdAt >= prev.createdAt)) { out[out.indexOf(prev)] = x; byMatch.set(x.matchId, x); }
   }
   return out;
 }

@@ -97,7 +97,7 @@ function Tooltips() {
     const hide = () => { clearTimeout(timer); cur = null; setTip(null); };
     const show = (el: Element) => {
       const text = el.getAttribute("data-tip");
-      if (!text) return;
+      if (!text || !el.isConnected) return;
       const r = el.getBoundingClientRect();
       const above = r.bottom + 120 > window.innerHeight && r.top > 140;
       setTip({ text, x: Math.min(Math.max(r.left + r.width / 2, 170), window.innerWidth - 170), y: above ? r.top - 6 : r.bottom + 6, above });
@@ -106,7 +106,7 @@ function Tooltips() {
       const el = (e.target as Element | null)?.closest?.("[title],[data-tip]");
       if (!el) { if (cur) hide(); return; }
       const t = el.getAttribute("title");
-      if (t !== null) { el.removeAttribute("title"); if (t.trim()) el.setAttribute("data-tip", t); }
+      if (t !== null) { el.removeAttribute("title"); if (t.trim()) el.setAttribute("data-tip", t); else el.removeAttribute("data-tip"); }
       if (!el.getAttribute("data-tip")) { if (cur) hide(); return; }
       if (el === cur) return;
       clearTimeout(timer); cur = el; setTip(null);

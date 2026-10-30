@@ -106,17 +106,14 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const [gsi, setGsi] = useState<{ connected: boolean; phase: string; ownHeroId: number | null; matchId: string | null; team: "radiant" | "dire" | null; accountId: number | null } | null>(null);
   const [screen, setScreen] = useState<{ status: string; found: number } | null>(null);
   const [captureOn, setCaptureOn] = useState(true);
-  const [setup, setSetup] = useState<{ steam: boolean; token: boolean; gsi: boolean } | null>(null);
-  const [setupHidden, setSetupHidden] = useState(false);
-  // своя сторона, когда Дота не на связи: переключатель из интерфейса убран (пользователь просил меньше кнопок),
-  // по умолчанию Свет; при связи с Дотой сторону сообщает она сама
-  const [side, setSideState] = useState<"radiant" | "dire">("radiant");
+  // своя сторона, когда Дота не на связи: переключатель убран (пользователь просил меньше кнопок), всегда Свет;
+  // при связи с Дотой сторону сообщает она сама. Старое сохранённое значение не читаем, иначе «Тьма» застревала навсегда
+  const side: "radiant" | "dire" = "radiant";
   const [gsiRewritten, setGsiRewritten] = useState(false);
   useEffect(() => {
-    fetch("/api/settings").then((r) => r.json()).then((c) => { setCaptureOn(c.screenCapture !== false); setSetup((p) => ({ steam: !!c.steamAccountId, token: !!c.hasToken, gsi: p?.gsi ?? false })); }).catch(() => {});
-    fetch("/api/gsi/install").then((r) => r.json()).then((g) => { setSetup((p) => ({ steam: p?.steam ?? false, token: p?.token ?? false, gsi: !!g.installed })); if (g.rewritten) setGsiRewritten(true); }).catch(() => {});
-    try { setSetupHidden(sessionStorage.getItem("draft.setupHidden") === "1"); } catch {}
-    try { const v = localStorage.getItem("draft.side.v1"); if (v === "radiant" || v === "dire") setSideState(v); } catch {}
+    fetch("/api/settings").then((r) => r.json()).then((c) => { setCaptureOn(c.screenCapture !== false); }).catch(() => {});
+    fetch("/api/gsi/install").then((r) => r.json()).then((g) => { if (g.rewritten) setGsiRewritten(true); }).catch(() => {});
+    try { localStorage.removeItem("draft.side.v1"); } catch {}
     reloadAccounts();
   }, []);
   // Дота сообщила другой аккаунт: перечитываем его пул
@@ -182,7 +179,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   }, [picks, override, role, acct?.current.id, gsi?.team, side]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addMany = (z: UserZone, ids: number[]) => {
-    const max = ZONES.find((x) => x.key === z)!.max - (z === "allies" && ownHero ? 1 : 0); // место для себя
+    const max = ZONES.find((x) => x.key === z)!.max - (z === "allies" ? 1 : 0); // пятое место у союзников всегда твоё
     const next = [...picks[z]];
     for (const id of ids) {
       if (taken.has(id) || next.some((p) => p.id === id)) continue;
@@ -481,8 +478,9 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
         const rec = acct?.recordByRole?.[role] ?? {};
         return (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setPoolOpen(false)}>
-          <Card className="w-full max-w-3xl flex flex-col gap-3" tone="default">
-            <div onClick={(e) => e.stopPropagation()} className="flex flex-col gap-3">
+          <div className="w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
+          <Card className="w-full flex flex-col gap-3" tone="default">
+            <div className="flex flex-col gap-3">
               <CardTitle right={<Button size="sm" onClick={() => setPoolOpen(false)}>Закрыть</Button>} hint="Пул отдельный для каждой роли. Сам по себе в нём герои с 10 и больше играми на этой роли за год; «знакомые» с 3–9 играми идут отдельно. Отметь тех, на ком реально играешь: они попадут в список «Из твоего пула», их наигранность и винрейт учитываются в оценке. Правки хранятся в этом браузере.">
                 Мой пул · {ROLE_FULL[role]} · {poolSet.size} {poolSet.size % 10 === 1 && poolSet.size % 100 !== 11 ? "герой" : poolSet.size % 10 >= 2 && poolSet.size % 10 <= 4 && (poolSet.size % 100 < 10 || poolSet.size % 100 >= 20) ? "героя" : "героев"}
               </CardTitle>
@@ -520,6 +518,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
               )}
             </div>
           </Card>
+          </div>
         </div>
         );
       })()}
@@ -601,7 +600,7 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
   const shown = chips.slice(0, 2);
   const top = c.reasons.slice(0, 3);
   return (
-    <div className={`rounded-xl cursor-pointer transition animate-rise ${featured ? "bg-panel-2 p-3 ring-1 ring-accent/40" : "bg-panel-2 p-2.5"} ${open ? "ring-1 ring-border" : featured ? "" : "hover:bg-panel-2/70"}`} onClick={() => setOpen(!open)} title={open ? "" : "Нажми, чтобы увидеть, из чего сложилась оценка"}>
+    <div className={`rounded-xl cursor-pointer transition animate-rise ${featured ? "bg-panel-2 p-3 ring-1 ring-accent/40" : "bg-panel-2 p-2.5"} ${open ? "ring-1 ring-border" : featured ? "" : "hover:bg-panel-2/70"}`} onClick={() => setOpen(!open)} title={open ? undefined : "Нажми, чтобы увидеть, из чего сложилась оценка"}>
       {featured ? (
         <div className="flex items-center gap-4">
           <img src={portrait(h.short)} alt="" className="h-[76px] w-[136px] rounded-lg object-cover shrink-0" />
@@ -616,7 +615,7 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
           </div>
           <div className="text-right shrink-0">
             <div className={`text-4xl font-semibold tabular-nums leading-none ${tone}`} title="Шанс победы с этим героем в этом драфте">{score}%</div>
-            {onTake && <Button size="sm" variant="primary" onClick={() => onTake(c.heroId)} title="Записать в историю, что ты взял этого героя. Когда Дота на связи, это происходит само." className="mt-2">Беру</Button>}
+            {onTake && <span onClick={(e) => e.stopPropagation()}><Button size="sm" variant="primary" onClick={() => onTake(c.heroId)} title="Записать в историю, что ты взял этого героя. Когда Дота на связи, это происходит само." className="mt-2">Беру</Button></span>}
           </div>
         </div>
       ) : (
@@ -637,7 +636,7 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
             <div className="h-1 w-full overflow-hidden rounded bg-panel"><div className={`h-full ${bar}`} style={{ width: `${Math.max(4, Math.min(100, (c.finalScore - 30) * 2.5))}%` }} /></div>
           </div>
           <div className={`text-2xl font-semibold tabular-nums w-14 text-right ${tone}`} title="Шанс победы с этим героем в этом драфте">{score}%</div>
-          {onTake && <Button size="sm" onClick={() => onTake(c.heroId)} title="Записать в историю, что ты взял этого героя. Когда Дота на связи, это происходит само." className="shrink-0">Беру</Button>}
+          {onTake && <span className="shrink-0" onClick={(e) => e.stopPropagation()}><Button size="sm" onClick={() => onTake(c.heroId)} title="Записать в историю, что ты взял этого героя. Когда Дота на связи, это происходит само.">Беру</Button></span>}
         </div>
       )}
       {open && (

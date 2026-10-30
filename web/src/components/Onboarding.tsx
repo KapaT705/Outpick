@@ -8,6 +8,15 @@ import { Button, Hint } from "@/components/ui";
 type Settings = { hasToken: boolean; accounts?: { id: number; name?: string; known: boolean }[]; current?: { id: number | null; source: string; known: boolean; name: string | null }; onboardingDone?: boolean };
 type Gsi = { installed?: boolean; dotaDirs?: string[] };
 
+/** Кнопка шага вверху: вынесена из компонента, чтобы не перемонтироваться на каждый ввод символа. */
+function Step({ n, label, done, step, onPick }: { n: number; label: string; done: boolean; step: number; onPick: (n: number) => void }) {
+  return (
+    <button onClick={() => onPick(n)} className={`flex items-center gap-2 text-sm ${step === n ? "text-foreground" : "text-muted"}`}>
+      <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${done ? "bg-good/20 text-good" : step === n ? "bg-accent text-black" : "bg-panel-2 text-muted"}`}>{done ? "✓" : n}</span>{label}
+    </button>
+  );
+}
+
 export default function Onboarding() {
   const [s, setS] = useState<Settings | null>(null);
   const [gsi, setGsi] = useState<Gsi | null>(null);
@@ -63,11 +72,6 @@ export default function Onboarding() {
     await reload();
   };
 
-  const Step = ({ n, label, done }: { n: number; label: string; done: boolean }) => (
-    <button onClick={() => setStep(n)} className={`flex items-center gap-2 text-sm ${step === n ? "text-foreground" : "text-muted"}`}>
-      <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${done ? "bg-good/20 text-good" : step === n ? "bg-accent text-black" : "bg-panel-2 text-muted"}`}>{done ? "✓" : n}</span>{label}
-    </button>
-  );
   const detected = s.current?.id && (s.current.source === "steam" || s.current.source === "gsi") ? s.current : null;
 
   return (
@@ -78,9 +82,9 @@ export default function Onboarding() {
           <p className="text-sm text-muted mt-1">Три шага, и пикер будет советовать героев под твой пул и твоих врагов. Это делается один раз.</p>
         </div>
         <div className="flex flex-wrap gap-5">
-          <Step n={1} label="Токен Stratz" done={s.hasToken} />
-          <Step n={2} label="Аккаунт" done={!!s.accounts?.length && !!s.current?.known} />
-          <Step n={3} label="Связь с Дотой" done={!!gsi.installed} />
+          <Step n={1} label="Токен Stratz" done={s.hasToken} step={step} onPick={setStep} />
+          <Step n={2} label="Аккаунт" done={!!s.accounts?.length && !!s.current?.known} step={step} onPick={setStep} />
+          <Step n={3} label="Связь с Дотой" done={!!gsi.installed} step={step} onPick={setStep} />
         </div>
 
         {step === 1 && (

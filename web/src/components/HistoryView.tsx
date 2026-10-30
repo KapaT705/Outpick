@@ -165,7 +165,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
           const open = openId === x.id;
           const res = x.won === undefined ? <Chip tone="muted">{x.noMatch ? "матч не найден" : "ждёт результата"}</Chip> : x.won ? <Chip tone="good">победа</Chip> : <Chip tone="bad">поражение</Chip>;
           return (
-            <div key={x.id} className={`rounded-xl border bg-panel p-3 flex flex-wrap items-center gap-3 text-sm cursor-pointer transition ${open ? "border-accent/40" : "border-border hover:border-border/70"}`} onClick={() => setOpenId(open ? null : x.id)} title={open ? "" : "Нажми, чтобы раскрыть советы и разбор матча"}>
+            <div key={x.id} className={`rounded-xl border bg-panel p-3 flex flex-wrap items-center gap-3 text-sm cursor-pointer transition ${open ? "border-accent/40" : "border-border hover:border-border/70"}`} onClick={() => setOpenId(open ? null : x.id)} title={open ? undefined : "Нажми, чтобы раскрыть советы и разбор матча"}>
               <span className="text-xs text-muted w-24 tabular-nums">{fmt(x.createdAt)}</span>
               {h && <img src={icon(h.short)} alt="" className="h-9 w-9 rounded-md" />}
               <div className="min-w-0 flex-1 flex flex-col gap-1">
@@ -227,7 +227,9 @@ function MatchStats({ d, b, byId }: { d: MatchDetails; b: Bench | null; byId: Ma
   const oppName = d.laneOpp ? byId.get(d.laneOpp.heroId)?.name ?? "враг" : null;
   const laneDiff = d.laneOpp && d.nw10 != null && d.laneOpp.nw10 != null ? d.nw10 - d.laneOpp.nw10 : null;
   const cells: { label: string; value: string; cls: string; norm?: string | null }[] = [
-    { label: "KDA", value: `${d.kills}/${d.deaths}/${d.assists}`, cls: tone(d.deaths, b?.overall.deaths, true), norm: b ? `${Math.round(b.overall.kills)}/${Math.round(b.overall.deaths)}/${Math.round(b.overall.assists)}` : null },
+    { label: "Убийств", value: String(d.kills), cls: tone(d.kills, b?.overall.kills), norm: b ? String(Math.round(b.overall.kills)) : null },
+    { label: "Смертей", value: String(d.deaths), cls: tone(d.deaths, b?.overall.deaths, true), norm: b ? String(Math.round(b.overall.deaths)) : null },
+    { label: "Помощи", value: String(d.assists), cls: tone(d.assists, b?.overall.assists), norm: b ? String(Math.round(b.overall.assists)) : null },
     { label: "GPM", value: String(d.gpm), cls: tone(d.gpm, dur ? b!.overall.networth / dur : null), norm: dur ? String(fmtN(b!.overall.networth / dur)) : null },
     { label: "XPM", value: String(d.xpm), cls: tone(d.xpm, dur ? b!.overall.xp / dur : null), norm: dur ? String(fmtN(b!.overall.xp / dur)) : null },
     { label: "Добито", value: String(d.lastHits), cls: tone(d.lastHits, b?.overall.cs), norm: b ? String(fmtN(b.overall.cs)) : null },

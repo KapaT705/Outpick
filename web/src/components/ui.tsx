@@ -21,8 +21,8 @@ export function CardTitle({ children, right, hint }: { children: ReactNode; righ
 export function Hint({ text, align = "left" }: { text: string; align?: "left" | "right" }) {
   return (
     <span className="group/hint relative inline-flex">
-      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] text-muted cursor-help select-none group-hover/hint:border-accent group-hover/hint:text-accent">?</span>
-      <span role="tooltip" className={`pointer-events-none absolute top-full z-50 mt-1.5 hidden w-72 rounded-lg border border-border bg-panel-2 px-3 py-2 text-xs font-normal leading-snug text-foreground shadow-lg group-hover/hint:block ${align === "right" ? "right-0" : "left-0"}`}>{text}</span>
+      <span tabIndex={0} aria-label={text} className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] text-muted cursor-help select-none outline-none group-hover/hint:border-accent group-hover/hint:text-accent focus-visible:border-accent focus-visible:text-accent">?</span>
+      <span role="tooltip" className={`pointer-events-none absolute top-full z-50 mt-1.5 hidden w-72 rounded-lg border border-border bg-panel-2 px-3 py-2 text-xs font-normal leading-snug text-foreground shadow-lg group-hover/hint:block group-focus-within/hint:block ${align === "right" ? "right-0" : "left-0"}`}>{text}</span>
     </span>
   );
 }
