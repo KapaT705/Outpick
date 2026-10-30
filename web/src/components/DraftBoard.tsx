@@ -6,6 +6,7 @@ import type { Attr, Candidate, DraftStage, Hero, LaneOpponent, Pick, PoolOverrid
 import type { RecognizeResult } from "@/components/AppShell";
 import { newTrackState, trackFrame } from "@/lib/draftTrack";
 import { Button, Card, CardTitle, Chip, Status } from "@/components/ui";
+import Crystals from "@/components/Crystals";
 
 // зона банов на экране не нужна: в ранговом All Pick баны заданы заранее списком и в драфте их не видно.
 // Список picks.bans живёт только внутри: туда попадают герои-конфликты (выбраны обеими командами, пропали из слота),
@@ -349,7 +350,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
         <Card tone="accent" className="py-3 text-sm flex flex-wrap items-center gap-3">
           <span><span className="font-semibold">Общий режим.</span> Аккаунт {acct.current.name ?? acct.current.id}{acct.current.source === "gsi" ? " (его сообщила Дота)" : acct.current.source === "steam" ? " (под ним запущен Steam)" : ""} ещё не знаком: советы по мете и контрпикам, но без твоего пула.</span>
           <Button size="sm" variant="primary" onClick={() => loadHistory(acct.current.id!)} disabled={!!loadMsg && !loadMsg.startsWith("ошибка")}>Загрузить историю аккаунта</Button>
-          {loadMsg && <span className="text-xs text-muted">{loadMsg}</span>}
+          {loadMsg && (loadMsg.startsWith("ошибка") || loadMsg === "готово" ? <span className="text-xs text-muted">{loadMsg}</span> : <Crystals size={12} label={loadMsg} />)}
         </Card>
       )}
 
@@ -547,7 +548,7 @@ function LaneCard({ lane, inPool, byId }: { lane: LaneOpponent; inPool: Candidat
 function ResultBlock({ title, hint, items, loading, byId, footer, onTake, lane, featured, canTake }: { title: string; hint?: string; items: Candidate[]; loading: boolean; byId: Map<number, Hero>; footer?: React.ReactNode; onTake: (id: number) => void; lane?: LaneOpponent | null; featured?: boolean; canTake: boolean }) {
   return (
     <Card className="p-3">
-      <CardTitle hint={hint} right={loading ? <span className="text-xs text-muted">считаю…</span> : <span className="text-xs text-muted" title="Оценка шанса победы с героем в этом драфте: винрейт на роли, контрпики, синергии, наигранность и твой винрейт. Нажми на строку, чтобы увидеть, из чего она сложилась.">шанс победы</span>}>{title}</CardTitle>
+      <CardTitle hint={hint} right={loading ? <Crystals size={11} label="считаю" /> : <span className="text-xs text-muted" title="Оценка шанса победы с героем в этом драфте: винрейт на роли, контрпики, синергии, наигранность и твой винрейт. Нажми на строку, чтобы увидеть, из чего она сложилась.">шанс победы</span>}>{title}</CardTitle>
       <div className="flex flex-col gap-2">
         {items.map((c, i) => <Row key={c.heroId} c={c} byId={byId} onTake={canTake ? onTake : undefined} lane={lane} featured={featured && i === 0} />)}
         {items.length === 0 && !loading && <span className="text-sm text-muted">Пока нечего посоветовать: добавь врагов или загрузи историю аккаунта.</span>}

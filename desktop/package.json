@@ -28,7 +28,8 @@
       "preload.js",
       "recognize.js",
       "frames.js",
-      "icon.png"
+      "icon.png",
+      "splash.html"
     ],
     "extraResources": [
       {

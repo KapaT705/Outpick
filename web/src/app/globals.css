@@ -44,3 +44,15 @@ select, input, button, textarea { font: inherit; }
 /* строки советов появляются плавно, чтобы список не дёргался при пересчёте */
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .animate-rise { animation: rise .18s ease-out both; }
+
+/* кристаллы-индикатор (components/Crystals.tsx): потухший серый, горящий янтарный со свечением */
+.crystal-body { fill: #3a3f4a; transition: fill .3s, filter .3s; }
+.crystal-face { fill: #4a505d; transition: fill .3s; }
+.crystal-on .crystal-body { fill: #e0a526; filter: drop-shadow(0 0 4px rgba(224, 165, 38, .8)); }
+.crystal-on .crystal-face { fill: #ffd766; }
+.crystal-charging .crystal-body { animation: crystal-pulse 1s ease-in-out infinite; }
+.crystal-charging .crystal-face { animation: crystal-pulse-face 1s ease-in-out infinite; }
+.crystal-wave .crystal-body { animation: crystal-pulse 1.1s ease-in-out infinite; }
+.crystal-wave .crystal-face { animation: crystal-pulse-face 1.1s ease-in-out infinite; }
+@keyframes crystal-pulse { 0%, 100% { fill: #3a3f4a; filter: none; } 50% { fill: #e0a526; filter: drop-shadow(0 0 4px rgba(224, 165, 38, .8)); } }
+@keyframes crystal-pulse-face { 0%, 100% { fill: #4a505d; } 50% { fill: #ffd766; } }

@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 import type { DebugCapture, LearnedInfo } from "@/components/AppShell";
 import { Card, Chip } from "@/components/ui";
+import Crystals from "@/components/Crystals";
+
+// доля выполнения обновления по сообщению шага (lib/refresh.ts): кристаллы загораются по мере продвижения
+const STEP_PROGRESS: Record<string, number> = { "старт": 0.05, "герои": 0.15, "матчапы": 0.35, "мета мида": 0.55, "роли героев": 0.72, "имя аккаунта": 0.82, "история аккаунта": 0.9, "готово": 1 };
+const stepProgress = (m: string | undefined) => (m && m in STEP_PROGRESS ? STEP_PROGRESS[m] : null);
 
 /** Состояние пункта настроек: зелёный чип, когда настроено. */
 const Check = ({ ok, label }: { ok: boolean; label: string }) => <Chip tone={ok ? "good" : "muted"}>{ok ? "✓" : "○"} {label}</Chip>;
@@ -121,7 +126,7 @@ export default function SettingsForm() {
             <button onClick={() => { if (steamId.trim()) accountAction("add", steamId.trim()); }} disabled={!steamId.trim() || !!ref?.running || !info?.hasToken} title={info?.hasToken ? "" : "Сначала сохрани токен Stratz"} className="rounded-lg border border-border px-3.5 py-2 text-sm hover:border-accent/60 hover:bg-panel-2 disabled:opacity-50 disabled:cursor-not-allowed transition">Добавить и загрузить историю</button>
           </div>
           <span className="text-xs text-muted">Число из ссылки Dotabuff или Stratz, можно и 64-битный. Добавлять заранее не обязательно: когда зайдёшь в Доту с нового аккаунта, пикер сам предложит загрузить его историю.</span>
-          {accMsg && <span className="text-xs text-muted">{accMsg}</span>}
+          {accMsg && (ref?.running ? <Crystals size={12} progress={stepProgress(accMsg)} label={accMsg} /> : <span className="text-xs text-muted">{accMsg}</span>)}
         </div>
         <label className="flex flex-col gap-1">
           <Title>Токен Stratz API <Check ok={!!info?.hasToken} label={info?.hasToken ? `сохранён${info.tokenTail ? ` …${info.tokenTail}` : ""}` : "не задан"} /></Title>
@@ -237,9 +242,9 @@ export default function SettingsForm() {
         <p className="text-xs text-muted">Винрейты и популярность героев по ролям за последние 4 недели у Immortal (5420+ MMR), матчапы и синергии по Divine+Immortal (Stratz не делит их тоньше), плюс пул и личная история текущего аккаунта за год. Обновляется само раз в {ref?.autoEveryDays ?? 7} дней, когда Дота не на стадии пиков; после патча можно нажать вручную. Занимает около минуты.</p>
         <div className="flex items-center gap-3">
           <button onClick={startRefresh} disabled={!!ref?.running} className="rounded-lg border border-border px-3.5 py-2 text-sm hover:border-accent/60 hover:bg-panel-2 disabled:opacity-50 disabled:cursor-not-allowed transition">{ref?.running ? "обновляю…" : "Обновить мету"}</button>
-          <span className="text-xs text-muted">
-            {ref?.running ? ref.message : ref?.error ? `ошибка: ${ref.error}` : ref?.updatedAt ? `обновлено ${new Date(ref.updatedAt * 1000).toLocaleString("ru-RU")}` : "пока используются данные из сборки"}
-          </span>
+          {ref?.running ? <Crystals size={12} progress={stepProgress(ref.message)} label={ref.message} /> : <span className="text-xs text-muted">
+            {ref?.error ? `ошибка: ${ref.error}` : ref?.updatedAt ? `обновлено ${new Date(ref.updatedAt * 1000).toLocaleString("ru-RU")}` : "пока используются данные из сборки"}
+          </span>}
         </div>
       </Card>
       )}

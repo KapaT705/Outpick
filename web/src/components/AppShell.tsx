@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Onboarding from "@/components/Onboarding";
+import Crystals from "@/components/Crystals";
 import { usePathname } from "next/navigation";
 
 type UpdateEvent = { type: "checking" | "available" | "none" | "progress" | "downloaded" | "installing" | "error"; version?: string; current?: string; percent?: number; message?: string };
@@ -66,13 +67,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </>}
             {banner.type === "progress" && <>
               <span>Скачиваю обновление… {banner.percent ?? 0}%</span>
-              <div className="h-1.5 w-48 overflow-hidden rounded bg-panel-2"><div className="h-full bg-accent transition-all" style={{ width: `${banner.percent ?? 0}%` }} /></div>
+              <Crystals size={12} progress={(banner.percent ?? 0) / 100} />
             </>}
             {banner.type === "downloaded" && <>
               <span>Версия <b>{banner.version}</b> скачана. При перезапуске установится сама, без окон установщика, и программа откроется снова.</span>
               <button onClick={() => { window.desktop?.installUpdate(); setUpd({ type: "installing", version: banner.version }); }} className="rounded-md bg-accent px-3 py-1 text-xs font-semibold text-black hover:brightness-110">Перезапустить сейчас</button>
             </>}
-            {banner.type === "installing" && <span>Устанавливаю {banner.version}… программа закроется и откроется сама через несколько секунд.</span>}
+            {banner.type === "installing" && <Crystals size={12} label={`Устанавливаю ${banner.version}… программа закроется и откроется сама через несколько секунд.`} />}
             {banner.type === "error" && <span className="text-bad">Не удалось проверить обновления: {banner.message}</span>}
             <button onClick={() => setDismissed(true)} className="ml-auto text-xs text-muted hover:text-foreground">Скрыть</button>
           </div>

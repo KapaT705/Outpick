@@ -1,4 +1,5 @@
 "use client";
+import Crystals from "@/components/Crystals";
 // Экран первого запуска: три шага (токен Stratz, аккаунт, связь с Дотой) с объяснением, зачем каждый.
 // Показывается, пока настройка не завершена и не пропущена (флаг onboardingDone в настройках этого компьютера).
 import { useEffect, useState } from "react";
@@ -100,13 +101,13 @@ export default function Onboarding() {
             {detected ? (
               <>
                 <p className="text-sm">{detected.source === "gsi" ? "Дота сообщила" : "Steam запущен под"} аккаунт{detected.source === "gsi" ? "" : "ом"} <b>{detected.name ?? detected.id}</b>. Загрузим его историю: пул героев и личные винрейты появятся в пикере.</p>
-                <div className="flex items-center gap-3"><Button variant="primary" onClick={() => loadAccount(detected.id!)} disabled={busy}>{busy ? "загружаю…" : "Загрузить историю"}</Button>{msg && <span className="text-xs text-muted">{msg}</span>}</div>
+                <div className="flex items-center gap-3"><Button variant="primary" onClick={() => loadAccount(detected.id!)} disabled={busy}>{busy ? "загружаю…" : "Загрузить историю"}</Button>{busy ? <Crystals size={12} label={msg ?? undefined} /> : msg && <span className="text-xs text-muted">{msg}</span>}</div>
               </>
             ) : (
               <>
                 <p className="text-sm">Нужен твой Steam ID: число из ссылки на профиль на Dotabuff или Stratz. <Hint text="Например, stratz.com/players/401776935 → 401776935. Можно и 64-битный id из Steam." /> Когда Дота на связи, аккаунт определяется сам, и этот шаг не нужен.</p>
                 <input value={steamId} onChange={(e) => setSteamId(e.target.value)} placeholder="например 401776935" className="rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent" />
-                <div className="flex items-center gap-3"><Button variant="primary" onClick={() => loadAccount(steamId.trim())} disabled={busy || !steamId.trim()}>{busy ? "загружаю…" : "Добавить и загрузить историю"}</Button>{msg && <span className="text-xs text-muted">{msg}</span>}</div>
+                <div className="flex items-center gap-3"><Button variant="primary" onClick={() => loadAccount(steamId.trim())} disabled={busy || !steamId.trim()}>{busy ? "загружаю…" : "Добавить и загрузить историю"}</Button>{busy ? <Crystals size={12} label={msg ?? undefined} /> : msg && <span className="text-xs text-muted">{msg}</span>}</div>
               </>
             )}
             <button onClick={() => setStep(3)} className="self-start text-xs text-muted hover:text-foreground underline">Пока без аккаунта: советы по мете, без моего пула</button>

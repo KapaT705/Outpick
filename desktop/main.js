@@ -129,6 +129,8 @@ async function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: "deny" }; });
   win.webContents.on("will-navigate", (e, url) => { if (!url.startsWith("http://127.0.0.1")) { e.preventDefault(); shell.openExternal(url); } });
   try {
+    // пока поднимается сервер (несколько секунд), окно показывает экран запуска с кристаллами, а не пустоту
+    await win.loadFile(path.join(__dirname, "splash.html")).catch(() => {});
     const url = await startServer();
     await win.loadURL(url);
     if (isDev) {
