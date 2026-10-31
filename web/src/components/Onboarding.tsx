@@ -64,9 +64,10 @@ export default function Onboarding() {
     await pollRefresh();
     setBusy(false); setMsg(null); await reload(); setStep(3);
   };
+  const [dotaDir, setDotaDir] = useState("");
   const installGsi = async () => {
     setBusy(true); setMsg("ставлю…");
-    const r = await fetch("/api/gsi/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }).then((x) => x.json()).catch(() => null);
+    const r = await fetch("/api/gsi/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dotaDir: dotaDir.trim() || undefined }) }).then((x) => x.json()).catch(() => null);
     setBusy(false);
     setMsg(r?.ok ? "Готово. Перезапусти Доту, если она открыта." : r?.error ?? "Дота на этом компьютере не найдена");
     await reload();
@@ -124,7 +125,12 @@ export default function Onboarding() {
             {gsi.installed ? <p className="text-sm text-good">Конфиг уже стоит. Если Дота открыта, перезапусти её один раз.</p> : (
               <div className="flex items-center gap-3"><Button variant="primary" onClick={installGsi} disabled={busy}>{busy ? "ставлю…" : "Установить конфиг в Доту"}</Button>{msg && <span className="text-xs text-muted">{msg}</span>}</div>
             )}
-            {!gsi.installed && !gsi.dotaDirs?.length && <p className="text-xs text-muted">На этом компьютере Дота не найдена: шаг можно пропустить и сделать его на игровом компьютере.</p>}
+            {!gsi.installed && !gsi.dotaDirs?.length && (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-muted">Папку Доты не нашёл сам. Вставь путь к ней: в Steam нажми на Dota 2 правой кнопкой → Управление → Посмотреть локальные файлы, зайди в <code className="text-foreground">game\dota</code> и скопируй путь из адресной строки. Если Дота на другом компьютере, шаг можно пропустить.</p>
+                <input value={dotaDir} onChange={(e) => setDotaDir(e.target.value)} placeholder="например D:\Games\Steam\steamapps\common\dota 2 beta\game\dota" className="w-full rounded-lg border border-border bg-panel-2 px-3 py-2 text-sm outline-none focus:border-accent placeholder:text-muted/60" />
+              </div>
+            )}
             <Button variant="primary" onClick={finish} className="self-start">Готово, открыть пикер</Button>
           </div>
         )}

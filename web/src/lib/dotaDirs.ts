@@ -1,15 +1,34 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 
-/** Ищем папку Доты: стандартные пути Steam плюс библиотеки из libraryfolders.vdf. */
+/** Windows: где установлен Steam, по реестру (SteamPath у пользователя, InstallPath у машины). Там лежит libraryfolders.vdf
+ *  со всеми библиотеками, в том числе на других дисках и в нестандартных папках. */
+function steamRootsFromRegistry(): string[] {
+  const out: string[] = [];
+  const read = (key: string, value: string) => {
+    try {
+      const txt = execFileSync("reg", ["query", key, "/v", value], { encoding: "utf8", windowsHide: true, timeout: 3000 });
+      const m = new RegExp(`${value}\\s+REG_SZ\\s+(.+)`, "i").exec(txt);
+      if (m) out.push(m[1].trim().replace(/\//g, "\\"));
+    } catch {}
+  };
+  read("HKCU\\Software\\Valve\\Steam", "SteamPath");
+  read("HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam", "InstallPath");
+  read("HKLM\\SOFTWARE\\Valve\\Steam", "InstallPath");
+  return out;
+}
+
+/** Ищем папку Доты: Steam из реестра, стандартные пути, все диски, плюс библиотеки из libraryfolders.vdf. */
 export function findDotaDirs(): string[] {
   const roots: string[] = [];
   // DOTA_DIR: папка game/dota вручную (разработка, нестандартная установка)
   if (process.env.DOTA_DIR && fs.existsSync(process.env.DOTA_DIR)) return [process.env.DOTA_DIR];
   if (process.platform === "win32") {
+    roots.push(...steamRootsFromRegistry());
     roots.push("C:\\Program Files (x86)\\Steam", "C:\\Program Files\\Steam");
-    for (const d of ["D", "E", "F", "G"]) roots.push(`${d}:\\Steam`, `${d}:\\SteamLibrary`, `${d}:\\Games\\Steam`);
+    for (const d of "CDEFGHIJKLMNOPQRSTUVWXYZ") roots.push(`${d}:\\Steam`, `${d}:\\SteamLibrary`, `${d}:\\Games\\Steam`, `${d}:\\Games\\SteamLibrary`, `${d}:\\Program Files\\Steam`, `${d}:\\Program Files (x86)\\Steam`);
   } else if (process.platform === "darwin") {
     roots.push(path.join(os.homedir(), "Library/Application Support/Steam"));
   } else {
