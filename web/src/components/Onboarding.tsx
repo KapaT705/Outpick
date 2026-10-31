@@ -26,6 +26,7 @@ export default function Onboarding() {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [dotaDir, setDotaDir] = useState(""); // путь к папке Доты вручную, если не нашлась сама (хуки до условного return)
 
   const reload = () => Promise.all([
     fetch("/api/settings").then((r) => r.json()).then(setS).catch(() => {}),
@@ -64,7 +65,6 @@ export default function Onboarding() {
     await pollRefresh();
     setBusy(false); setMsg(null); await reload(); setStep(3);
   };
-  const [dotaDir, setDotaDir] = useState("");
   const installGsi = async () => {
     setBusy(true); setMsg("ставлю…");
     const r = await fetch("/api/gsi/install", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dotaDir: dotaDir.trim() || undefined }) }).then((x) => x.json()).catch(() => null);
