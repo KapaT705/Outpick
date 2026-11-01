@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DebugCapture, LearnedInfo } from "@/components/AppShell";
-import { Card, Chip, Hint } from "@/components/ui";
+import { Button, Card, Chip, Hint } from "@/components/ui";
+import type { OverlaySettings } from "@/lib/config";
 import Crystals from "@/components/Crystals";
 
 // доля выполнения обновления по сообщению шага (lib/refresh.ts): у шага свой отрезок, счётчик «50/127» двигает внутри него
@@ -34,7 +35,26 @@ export default function SettingsForm() {
   const [rawMsg, setRawMsg] = useState<string | null>(null);
   type Acc = { id: number; name?: string; known: boolean; updatedAt: number | null; isDefault: boolean; anonymous?: boolean };
   type Current = { id: number | null; source: "gsi" | "steam" | "manual" | "none"; known: boolean; name: string | null };
-  const [info, setInfo] = useState<{ steamAccountId: number | null; accounts?: Acc[]; current?: Current; hasToken: boolean; tokenTail: string; hasGithubToken?: boolean; screenCapture?: boolean } | null>(null);
+  const [info, setInfo] = useState<{ steamAccountId: number | null; accounts?: Acc[]; current?: Current; hasToken: boolean; tokenTail: string; hasGithubToken?: boolean; screenCapture?: boolean; overlay?: OverlaySettings } | null>(null);
+  // оверлей поверх Доты: настройки живут в config.json, окно рисует главный процесс (overlayApply перечитывает их)
+  const ov: OverlaySettings = info?.overlay ?? { enabled: true, auto: true, opacity: 0.95, count: 3 };
+  const [ovMsg, setOvMsg] = useState<string | null>(null);
+  const ovTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveOverlay = (p: Partial<OverlaySettings>, delay = 0) => {
+    setInfo((i) => (i ? { ...i, overlay: { ...ov, ...p } } : i));
+    if (ovTimer.current) clearTimeout(ovTimer.current);
+    ovTimer.current = setTimeout(async () => {
+      const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ overlay: p }) }).then((x) => x.json()).catch(() => null);
+      if (r?.overlay) setInfo((i) => (i ? { ...i, overlay: r.overlay } : i));
+      await window.desktop?.overlayApply?.();
+    }, delay);
+  };
+  const overlayNow = async (show: boolean) => {
+    const d = window.desktop;
+    if (!d?.overlayShow || !d.overlayHide) { setOvMsg("работает только в приложении"); return; }
+    const r = await (show ? d.overlayShow() : d.overlayHide());
+    setOvMsg(!show ? "окно скрыто" : r?.visible ? "окно показано, двигай его за верхнюю полоску" : "окно выключено: включи оверлей выше");
+  };
   const [accMsg, setAccMsg] = useState<string | null>(null);
   const [dev, setDev] = useState<{ canRebuild: boolean; source: string | null } | null>(null);
   const [devMsg, setDevMsg] = useState<string | null>(null);
@@ -188,6 +208,39 @@ export default function SettingsForm() {
             <p className="text-xs text-muted">Зелёная рамка: герой распознан. Серая: слот пуст. Красная: что-то есть, но уверенности мало (например, твой слот со значком уровня). Если рамки не попадают на портреты, пришли этот снимок, и геометрию подстроят под твой экран.</p>
           </div>
         )}
+      </Card>
+      )}
+
+      {tab === "screen" && (
+      <Card className="flex flex-col gap-3 text-sm">
+        <Title hint="Маленькое окно поверх Доты с лучшими пиками для тех, у кого один монитор. Появляется само на стадии пиков и прячется, когда игра началась. Окно двигается за верхнюю полоску и растягивается, положение запоминается.">Оверлей поверх Доты <Check ok={ov.enabled} label={ov.enabled ? "включён" : "выключен"} /></Title>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={ov.enabled} onChange={(e) => saveOverlay({ enabled: e.target.checked })} className="accent-accent" />
+          <span>Показывать оверлей</span>
+        </label>
+        <label className={`flex items-center gap-2 cursor-pointer ${ov.enabled ? "" : "opacity-50"}`}>
+          <input type="checkbox" checked={ov.auto} disabled={!ov.enabled} onChange={(e) => saveOverlay({ auto: e.target.checked })} className="accent-accent" />
+          <span>Появляется сам на стадии пиков и прячется с началом игры</span>
+        </label>
+        <div className={`flex flex-wrap items-center gap-x-6 gap-y-2 ${ov.enabled ? "" : "opacity-50"}`}>
+          <label className="flex items-center gap-2">
+            <span className="text-muted">Прозрачность</span>
+            <input type="range" min={40} max={100} value={Math.round(ov.opacity * 100)} disabled={!ov.enabled} onChange={(e) => saveOverlay({ opacity: Number(e.target.value) / 100 }, 300)} className="w-32 accent-accent" />
+            <span className="w-10 tabular-nums text-xs text-muted">{Math.round(ov.opacity * 100)}%</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-muted">Героев в списке</span>
+            <div className="flex rounded-lg border border-border overflow-hidden">
+              {([3, 5] as const).map((n) => <button key={n} disabled={!ov.enabled} onClick={() => saveOverlay({ count: n })} className={`px-3 py-1 text-xs ${ov.count === n ? "bg-panel-2 text-foreground" : "text-muted hover:text-foreground"}`}>{n}</button>)}
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => overlayNow(true)} disabled={!ov.enabled}>Показать сейчас</Button>
+          <Button onClick={() => overlayNow(false)} disabled={!ov.enabled}>Скрыть</Button>
+          {ovMsg && <span className="text-xs text-muted">{ovMsg}</span>}
+        </div>
+        <p className="text-xs text-muted leading-relaxed">Горячая клавиша Ctrl+Shift+O (на маке Cmd+Shift+O) показывает и прячет окно. В полноэкранной Доте окно видно, если в Windows включена «оптимизация во весь экран» (обычно включена). Надёжнее всего режим «окно без рамки» в настройках Доты: по скорости он такой же.</p>
       </Card>
       )}
 

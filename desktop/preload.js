@@ -116,4 +116,10 @@ contextBridge.exposeInMainWorld("desktop", {
   devInfo: () => ipcRenderer.invoke("dev:info"),
   rebuildFromSource: () => ipcRenderer.invoke("dev:rebuild"),
   onUpdate: (cb) => { const h = (_e, data) => cb(data); ipcRenderer.on("update:event", h); return () => ipcRenderer.removeListener("update:event", h); },
+  // оверлей поверх Доты: пикер отдаёт данные, главный процесс решает, когда показать, окно оверлея слушает
+  overlayPush: (data) => ipcRenderer.send("overlay:push", data),
+  overlayShow: () => ipcRenderer.invoke("overlay:show"),
+  overlayHide: () => ipcRenderer.invoke("overlay:hide"),
+  overlayApply: () => ipcRenderer.invoke("overlay:apply"),
+  onOverlayData: (cb) => { const h = (_e, data) => cb(data); ipcRenderer.on("overlay:data", h); return () => ipcRenderer.removeListener("overlay:data", h); },
 });

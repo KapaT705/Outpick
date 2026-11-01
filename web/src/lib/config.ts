@@ -12,7 +12,14 @@ export type AppConfig = {
   githubToken?: string;
   screenCapture?: boolean;
   onboardingDone?: boolean; // экран первого запуска пройден или пропущен
+  overlay?: OverlaySettings; // окно поверх Доты с лучшими пиками (показывает desktop/main.js)
 };
+/** Оверлей: включён ли, появляется ли сам на стадии пиков, прозрачность 0.4-1, сколько героев (3 или 5). */
+export type OverlaySettings = { enabled: boolean; auto: boolean; opacity: number; count: 3 | 5 };
+export function normalizeOverlay(o: Partial<OverlaySettings> | undefined): OverlaySettings {
+  const op = Number(o?.opacity);
+  return { enabled: o?.enabled !== false, auto: o?.auto !== false, opacity: Number.isFinite(op) ? Math.min(1, Math.max(0.4, op)) : 0.95, count: o?.count === 5 ? 5 : 3 };
+}
 
 const FILE = path.join(USER_DIR, "config.json");
 
@@ -31,6 +38,7 @@ export function readConfig(): AppConfig {
     githubToken: c.githubToken || "",
     screenCapture: c.screenCapture !== false, // по умолчанию включено
     onboardingDone: c.onboardingDone === true,
+    overlay: normalizeOverlay(c.overlay),
   };
 }
 

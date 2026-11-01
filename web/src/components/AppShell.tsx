@@ -11,7 +11,7 @@ export type RecognizeCtx = { matchId?: string | null; team?: "radiant" | "dire" 
 export type LearnResult = { ok: boolean; error?: string; checked?: number; added?: number; total?: number; notes?: string[] };
 export type LearnedInfo = { total: number; heroes: { heroId: number; n: number }[]; sessions: string[] };
 export type RecognizeResult = { ok: boolean; error?: string; idle?: boolean; source?: string; w?: number; h?: number; ms?: number; onPickScreen?: boolean; slots?: RecognizedSlot[] };
-type Desktop = { version: () => Promise<string>; checkForUpdates: () => Promise<{ ok: boolean; reason?: string }>; downloadUpdate: () => Promise<unknown>; installUpdate: () => Promise<unknown>; onUpdate: (cb: (e: UpdateEvent) => void) => () => void; recognizeDraft?: (ctx?: RecognizeCtx) => Promise<RecognizeResult>; markMatch?: (matchId: string) => Promise<{ ok: boolean }>; learn?: () => Promise<LearnResult>; learnedInfo?: () => Promise<LearnedInfo>; captureSources?: () => Promise<{ id: string; name: string }[]>; debugCapture?: () => Promise<DebugCapture>; saveDiagnostics?: () => Promise<{ ok: boolean; file?: string; frames?: number; error?: string }>; devInfo?: () => Promise<{ canRebuild: boolean; source: string | null }>; rebuildFromSource?: () => Promise<{ ok: boolean; reason?: string }> };
+type Desktop = { version: () => Promise<string>; checkForUpdates: () => Promise<{ ok: boolean; reason?: string }>; downloadUpdate: () => Promise<unknown>; installUpdate: () => Promise<unknown>; onUpdate: (cb: (e: UpdateEvent) => void) => () => void; recognizeDraft?: (ctx?: RecognizeCtx) => Promise<RecognizeResult>; markMatch?: (matchId: string) => Promise<{ ok: boolean }>; learn?: () => Promise<LearnResult>; learnedInfo?: () => Promise<LearnedInfo>; captureSources?: () => Promise<{ id: string; name: string }[]>; debugCapture?: () => Promise<DebugCapture>; saveDiagnostics?: () => Promise<{ ok: boolean; file?: string; frames?: number; error?: string }>; devInfo?: () => Promise<{ canRebuild: boolean; source: string | null }>; rebuildFromSource?: () => Promise<{ ok: boolean; reason?: string }>; overlayPush?: (data: unknown) => void; overlayShow?: () => Promise<{ ok: boolean; visible?: boolean }>; overlayHide?: () => Promise<{ ok: boolean; visible?: boolean }>; overlayApply?: () => Promise<{ ok: boolean; visible?: boolean }>; onOverlayData?: (cb: (d: import("@/components/OverlayView").OverlayData) => void) => () => void; };
 export type DebugCapture = { ok: boolean; error?: string; source?: string; w?: number; h?: number; stripH?: number; scale?: number; image?: string; slots?: (RecognizedSlot & { x: number; y: number; w: number; h: number })[]; sources?: string[]; dotaRunning?: boolean };
 declare global { interface Window { desktop?: Desktop } }
 
@@ -40,6 +40,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   const banner = upd && !dismissed && (upd.type === "available" || upd.type === "progress" || upd.type === "downloaded" || upd.type === "installing" || upd.type === "error") ? upd : null;
+
+  // окно оверлея: без шапки, плашек и экрана первого запуска
+  if (path.startsWith("/overlay")) return <>{children}<Tooltips /></>;
 
   return (
     <div className="min-h-full flex flex-col">

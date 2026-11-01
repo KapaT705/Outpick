@@ -20,6 +20,7 @@ const ZONES: { key: UserZone; label: string; color: string; max: number; hint: s
 
 // иконки с CDN Valve: у Stratz alchemist_icon.png оказался копией dragon_knight_icon.png
 const icon = (short: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${short}.png`;
+const DRAFT_PHASES = ["DOTA_GAMERULES_STATE_HERO_SELECTION", "DOTA_GAMERULES_STATE_STRATEGY_TIME"];
 const portrait = (short: string) => `https://cdn.stratz.com/images/dota2/heroes/${short}_horz.png`;
 // роли везде цифрами, как в игре: 1 керри, 2 мид, 3 офлейн, 4 и 5 саппорты (полные названия в подсказках)
 const ROLE_LABEL: Record<Role, string> = { 1: "1", 2: "2", 3: "3", 4: "4", 5: "5" };
@@ -169,6 +170,25 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
     const rank = (h: Hero) => (poolSet.has(h.id) ? 0 : familiarSet.has(h.id) ? 1 : 2);
     return heroes.filter((h) => (q ? h.name.toLowerCase().includes(q) || h.short.includes(q) : h.attr === attr)).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
   }, [heroes, query, attr, poolSet, familiarSet]);
+
+  // оверлей поверх Доты: главный процесс показывает его на стадии пиков и рисует то, что отдано отсюда
+  useEffect(() => {
+    const push = window.desktop?.overlayPush;
+    if (!push) return;
+    const active = gsi?.connected ? DRAFT_PHASES.includes(gsi.phase) : picks.enemies.length + picks.allies.length > 0;
+    const pack = (c: Candidate) => ({
+      heroId: c.heroId, name: c.name, short: c.short, score: Math.round(c.finalScore), pool: c.poolStatus,
+      me: c.poolStatus === "pool" && c.midGames > 0 ? `${c.midWins}-${c.midGames - c.midWins}` : null,
+      why: c.reasons.slice(0, 2).map((r) => `${signed(r.value)} ${r.kind === "vs" ? "против" : "с"} ${r.name}`),
+    });
+    push({
+      active, gsi: !!gsi?.connected, role, stage, own: gsi?.ownHeroId ?? null,
+      lane: laneOpp ? { name: laneOpp.name, short: laneOpp.short, prob: Math.round(laneOpp.prob * 100) } : null,
+      pool: result.filter((c) => c.poolStatus === "pool").slice(0, 5).map(pack),
+      outside: result.filter((c) => c.poolStatus !== "pool").slice(0, 3).map(pack),
+      enemies: picks.enemies.length, allies: picks.allies.length, at: Date.now(),
+    });
+  }, [result, laneOpp, stage, gsi?.connected, gsi?.phase, gsi?.ownHeroId, picks, role]);
 
   useEffect(() => {
     const ctrl = new AbortController();

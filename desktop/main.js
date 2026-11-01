@@ -1,4 +1,4 @@
-const { app, BrowserWindow, utilityProcess, shell, Menu, ipcMain, desktopCapturer, screen } = require("electron");
+const { app, BrowserWindow, utilityProcess, shell, Menu, ipcMain, desktopCapturer, screen, globalShortcut } = require("electron");
 const recog = require("./recognize.js");
 const frames = require("./frames.js");
 const os = require("node:os");
@@ -232,6 +232,80 @@ function setupUpdater() {
 // портативная сборка: обновление через установщик поставило бы вторую копию программы, поэтому только подсказка
 const isPortable = !!process.env.PORTABLE_EXECUTABLE_DIR;
 
+// --- оверлей: маленькое окно поверх Доты с лучшими пиками для тех, у кого один монитор ---
+// Пикер в главном окне после каждой оценки шлёт сюда сводку (overlay:push), главный процесс решает, показывать ли окно:
+// включено в настройках, и либо идёт стадия пиков (авто), либо окно вызвали руками (клавиша, кнопка в настройках).
+// В полноэкранной Доте окно видно, когда у Windows включена «оптимизация во весь экран»; в окне без рамки всегда.
+let overlayWin = null;
+const overlayState = { draftActive: false, manual: null, data: null }; // manual: null авто, true показать, false скрыть
+const OVERLAY_HOTKEY = "CommandOrControl+Shift+O";
+function overlaySettings() {
+  const c = readUserConfig().overlay ?? {};
+  const op = Number(c.opacity);
+  return { enabled: c.enabled !== false, auto: c.auto !== false, opacity: Number.isFinite(op) ? Math.min(1, Math.max(0.4, op)) : 0.95, count: c.count === 5 ? 5 : 3 };
+}
+const overlayBoundsFile = () => path.join(app.getPath("userData"), "overlay.json");
+function createOverlay() {
+  if (overlayWin && !overlayWin.isDestroyed()) return overlayWin;
+  let b = {}; try { b = JSON.parse(fs.readFileSync(overlayBoundsFile(), "utf8")); } catch {}
+  const area = screen.getPrimaryDisplay().workArea;
+  const width = b.width ?? 340, height = b.height ?? 420;
+  overlayWin = new BrowserWindow({
+    width, height, minWidth: 240, minHeight: 160,
+    x: b.x ?? area.x + area.width - width - 24, y: b.y ?? area.y + Math.round(area.height * 0.28),
+    frame: false, alwaysOnTop: true, skipTaskbar: true, resizable: true, minimizable: false, maximizable: false, fullscreenable: false,
+    show: false, backgroundColor: "#121014", title: "Outpick",
+    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, backgroundThrottling: false },
+  });
+  overlayWin.setAlwaysOnTop(true, "screen-saver");
+  overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  overlayWin.setMenuBarVisibility(false);
+  overlayWin.loadURL(`http://127.0.0.1:${serverPort}/overlay`);
+  const saveBounds = () => { try { fs.writeFileSync(overlayBoundsFile(), JSON.stringify(overlayWin.getBounds())); } catch {} };
+  overlayWin.on("moved", saveBounds); overlayWin.on("resized", saveBounds);
+  overlayWin.on("closed", () => { overlayWin = null; });
+  overlayWin.webContents.on("did-finish-load", () => sendOverlayData());
+  overlayWin.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  return overlayWin;
+}
+function sendOverlayData() {
+  if (!overlayWin || overlayWin.isDestroyed() || !overlayState.data) return;
+  try { overlayWin.webContents.send("overlay:data", { ...overlayState.data, count: overlaySettings().count }); } catch {}
+}
+function overlayWanted() {
+  const s = overlaySettings();
+  if (!s.enabled) return false;
+  if (overlayState.manual != null) return overlayState.manual;
+  return s.auto && overlayState.draftActive;
+}
+function applyOverlay() {
+  const visible = overlayWin && !overlayWin.isDestroyed() && overlayWin.isVisible();
+  if (overlayWanted()) {
+    const w = createOverlay();
+    w.setOpacity(overlaySettings().opacity);
+    if (!visible) w.showInactive(); // без фокуса: Дота не должна сворачиваться
+  } else if (visible) overlayWin.hide();
+  return !!(overlayWin && !overlayWin.isDestroyed() && overlayWin.isVisible());
+}
+ipcMain.on("overlay:push", (_e, data) => {
+  if (!data || typeof data !== "object") return;
+  const was = overlayState.draftActive;
+  overlayState.data = data;
+  // без связи с Дотой «драфт идёт» значит лишь, что в зонах есть герои: тогда ещё и Дота должна быть запущена
+  overlayState.draftActive = !!data.active && (!!data.gsi || dotaCheck.running);
+  if (overlayState.draftActive !== was) overlayState.manual = null; // новый драфт или его конец снимают ручной режим
+  applyOverlay();
+  sendOverlayData();
+});
+ipcMain.handle("overlay:show", () => { overlayState.manual = true; return { ok: true, visible: applyOverlay() }; });
+ipcMain.handle("overlay:hide", () => { overlayState.manual = false; return { ok: true, visible: applyOverlay() }; });
+ipcMain.handle("overlay:apply", () => { const visible = applyOverlay(); sendOverlayData(); return { ok: true, visible }; });
+function toggleOverlay() {
+  const visible = overlayWin && !overlayWin.isDestroyed() && overlayWin.isVisible();
+  overlayState.manual = !visible;
+  applyOverlay();
+}
+
 // --- распознавание экрана пиков ---
 let templatesLoaded = false;
 function ensureTemplates() {
@@ -425,6 +499,7 @@ app.whenReady().then(() => {
   }
   setupUpdater();
   createWindow();
+  if (!globalShortcut.register(OVERLAY_HOTKEY, toggleOverlay)) console.warn(`[overlay] горячая клавиша ${OVERLAY_HOTKEY} занята другой программой`);
   // доучиваем портреты по матчам, результаты которых подтянулись: при старте и каждые 5 минут, если разметка обновилась
   // (результаты сервер подтягивает сам по таймеру, см. web/src/lib/sync.ts)
   let labelsSeen = 0;
@@ -444,4 +519,5 @@ app.whenReady().then(() => {
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 app.on("before-quit", () => { flushLog(); serverProc?.kill(); });
+app.on("will-quit", () => { try { globalShortcut.unregisterAll(); } catch {} });
 }
