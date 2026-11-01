@@ -45,7 +45,7 @@ export type MatchReport = {
 };
 
 export type Zone = "mid" | "top" | "bot" | "river" | "jungle" | "base";
-export const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.abs(t) % 60).padStart(2, "0")}`;
+export const mmss = (t: number) => { const s = Math.abs(Math.round(t)); return `${t < 0 ? "-" : ""}${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 export function plural(n: number, one: string, few: string, many: string) {
   const m10 = n % 10, m100 = n % 100;
   if (m10 === 1 && m100 !== 11) return one;
@@ -85,7 +85,8 @@ export function laneOpponent(m: MatchData, p: MPlayer): MPlayer | null {
   if (!mirror) return null;
   const same = enemies.filter((x) => x.lane === mirror);
   const core = p.position == null || p.position <= 3;
-  return same.find((x) => (core ? (x.position ?? 9) <= 3 : (x.position ?? 0) >= 4)) ?? same[0] ?? null;
+  // кор сравнивается только с кором, саппорт с саппортом: иначе керри «выигрывал линию» у вражеского саппорта по фарму
+  return same.find((x) => (core ? (x.position ?? 9) <= 3 : (x.position ?? 0) >= 4)) ?? null;
 }
 
 function laneOutcome(m: MatchData, p: MPlayer): LaneOutcome {
@@ -134,6 +135,7 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     const pickoff = ownLosses === 1 && enemyLosses === 0; // поймали одного, в ответ никого
     const k = H(all[0]);
     const who = all.length === 0 ? `Умер от крипов, вышки или нейтралов ${where.text}.`
+      : !killer ? `Умер от вышки или крипов ${where.text}, рядом ${list(all)}.`
       : all.length === 1 ? `${k.name}${pickoff ? " соло" : ""} ${v(k, "убил", "убила")} тебя ${where.text}.`
       : all.length === 2 ? `${list(all)} ${pickoff ? "поймали" : "убили"} тебя ${where.text}.`
       : pickoff ? `Ганг ${together(all.length)} ${where.text}: ${list(all)}.`
@@ -220,7 +222,7 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     const top = [...byKiller].sort((a, b) => b[1] - a[1])[0];
     const label = worst.w.label[0].toUpperCase() + worst.w.label.slice(1);
     const tk = top ? H(top[0]) : null;
-    summary.push(`${label} ${worst.w.mine} ${plural(worst.w.mine, "смерть", "смерти", "смертей")} при норме ${worst.w.norm}${tk && top[1] >= 2 && top[1] * 2 >= inW.length ? `, из них ${times(top[1])} ${v(tk, "убил", "убила")} ${tk.name}` : ""}.`);
+    summary.push(`${label} ${worst.w.mine} ${plural(worst.w.mine, "смерть", "смерти", "смертей")} при норме ${worst.w.norm}${tk && top[1] >= 2 && top[1] * 2 >= inW.length ? `, ${times(top[1])} от ${tk.name}` : ""}.`);
   } else if (windows.some((w) => w.norm != null)) summary.push("Заметно больше нормы не умирал ни на одном отрезке игры.");
   const r10 = rows.find((r) => r.minute === 10);
   if (isSup) {
@@ -342,7 +344,7 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
   const strengths: { score: number; label: string; text: string }[] = [];
   const mins = dur / 60;
   const teamKills = enemies.reduce((n, p) => n + p.deathsAt.length, 0);
-  const kp = teamKills ? (me.kills + me.assists) / teamKills : 0;
+  const kp = teamKills ? Math.min(1, (me.kills + me.assists) / teamKills) : 0;
   if (teamKills >= 10 && kp >= 0.6) strengths.push({ score: kp * 1.6, label: "участие в драках", text: `Участие в ${Math.round(kp * 100)}% убийств команды: ты был почти в каждой драке.` });
   if (bench?.avgDuration) {
     const per = (v: number) => v / bench.avgDuration;

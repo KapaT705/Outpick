@@ -2,7 +2,7 @@
 import Crystals from "@/components/Crystals";
 // Экран первого запуска: три шага (токен Stratz, аккаунт, связь с Дотой) с объяснением, зачем каждый.
 // Показывается, пока настройка не завершена и не пропущена (флаг onboardingDone в настройках этого компьютера).
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Hint } from "@/components/ui";
 
 type Settings = { hasToken: boolean; accounts?: { id: number; name?: string; known: boolean }[]; current?: { id: number | null; source: string; known: boolean; name: string | null }; onboardingDone?: boolean };
@@ -21,6 +21,9 @@ export default function Onboarding() {
   const [s, setS] = useState<Settings | null>(null);
   const [gsi, setGsi] = useState<Gsi | null>(null);
   const [step, setStep] = useState(1);
+  const cardRef = useRef<HTMLDivElement>(null);
+  // фокус на первое поле шага: пикер под экраном ставит фокус в свой поиск, и набор токена уходил туда
+  useEffect(() => { const t = setTimeout(() => (cardRef.current?.querySelector<HTMLElement>("input:not([disabled])") ?? cardRef.current?.querySelector<HTMLElement>("button:not([disabled])"))?.focus({ preventScroll: true }), 60); return () => clearTimeout(t); }, [step]);
   const [token, setToken] = useState("");
   const [steamId, setSteamId] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
@@ -78,8 +81,8 @@ export default function Onboarding() {
   const detected = s.current?.id && (s.current.source === "steam" || s.current.source === "gsi") ? s.current : null;
 
   return (
-    <div className="fixed inset-0 z-40 bg-background/95 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4 pt-16">
-      <div className="w-full max-w-xl rounded-2xl border border-border bg-panel p-6 flex flex-col gap-5">
+    <div data-onboarding className="fixed inset-0 z-40 bg-background/95 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4 pt-16">
+      <div ref={cardRef} className="w-full max-w-xl rounded-2xl border border-border bg-panel p-6 flex flex-col gap-5">
         <div>
           <h1 className="text-2xl font-semibold">Добро пожаловать</h1>
           <p className="text-sm text-muted mt-1">Три коротких шага, делается один раз. Любой можно пропустить и вернуться к нему в настройках.</p>

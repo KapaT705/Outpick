@@ -20,8 +20,18 @@ function steamRootsFromRegistry(): string[] {
   return out;
 }
 
-/** Ищем папку Доты: Steam из реестра, стандартные пути, все диски, плюс библиотеки из libraryfolders.vdf. */
+let cached: { at: number; dirs: string[] } | null = null;
+export function invalidateDotaDirs() { cached = null; }
+
+/** Ищем папку Доты: Steam из реестра, стандартные пути, все диски, плюс библиотеки из libraryfolders.vdf.
+ *  Результат держится 5 минут: поиск ходит в реестр и перебирает диски, а нужен он при каждой оценке драфта. */
 export function findDotaDirs(): string[] {
+  if (cached && Date.now() - cached.at < 5 * 60_000) return cached.dirs;
+  const dirs = findDotaDirsNow();
+  cached = { at: Date.now(), dirs };
+  return dirs;
+}
+function findDotaDirsNow(): string[] {
   const roots: string[] = [];
   // DOTA_DIR: папка game/dota вручную (разработка, нестандартная установка)
   if (process.env.DOTA_DIR && fs.existsSync(process.env.DOTA_DIR)) return [process.env.DOTA_DIR];

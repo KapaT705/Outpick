@@ -16,6 +16,7 @@ export type MatchDetails = {
 
 const STRATZ = (token: string, query: string) => fetch("https://api.stratz.com/graphql", {
   method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query }),
+  signal: AbortSignal.timeout(30_000),
 }).then((r) => r.json());
 
 const LANE: Record<string, MatchDetails["lane"]> = { SAFE_LANE: "safe", MID_LANE: "mid", OFF_LANE: "off", JUNGLE: "jungle", ROAMING: null };
@@ -54,13 +55,27 @@ export async function openDotaDetails(id: string | number, me: number, heroId: n
     const ps = d.players ?? [];
     const p = ps.find((x) => x.account_id === me) ?? ps.find((x) => x.hero_id === heroId);
     if (!p) return null;
-    const laneOf = (x: P): MatchDetails["lane"] => (x.lane === 1 ? "safe" : x.lane === 2 ? "mid" : x.lane === 3 ? "off" : x.lane ? "jungle" : null);
-    const lane = laneOf(p);
+    // lane_role у OpenDota: 1 лёгкая, 2 мид, 3 сложная, 4 лес. Запасной lane - физическая линия (1 низ, 2 мид, 3 верх):
+    // у Света низ лёгкая, у Тьмы верх лёгкая
     const rad = (x: P) => x.player_slot < 128;
+    const laneOf = (x: P): MatchDetails["lane"] => {
+      const lr = x.lane_role ?? (x.lane == null ? null : x.lane === 2 ? 2 : (x.lane === 1) === rad(x) ? 1 : 3);
+      return lr === 1 ? "safe" : lr === 2 ? "mid" : lr === 3 ? "off" : lr ? "jungle" : null;
+    };
+    const lane = laneOf(p);
+    // позиция: мид 2; на лёгкой и сложной кор тот, кто больше добил, остальные саппорты
+    const posOf = (x: P): number | null => {
+      const l = laneOf(x);
+      if (l === "mid") return 2;
+      if (l !== "safe" && l !== "off") return null;
+      const mates = ps.filter((y) => rad(y) === rad(x) && laneOf(y) === l).sort((a, b) => (b.last_hits ?? 0) - (a.last_hits ?? 0));
+      const core = mates[0] === x;
+      return l === "safe" ? (core ? 1 : 5) : core ? 3 : 4;
+    };
     const opp = lane ? ps.find((x) => rad(x) !== rad(p) && laneOf(x) === lane) : undefined;
     return {
       kills: p.kills, deaths: p.deaths, assists: p.assists, gpm: p.gold_per_min, xpm: p.xp_per_min, lastHits: p.last_hits, denies: p.denies, level: p.level,
-      heroDamage: p.hero_damage, towerDamage: p.tower_damage, lane, position: lane === "mid" ? 2 : p.lane_role === 1 && lane === "safe" ? 1 : p.lane_role === 1 && lane === "off" ? 3 : null,
+      heroDamage: p.hero_damage, towerDamage: p.tower_damage, lane, position: posOf(p),
       lh10: p.lh_t?.[10] ?? null, nw10: p.gold_t?.[10] ?? null, deaths10: p.deaths_log ? p.deaths_log.filter((x) => x.time <= 600).length : null,
       laneOpp: opp ? { heroId: opp.hero_id, nw10: opp.gold_t?.[10] ?? null, lh10: opp.lh_t?.[10] ?? null } : null,
       source: "opendota",

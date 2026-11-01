@@ -41,7 +41,9 @@ function migrateUserData() {
     for (const name of fs.readdirSync(old)) {
       const from = path.join(old, name), to = path.join(cur, name);
       if (fs.existsSync(to)) continue;
-      try { fs.renameSync(from, to); } catch { fs.cpSync(from, to, { recursive: true }); }
+      try { fs.renameSync(from, to); } catch {
+        try { fs.cpSync(from, to, { recursive: true }); } catch (e) { console.warn(`[app] не перенёс ${name}: ${e?.message ?? e}`); }
+      }
     }
     console.log(`[app] данные перенесены из «${old}» в «${cur}»`);
   } catch (e) { console.warn("[app] перенос данных не удался:", e?.message ?? e); }
@@ -80,17 +82,23 @@ function freePort(preferred = 0) {
   });
 }
 
-function waitFor(url, tries = 100) {
+// до 60 с: на Windows первый запуск после обновления бывает медленным (антивирус читает свежие файлы)
+function waitFor(url, tries = 300) {
   return new Promise((resolve, reject) => {
+    let dead = null;
+    serverProc?.once("exit", (code) => { dead = new Error(`сервер завершился с кодом ${code}`); });
     const attempt = (n) => {
+      if (dead) return reject(dead);
       fetch(url).then((r) => (r.ok ? resolve() : retry(n))).catch(() => retry(n));
     };
-    const retry = (n) => (n <= 0 ? reject(new Error("server did not start")) : setTimeout(() => attempt(n - 1), 200));
+    const retry = (n) => (n <= 0 ? reject(new Error("сервер не ответил за минуту")) : setTimeout(() => attempt(n - 1), 200));
     attempt(tries);
   });
 }
 
 async function startServer() {
+  // окно закрыли и открыли снова (мак): сервер жив, второй не нужен
+  if (serverProc && serverPort) return `http://127.0.0.1:${serverPort}`;
   const port = await freePort(PREFERRED_PORT);
   if (port !== PREFERRED_PORT) console.warn(`[app] порт ${PREFERRED_PORT} занят, использую ${port}: GSI из Доты не будет приходить`);
   const resources = isDev ? path.join(__dirname) : process.resourcesPath;
@@ -109,6 +117,7 @@ async function startServer() {
   });
   serverProc.stdout?.on("data", (d) => { logLine("next", [String(d).trim()]); process.stdout.write(`[next] ${d}`); });
   serverProc.stderr?.on("data", (d) => { logLine("next-err", [String(d).trim()]); process.stderr.write(`[next] ${d}`); });
+  serverProc.once("exit", (code) => { console.error(`[app] сервер завершился (код ${code})`); serverProc = null; serverPort = 0; });
   serverPort = port;
   const url = `http://127.0.0.1:${port}`;
   await waitFor(url);
@@ -133,6 +142,8 @@ async function createWindow() {
     await win.loadFile(path.join(__dirname, "splash.html")).catch(() => {});
     const url = await startServer();
     await win.loadURL(url);
+    // тихая проверка обновлений только когда страница уже слушает события: раньше результат уходил в экран запуска и терялся
+    if (!isDev && !isPortable && configureFeed()) setTimeout(() => { updateStage = "quiet"; autoUpdater.checkForUpdates().catch(() => {}); }, 3000);
     if (isDev) {
       win.webContents.executeJavaScript("typeof window.desktop + ':' + Object.keys(window.desktop||{}).join(',')").then((v) => console.log(`[app] bridge: ${v}`)).catch((e) => console.log(`[app] bridge error: ${e}`));
       win.webContents.executeJavaScript("window.desktop.recognizeDraft()").then((v) => console.log(`[app] recognize: ${JSON.stringify(v).slice(0, 400)}`)).catch((e) => console.log(`[app] recognize error: ${e}`));
@@ -152,7 +163,8 @@ async function createWindow() {
       if (process.env.DIAG_TEST) setTimeout(() => win.webContents.executeJavaScript("window.desktop.saveDiagnostics()").then((v) => console.log(`[app] diag: ${JSON.stringify(v)}`)).catch((e) => console.log(`[app] diag error: ${e}`)), 3000);
     }
   } catch (err) {
-    await win.loadURL(`data:text/html;charset=utf-8,<body style="font-family:sans-serif;background:#121014;color:#eee;padding:24px"><h2>Не удалось запустить сервер</h2><pre>${String(err.message)}</pre></body>`);
+    const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+    await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<body style="font-family:sans-serif;background:#121014;color:#eee;padding:24px"><h2>Не удалось запустить сервер</h2><p>${esc(err.message)}</p><p style="color:#958e9e">Закрой программу и открой снова. Если повторится, сохрани диагностику из настроек.</p></body>`)}`);
   }
 }
 
@@ -208,6 +220,7 @@ function setupUpdater() {
   });
   ipcMain.handle("update:check", async () => {
     if (isDev) return { ok: false, reason: "dev" };
+    if (isPortable) return { ok: false, reason: "портативная версия не обновляется сама: скачай новую с GitHub" };
     configureFeed();
     updateStage = "check";
     try { await autoUpdater.checkForUpdates(); return { ok: true }; } catch (e) { return { ok: false, reason: updateErrorText(e, "check") }; }
@@ -215,9 +228,9 @@ function setupUpdater() {
   ipcMain.handle("update:download", async () => { updateStage = "download"; try { await autoUpdater.downloadUpdate(); return { ok: true }; } catch (e) { return { ok: false, reason: updateErrorText(e, "download") }; } });
   // тихая установка (NSIS /S) и автозапуск после неё: без мастера «Далее → Готово», окно программы просто возвращается
   ipcMain.handle("update:install", () => { setTimeout(() => autoUpdater.quitAndInstall(true, true), 300); return { ok: true }; });
-  // тихая проверка при старте
-  if (!isDev && configureFeed()) setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 4000);
 }
+// портативная сборка: обновление через установщик поставило бы вторую копию программы, поэтому только подсказка
+const isPortable = !!process.env.PORTABLE_EXECUTABLE_DIR;
 
 // --- распознавание экрана пиков ---
 let templatesLoaded = false;
@@ -344,7 +357,7 @@ ipcMain.handle("diag:save", async (_e, f) => {
   try {
     const zip = new AdmZip();
     const displays = screen.getAllDisplays().map((d) => ({ id: d.id, size: d.size, scaleFactor: d.scaleFactor, bounds: d.bounds, primary: d.id === screen.getPrimaryDisplay().id }));
-    const settings = await serverJson("/api/settings");
+    const settings = { ...(await serverJson("/api/settings")), tokenTail: undefined };
     const info = { app: app.getVersion(), electron: process.versions.electron, node: process.versions.node, platform: process.platform, arch: process.arch, os: `${os.type()} ${os.release()}`, cpu: os.cpus()?.[0]?.model, memGb: Math.round(os.totalmem() / 1e9), displays, serverPort, savedAt: new Date().toISOString(), settings, memory: process.memoryUsage(), dotaRunning: await dotaRunning(), uptimeMin: Math.round(process.uptime() / 60) };
     zip.addFile("info.json", Buffer.from(JSON.stringify(info, null, 2)));
     zip.addFile("main-log.txt", Buffer.from(LOG.join("\n")));
@@ -383,7 +396,7 @@ ipcMain.handle("diag:save", async (_e, f) => {
     let nFrames = 0;
     for (const f of frames.diagFiles(2)) { try { zip.addFile(f.zipPath, fs.readFileSync(f.file)); nFrames++; } catch {} }
     zip.addFile("learned.json", Buffer.from(JSON.stringify(frames.learnedInfo(), null, 1)));
-    try { zip.addFile("pick-labels.json", fs.readFileSync(frames.labelsFile)); } catch {}
+    try { zip.addFile("pick-labels.json", fs.readFileSync(frames.labelsPath())); } catch {}
     const file = path.join(app.getPath("downloads"), `outpick-diag-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.zip`);
     zip.writeZip(file);
     shell.showItemInFolder(file);
@@ -397,6 +410,9 @@ ipcMain.handle("draft:sources", async () => {
   try { const sources = await desktopCapturer.getSources({ types: ["window", "screen"], thumbnailSize: { width: 0, height: 0 } }); return sources.map((s) => ({ id: s.id, name: s.name })); } catch (e) { return [{ id: "error", name: String(e?.message ?? e) }]; }
 });
 
+// один экземпляр: второй запуск (двойной клик по ярлыку) показывает уже открытое окно, а не вторую копию на другом порту
+if (!app.requestSingleInstanceLock()) { app.quit(); } else {
+app.on("second-instance", () => { if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
 migrateUserData();
 app.whenReady().then(() => {
   if (process.platform === "darwin") {
@@ -414,7 +430,8 @@ app.whenReady().then(() => {
   let labelsSeen = 0;
   const learnIfNew = (why) => {
     try {
-      const m = fs.existsSync(frames.labelsFile) ? fs.statSync(frames.labelsFile).mtimeMs : 0;
+      const lf = frames.labelsPath();
+      const m = lf && fs.existsSync(lf) ? fs.statSync(lf).mtimeMs : 0;
       if (m === labelsSeen) return; labelsSeen = m;
       if (!ensureTemplates()) return;
       const r = frames.learn();
@@ -427,3 +444,4 @@ app.whenReady().then(() => {
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 app.on("before-quit", () => { flushLog(); serverProc?.kill(); });
+}

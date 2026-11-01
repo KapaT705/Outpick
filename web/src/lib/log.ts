@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { USER_DIR } from "./paths";
+import { readJsonOrAside, writeJsonAtomic } from "./fsx";
 import type { Pick, Role } from "./types";
 import type { MatchDetails } from "./matchDetails";
 import type { Bench } from "./bench";
@@ -44,8 +45,8 @@ export type DraftLog = {
 const FILE = path.join(USER_DIR, "draft-log.json");
 
 export function readLog(): DraftLog[] {
-  let items: DraftLog[];
-  try { items = JSON.parse(fs.readFileSync(FILE, "utf8")) as DraftLog[]; } catch { return []; }
+  const raw = readJsonOrAside<DraftLog[]>(FILE);
+  const items = Array.isArray(raw) ? raw : [];
   const clean = dedupe(items);
   if (clean.length !== items.length) writeLog(clean);
   return clean;
@@ -71,7 +72,20 @@ function dedupe(items: DraftLog[]): DraftLog[] {
 
 export function writeLog(items: DraftLog[]) {
   fs.mkdirSync(USER_DIR, { recursive: true });
-  fs.writeFileSync(FILE, JSON.stringify(items, null, 1));
+  writeJsonAtomic(FILE, items, 1);
+}
+
+/**
+ * Точечное обновление записей по id: журнал перечитывается в момент записи, меняются только переданные поля.
+ * Нужно всему, что между чтением и записью ходит в сеть (синхронизация результатов, разбор матча): за это время
+ * пикер мог добавить новую запись, а пользователь удалить старую, и запись «как прочитали» их бы затёрла или вернула.
+ */
+export function patchLog(patches: Map<string, Partial<DraftLog>>) {
+  if (patches.size === 0) return;
+  const items = readLog();
+  let touched = 0;
+  for (const rec of items) { const p = patches.get(rec.id); if (p) { Object.assign(rec, p); touched++; } }
+  if (touched) writeLog(items);
 }
 
 export function appendLog(item: DraftLog) {

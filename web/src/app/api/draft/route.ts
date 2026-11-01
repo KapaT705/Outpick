@@ -21,7 +21,8 @@ export async function POST(req: Request) {
   const team = body.team === "radiant" || body.team === "dire" ? body.team : null;
   const input: DraftInput = { bans: ids(body.bans), enemies: picks(body.enemies), allies: picks(body.allies), pool, role, team };
   // статистика игроков матча нужна оценке синхронно: подгружаем заранее (кэш на 6 часов, один запрос на всех)
+  // ждём статистику не дольше 2.5 с: если Stratz тормозит, оценка идёт без неё, а запрос доходит в фоне и попадёт в кэш
   const lobby = currentLobby();
-  if (lobby) await fetchPlayerStats(lobby.players.map((p) => p.accountId));
+  if (lobby) await Promise.race([fetchPlayerStats(lobby.players.map((p) => p.accountId)).catch(() => {}), new Promise((r) => setTimeout(r, 2500))]);
   return NextResponse.json(evaluateDraft(input));
 }

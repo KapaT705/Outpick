@@ -76,7 +76,7 @@ export async function fetchPlayerStats(ids: number[]): Promise<Map<number, Playe
       const since = Math.floor(now / 1000) - 30 * 86400;
       const q = `{ ${need.map((id) => `p${id}: player(steamAccountId: ${id}) { steamAccount { name isAnonymous } heroesPerformance(request: {take: 60, lobbyTypeIds: [7], startDateTime: ${since}}, take: 60) { heroId matchCount winCount } matches(request: {take: 30, lobbyTypeIds: [7], startDateTime: ${since}}) { id players(steamAccountId: ${id}) { position } } }`).join(" ")} }`;
       try {
-        const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${stratzToken}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: q }) });
+        const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${stratzToken}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: q }), signal: AbortSignal.timeout(8000) });
         const j = await r.json();
         for (const id of need) {
           const p = j?.data?.[`p${id}`];
@@ -93,7 +93,10 @@ export async function fetchPlayerStats(ids: number[]): Promise<Map<number, Playe
           }
           statsCache.set(id, { at: Date.now(), stats: st });
         }
-      } catch {}
+      } catch {
+        // Stratz не ответил: пять минут не переспрашиваем, оценка идёт без статистики игроков
+        for (const id of need) if (!statsCache.has(id)) statsCache.set(id, { at: Date.now() - STATS_TTL + 5 * 60_000, stats: emptyStats(id) });
+      }
     })().finally(() => { inflight = null; });
     await inflight;
     for (const id of need) { const c = statsCache.get(id); if (c) out.set(id, c.stats); }

@@ -46,7 +46,7 @@ export default function SettingsForm() {
     if (!r?.ok) { setAccMsg(r?.error ?? "ошибка"); return; }
     if (action === "add" || action === "load") {
       setSteamId("");
-      const poll = async () => { const st = await fetch("/api/refresh").then((x) => x.json()).catch(() => null); if (st?.running) { setAccMsg(st.message); setRef(st); setTimeout(poll, 1500); return; } setAccMsg(st?.error ? `ошибка: ${st.error}` : "готово"); reloadInfo(); };
+      const poll = async () => { const st = await fetch("/api/refresh").then((x) => x.json()).catch(() => null); if (st?.running) { setAccMsg(st.message); setRef(st); setTimeout(poll, 1500); return; } if (st) setRef(st); setAccMsg(st?.error ? `ошибка: ${st.error}` : "готово"); reloadInfo(); };
       setTimeout(poll, 1000);
     } else { setAccMsg(null); reloadInfo(); }
   };
@@ -158,7 +158,7 @@ export default function SettingsForm() {
           <span>Подхватывать драфт с экрана</span>
         </label>
         <div className="flex items-center gap-3">
-          <button onClick={async () => { const d = (window as unknown as { desktop?: { debugCapture?: () => Promise<DebugCapture> } }).desktop; if (!d?.debugCapture) { setDbg({ ok: false, error: "Проверка работает только в приложении" }); return; } setDbgBusy(true); setDbg(await d.debugCapture().catch((e) => ({ ok: false, error: String(e) }))); setDbgBusy(false); }}
+          <button onClick={async () => { const d = (window as unknown as { desktop?: { debugCapture?: () => Promise<DebugCapture> } }).desktop; if (!d?.debugCapture) { setDbg({ ok: false, error: "Проверка работает только в приложении" }); return; } setDbgBusy(true); setDbg(await d.debugCapture().catch((e) => ({ ok: false, error: "не удалось снять экран, подробности в диагностике" }))); setDbgBusy(false); }}
             disabled={dbgBusy} className="shrink-0 whitespace-nowrap rounded-lg border border-border px-3.5 py-2 text-sm hover:border-accent/60 hover:bg-panel-2 disabled:opacity-50 disabled:cursor-not-allowed transition">{dbgBusy ? "снимаю…" : "Проверить экран"}</button>
           <span className="text-xs text-muted">Запусти Доту и зайди на стадию пиков (можно с ботами), затем нажми: покажу, что увидела программа.</span>
         </div>

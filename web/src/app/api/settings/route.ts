@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   // не сохранить даже галочку чтения экрана
   const newToken = typeof body.stratzToken === "string" && body.stratzToken.trim() ? body.stratzToken.trim() : null;
   if (newToken) {
-    const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${newToken}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: "{ constants { gameVersions { id } } }" }) }).catch(() => null);
+    const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${newToken}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: "{ constants { gameVersions { id } } }" }), signal: AbortSignal.timeout(15_000) }).catch(() => null);
     if (!r) return NextResponse.json({ error: "Stratz не отвечает: проверь интернет и попробуй ещё раз" }, { status: 400 });
     if (r.status === 401 || r.status === 403) return NextResponse.json({ error: "Stratz не принял токен: проверь, что скопирован целиком со страницы stratz.com/api" }, { status: 400 });
     if (r.status !== 200) return NextResponse.json({ error: `Stratz ответил ошибкой HTTP ${r.status}, попробуй позже` }, { status: 400 });

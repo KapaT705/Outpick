@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readLog, writeLog } from "@/lib/log";
+import { readLog, patchLog } from "@/lib/log";
 import { readConfig } from "@/lib/config";
 import { attachDetails } from "@/lib/sync";
 
@@ -15,6 +15,6 @@ export async function POST(req: Request) {
   const ME = rec.accountId ?? readConfig().steamAccountId ?? 0;
   rec.details = undefined;
   await attachDetails(rec, ME);
-  writeLog(items);
+  patchLog(new Map([[rec.id, { details: rec.details, bench: rec.bench }]]));
   return NextResponse.json({ ok: true, item: rec });
 }

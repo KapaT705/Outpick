@@ -31,7 +31,7 @@ type SM = { id: number; startDateTime: number; durationSeconds: number; players:
 async function page(token: string, acc: number, skip: number): Promise<AccMatch[] | null> {
   const q = `{ player(steamAccountId: ${acc}) { matches(request: {take: 50, skip: ${skip}, lobbyTypeIds: [7]}) { id startDateTime durationSeconds players(steamAccountId: ${acc}) { heroId position isVictory kills deaths assists networth heroDamage towerDamage stats { lastHitsPerMinute deathEvents { time timeDead } } } } } }`;
   try {
-    const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: q }) });
+    const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: q }), signal: AbortSignal.timeout(30_000) });
     const j = await r.json();
     const ms: SM[] | undefined = j?.data?.player?.matches;
     if (!Array.isArray(ms)) return null;

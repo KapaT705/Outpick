@@ -4,6 +4,7 @@ import { DATA_DIR, USER_DIR } from "./paths";
 import { accountFile, currentAccount } from "./accounts";
 import type { Hero, Matchup, MidMeta, PoolEntry, PersonalPair, HeroPositions, RoleMetaEntry } from "./types";
 import type { AliasMap } from "./aliases";
+import { readJsonOrAside } from "./fsx";
 
 const USER_DATA = path.join(USER_DIR, "data");
 
@@ -13,8 +14,12 @@ function resolveFile(name: string): string {
   return fs.existsSync(u) ? u : path.join(DATA_DIR, name);
 }
 
+/** Обновлённая копия из папки пользователя, иначе упакованная. Битая копия пользователя откладывается в сторону,
+ *  и в ход идёт упакованная: обрыв записи при выходе из программы не должен ронять пикер до ручного обновления меты. */
 function readJson<T>(name: string): T {
-  return JSON.parse(fs.readFileSync(resolveFile(name), "utf8")) as T;
+  const u = path.join(USER_DATA, name);
+  if (fs.existsSync(u)) { const v = readJsonOrAside<T>(u); if (v !== null) return v; }
+  return JSON.parse(fs.readFileSync(path.join(DATA_DIR, name), "utf8")) as T;
 }
 
 export function invalidateData() { general = null; generalStamp = ""; accounts.clear(); }

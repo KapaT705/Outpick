@@ -28,7 +28,10 @@ function listSessions() {
 function prune() {
   for (const s of listSessions().slice(MAX_SESSIONS)) fs.rmSync(s.dir, { recursive: true, force: true });
 }
+// номер матча приходит из GSI (и через страницу): папка по нему создаётся и удаляется, поэтому только цифры
+const validId = (v) => v != null && /^\d{1,20}$/.test(String(v));
 function startSession(matchId, now) {
+  if (matchId && !validId(matchId)) matchId = null;
   const key = matchId ? String(matchId) : `draft-${new Date(now).toISOString().replace(/[:.]/g, "-").slice(0, 19)}`;
   const dir = path.join(root, key);
   fs.mkdirSync(dir, { recursive: true });
@@ -37,7 +40,7 @@ function startSession(matchId, now) {
 }
 /** Привязывает текущую серию кадров к матчу (переименовывает папку). */
 function markMatch(matchId) {
-  if (!session || !matchId) return false;
+  if (!session || !matchId || !validId(matchId)) return false;
   const id = String(matchId);
   if (session.matchId === id) return true;
   if (session.matchId && session.matchId !== id) return false;
@@ -116,7 +119,9 @@ function learn() {
   let added = 0, checked = 0; const notes = [];
   for (const [matchId, lab] of Object.entries(labels)) {
     if (learned.done.includes(matchId)) continue;
+    if (!validId(matchId)) { learned.done.push(matchId); continue; }
     const dir = path.join(root, matchId);
+    try {
     if (!fs.existsSync(dir)) continue;
     const frames = sessionFrames(dir).slice(-2);
     if (frames.length === 0) { learned.done.push(matchId); continue; }
@@ -145,6 +150,10 @@ function learn() {
       notes.push(`${matchId}: ${s.team} ${s.idx + 1} выучен как ${want} (было: ${s.q.ok ? s.q.best.name : "не узнан"})`);
     }
     learned.done.push(matchId);
+    } catch (e) {
+      // битый кадр одного матча (обрыв записи) не должен останавливать учёбу по остальным
+      notes.push(`${matchId}: кадры не прочитались (${e.message}), пропускаю`); learned.done.push(matchId);
+    }
   }
   if (learned.done.length > 200) learned.done = learned.done.slice(-200);
   try { fs.writeFileSync(learnedFile, JSON.stringify(learned)); } catch (e) { return { ok: false, error: e.message }; }
@@ -157,4 +166,5 @@ function learnedInfo() {
 }
 function loadLearned() { return recog.loadLearned(learnedFile); }
 
-module.exports = { init, remember, markMatch, learn, learnedInfo, loadLearned, diagFiles, labelsFile };
+// путь к разметке отдаётся функцией: экспорт переменной копировал null на момент загрузки, и учёба по таймеру не запускалась
+module.exports = { init, remember, markMatch, learn, learnedInfo, loadLearned, diagFiles, labelsPath: () => labelsFile };

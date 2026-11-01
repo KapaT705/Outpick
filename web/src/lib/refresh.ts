@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { USER_DIR } from "./paths";
+import { writeJsonAtomic } from "./fsx";
 import { invalidateData } from "./data";
 import { accountDir, addAccount } from "./accounts";
 
@@ -13,7 +14,7 @@ const chunks = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.lengt
 type Progress = (msg: string) => void;
 
 async function gql(token: string, query: string) {
-  const res = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query }) });
+  const res = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query }), signal: AbortSignal.timeout(60_000) });
   const j = await res.json();
   if (j.errors) throw new Error(j.errors[0]?.message ?? "Stratz error");
   return j.data;
@@ -28,7 +29,7 @@ export async function refreshData(token: string, me: number | null, progress: Pr
 
 export async function refreshGeneral(token: string, progress: Progress = () => {}) {
   fs.mkdirSync(USER_DATA_DIR, { recursive: true });
-  const save = (name: string, obj: unknown) => fs.writeFileSync(path.join(USER_DATA_DIR, name), JSON.stringify(obj));
+  const save = (name: string, obj: unknown) => writeJsonAtomic(path.join(USER_DATA_DIR, name), obj);
 
   progress("герои");
   const heroesRaw = (await gql(token, `{ constants { heroes { id displayName shortName roles { roleId level } stats { primaryAttribute attackType complexity } } } }`)).constants.heroes as { id: number; displayName: string; shortName: string; roles?: { roleId: string; level: number }[]; stats?: { primaryAttribute?: string; attackType?: string; complexity?: number } }[];
@@ -83,7 +84,7 @@ export async function refreshGeneral(token: string, progress: Progress = () => {
   save("hero-positions.json", [...posAgg].map(([heroId, a]) => { const tot = Object.values(a).reduce((x, y) => x + y, 0) || 1; return { heroId, name: names.get(heroId), games: tot, p: Object.fromEntries(Object.entries(a).map(([k, v]) => [k, v / tot])) }; }));
   save("role-meta.json", roleMeta);
 
-  fs.writeFileSync(path.join(USER_DATA_DIR, "updated-at.json"), JSON.stringify({ at: Math.floor(Date.now() / 1000) }));
+  writeJsonAtomic(path.join(USER_DATA_DIR, "updated-at.json"), { at: Math.floor(Date.now() / 1000) });
   invalidateData();
 }
 
@@ -96,7 +97,7 @@ export async function fetchAccountInfo(token: string, me: number): Promise<{ nam
 export async function refreshAccount(token: string, me: number, progress: Progress = () => {}) {
   const dir = accountDir(me);
   fs.mkdirSync(dir, { recursive: true });
-  const save = (name: string, obj: unknown) => fs.writeFileSync(path.join(dir, name), JSON.stringify(obj));
+  const save = (name: string, obj: unknown) => writeJsonAtomic(path.join(dir, name), obj);
   const names = new Map<number, string>();
   try { for (const h of JSON.parse(fs.readFileSync(path.join(USER_DATA_DIR, "heroes.json"), "utf8")) as { id: number; name: string }[]) names.set(h.id, h.name); } catch {}
   progress("имя аккаунта");
@@ -117,10 +118,12 @@ export async function refreshAccount(token: string, me: number, progress: Progre
     const pairs = new Map<string, { role: number; own: number; other: number; ally: boolean; games: number; wins: number }>();
     for (const m of matches) {
       const self: MM["players"][number] | undefined = m.players.find((pl) => pl.steamAccountId === me); if (!self) continue;
-      const isMid = self.position === "POSITION_2" || self.position == null;
-      const role = self.position ? Number(self.position.replace("POSITION_", "")) : 2; // позиция не определена: считаем мидом
+      // позиция не определена (Stratz не разобрал матч): игра идёт в общий счёт героя, но ни в одну роль и ни в одну пару
+      const role = self.position ? Number(self.position.replace("POSITION_", "")) : null;
+      const isMid = role === 2;
       const p = pool.get(self.heroId) ?? { heroId: self.heroId, name: names.get(self.heroId), games: 0, wins: 0, midGames: 0, midWins: 0, lastPlayed: 0, byRole: {} as Record<string, { games: number; wins: number }> };
       p.games++; if (self.isVictory) p.wins++; if (isMid) { p.midGames++; if (self.isVictory) p.midWins++; } p.lastPlayed = Math.max(p.lastPlayed, m.startDateTime); pool.set(self.heroId, p);
+      if (role == null) continue;
       { const br = p.byRole[String(role)] ?? { games: 0, wins: 0 }; br.games++; if (self.isVictory) br.wins++; p.byRole[String(role)] = br; }
       const pairRole = role;
       for (const o of m.players as MM["players"]) { if (o.steamAccountId === me) continue; const ally = o.isRadiant === self.isRadiant; const k = `${pairRole}-${self.heroId}-${o.heroId}-${ally}`; const e = pairs.get(k) ?? { role: pairRole, own: self.heroId, other: o.heroId, ally, games: 0, wins: 0 }; e.games++; if (self.isVictory) e.wins++; pairs.set(k, e); }
@@ -128,7 +131,7 @@ export async function refreshAccount(token: string, me: number, progress: Progre
     save("player-pool.json", [...pool.values()].sort((a, b) => b.midGames - a.midGames));
     save("personal-pairs.json", [...pairs.values()]);
   }
-  fs.writeFileSync(path.join(dir, "updated-at.json"), JSON.stringify({ at: Math.floor(Date.now() / 1000) }));
+  writeJsonAtomic(path.join(dir, "updated-at.json"), { at: Math.floor(Date.now() / 1000) });
   invalidateData();
 }
 

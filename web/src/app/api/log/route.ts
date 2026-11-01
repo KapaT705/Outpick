@@ -46,7 +46,8 @@ export async function POST(req: Request) {
   // запись с тем же номером матча или свежая (до 20 минут) с тем же героем заменяется, причём состав берётся
   // более полный, а номер матча и время первой записи сохраняются.
   const items = readLog();
-  const dupIdx = items.findIndex((x) => (item.gsiMatchId && x.gsiMatchId === item.gsiMatchId) || (x.matchId == null && x.chosenHeroId === item.chosenHeroId && item.createdAt - x.createdAt < 20 * 60));
+  // без номера матча: тот же герой в последние 20 минут считается тем же матчем, но два разных номера из Доты - это два матча
+  const dupIdx = items.findIndex((x) => (item.gsiMatchId && x.gsiMatchId === item.gsiMatchId) || (x.matchId == null && x.chosenHeroId === item.chosenHeroId && item.createdAt - x.createdAt < 20 * 60 && (!x.gsiMatchId || !item.gsiMatchId || x.gsiMatchId === item.gsiMatchId)));
   if (dupIdx >= 0) {
     const old = items[dupIdx];
     const richer = <T,>(a: T[], b: T[]) => (b.length >= a.length ? b : a);

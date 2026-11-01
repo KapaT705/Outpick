@@ -49,7 +49,7 @@ export async function fetchBenches(position: number, heroIds: number[]): Promise
   try {
     const args = `heroIds: [${need.join(",")}], bracketBasicIds: [DIVINE_IMMORTAL], positionIds: [POSITION_${position}], groupByPosition: true, groupByBracket: false`;
     const q = `{ heroStats { overall: stats(${args}, groupByTime: false) { ${F} } byTime: stats(${args}, groupByTime: true, minTime: 1, maxTime: 60) { ${F} } } }`;
-    const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${stratzToken}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: q }) });
+    const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${stratzToken}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: q }), signal: AbortSignal.timeout(30_000) });
     const j = await r.json();
     const overall: Row[] = j?.data?.heroStats?.overall ?? [];
     const byTime: Row[] = j?.data?.heroStats?.byTime ?? [];

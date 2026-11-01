@@ -1,4 +1,4 @@
-import { readLog, writeLog, type DraftLog } from "./log";
+import { readLog, patchLog, type DraftLog } from "./log";
 import { readConfig } from "./config";
 import { saveLabels, type MatchLabel } from "./labels";
 import { fetchMatchDetails } from "./matchDetails";
@@ -13,6 +13,7 @@ const STRATZ = (token: string, query: string) => fetch("https://api.stratz.com/g
   method: "POST",
   headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" },
   body: JSON.stringify({ query }),
+  signal: AbortSignal.timeout(30_000),
 }).then((r) => r.json());
 
 const PLAYER_FIELDS = "players { steamAccountId heroId isRadiant isVictory playerSlot }";
@@ -92,7 +93,17 @@ function apply(rec: DraftLog, m: M, me: P, now: number, labels: MatchLabel[]) {
  * Запись с номером матча из Доты ищется по номеру: Stratz, затем OpenDota. Остальные (ручные, без GSI) - по списку
  * матчей аккаунта, с которого играли (у каждой записи свой accountId; старые без него: аккаунт по умолчанию).
  */
-export async function syncResults(): Promise<SyncResult> {
+// поля записи, которые заполняет синхронизация; остальное (драфт, игроки) ей не принадлежит и при записи не трогается
+const SYNC_FIELDS = ["triedAt", "matchId", "won", "durationSeconds", "syncedAt", "accountId", "playersVerified", "details", "bench", "noMatch"] as const;
+let syncing: Promise<SyncResult> | null = null;
+
+/** Одна синхронизация за раз: кнопка в истории во время автосинхронизации получает её же результат. */
+export function syncResults(): Promise<SyncResult> {
+  if (!syncing) syncing = syncResultsNow().finally(() => { syncing = null; });
+  return syncing;
+}
+
+async function syncResultsNow(): Promise<SyncResult> {
   const { stratzToken: TOKEN, steamAccountId: DEFAULT } = readConfig();
   if (!TOKEN) return { ok: false, error: "Укажи токен Stratz в настройках", updated: 0, pending: 0 };
   const items = readLog();
@@ -109,6 +120,8 @@ export async function syncResults(): Promise<SyncResult> {
     if (rec.gsiMatchId) {
       const m = (await stratzMatch(TOKEN, rec.gsiMatchId)) ?? (await openDotaMatch(rec.gsiMatchId));
       if (m) { fetched++; const me = meIn(m, ME, rec.chosenHeroId); if (me) { apply(rec, m, me, now, labels); await attachDetails(rec, ME); updated++; } }
+      // двое суток ни Stratz, ни OpenDota матча не знают: игра не состоялась (кто-то не подключился), больше не ищем
+      else if (now - rec.createdAt > 48 * 3600) { rec.noMatch = true; rec.syncedAt = now; }
       continue;
     }
     byList.push(rec);
@@ -138,7 +151,10 @@ export async function syncResults(): Promise<SyncResult> {
       }
     }
   }
-  writeLog(items);
+  // пишем только свои поля и только в свежий журнал: за время запросов пикер мог добавить запись, а пользователь удалить
+  const patches = new Map<string, Partial<DraftLog>>();
+  for (const rec of pending) { const p: Partial<DraftLog> = {}; for (const k of SYNC_FIELDS) if (k in rec) (p as Record<string, unknown>)[k] = rec[k]; patches.set(rec.id, p); }
+  patchLog(patches);
   if (labels.length) saveLabels(labels);
   return { ok: true, updated, pending: pending.length - updated, fetched };
 }

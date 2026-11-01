@@ -68,7 +68,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const loadHistory = async (id: number) => {
     setLoadMsg("запускаю…");
     const r = await fetch("/api/accounts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "load", id }) }).then((x) => x.json()).catch(() => null);
-    if (!r?.ok) { setLoadMsg(r?.error ?? "ошибка"); return; }
+    if (!r?.ok) { setLoadMsg(`ошибка: ${r?.error ?? "не удалось запустить"}`); return; }
     const poll = async () => {
       const st = await fetch("/api/refresh").then((x) => x.json()).catch(() => null);
       if (st?.running) { setLoadMsg(st.message); setTimeout(poll, 1500); return; }
@@ -144,6 +144,10 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const setRole = (r: Role) => { setRoleState(r); setOverride(loadOverride(r)); try { localStorage.setItem(ROLE_KEY, String(r)); } catch {} };
 
   const byId = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes]);
+  // фокус в поиске без прокрутки: в узком окне поиск ниже полоски драфта, и autoFocus уводил страницу к нему
+  const searchRef = useRef<HTMLInputElement>(null);
+  // пока открыт экран первого запуска, фокус его: иначе набор токена уходил в этот поиск
+  useEffect(() => { if (!document.querySelector("[data-onboarding]")) searchRef.current?.focus({ preventScroll: true }); }, []);
   // свой герой: его сообщает Дота после пика; в зоне союзников он пятый, с пометкой «ты»
   const ownHero = gsi?.ownHeroId ? byId.get(gsi.ownHeroId) ?? null : null;
   const taken = useMemo(() => new Set([...picks.bans, ...picks.enemies, ...picks.allies].map((p) => p.id).concat(ownHero ? [ownHero.id] : [])), [picks, ownHero]);
@@ -174,29 +178,40 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
       .then((r) => r.json())
       .then((d) => { setResult(d.candidates ?? []); setRoles({ enemies: d.enemyRoles ?? [], allies: d.allyRoles ?? [] }); setLaneOpp(d.laneOpponent ?? null); setPredicted(d.predicted ?? []); setStage(d.stage ?? "early"); setNeeds(d.needs ?? []); })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { if (!ctrl.signal.aborted) setLoading(false); }); // отменённый запрос не гасит «считаю» у следующего
     return () => ctrl.abort();
   }, [picks, override, role, acct?.current.id, gsi?.team, side]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addMany = (z: UserZone, ids: number[]) => {
     const max = ZONES.find((x) => x.key === z)!.max - (z === "allies" ? 1 : 0); // пятое место у союзников всегда твоё
     const next = [...picks[z]];
+    const dup: string[] = [], over: string[] = [];
     for (const id of ids) {
-      if (taken.has(id) || next.some((p) => p.id === id)) continue;
-      if (next.length >= max) break;
+      const name = byId.get(id)?.name ?? String(id);
+      if (taken.has(id) || next.some((p) => p.id === id)) { dup.push(name); continue; }
+      if (next.length >= max) { over.push(name); continue; }
       next.push({ id, role: null });
     }
     setPicks({ ...picks, [z]: next });
+    return { dup, over };
   };
-  const add = (id: number) => { addMany(zone, [id]); setQuery(""); };
+  // что не попало в зону: не узнал, уже в драфте, мест нет (раньше лишние пропадали молча)
+  const noteSkipped = (z: UserZone, unk: string[], dup: string[], over: string[]) => {
+    const parts: string[] = [];
+    if (unk.length) parts.push(`не узнал: ${unk.join(", ")}`);
+    if (dup.length) parts.push(`уже в драфте: ${dup.join(", ")}`);
+    if (over.length) parts.push(`мест нет: ${over.join(", ")}`);
+    setUnknown((u) => ({ ...u, [z]: parts }));
+  };
+  const add = (id: number) => { const r = addMany(zone, [id]); noteSkipped(zone, [], r.dup, r.over); setQuery(""); };
   const remove = (z: UserZone, id: number) => setPicks({ ...picks, [z]: picks[z].filter((x) => x.id !== id) });
   const setPickRole = (z: UserZone, id: number, r: Role | null) => setPicks({ ...picks, [z]: picks[z].map((x) => (x.id === id ? { ...x, role: r } : x)) });
   const reset = () => { setPicks({ bans: [], enemies: [], allies: [] }); setUnknown({ enemies: [], allies: [] }); };
 
   const submitQuick = (z: UserZone) => {
     const { ids, unknown: unk } = parseHeroText(quick[z], heroes, aliases);
-    addMany(z, ids);
-    setUnknown({ ...unknown, [z]: unk });
+    const r = addMany(z, ids);
+    noteSkipped(z, unk, r.dup, r.over);
     setQuick({ ...quick, [z]: "" });
   };
 
@@ -310,7 +325,8 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
 
   // «из пула» только пул; «знакомые» (3-9 игр) идут во второй список с пометкой, их счёт на оценку не влияет
   const inPool = result.filter((c) => c.poolStatus === "pool");
-  const outside = result.filter((c) => c.poolStatus !== "pool").slice(0, showAll ? 40 : 8);
+  const outsideAll = result.filter((c) => c.poolStatus !== "pool");
+  const outside = outsideAll.slice(0, showAll ? 40 : 8);
   // порядок в окне пула: сначала по числу игр на роли за год, потом по алфавиту. От галочек порядок не зависит,
   // поэтому список не скачет при клике, а свои герои всегда наверху
   const poolList = useMemo(() => {
@@ -397,7 +413,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             <input value={quick[z.key]} onChange={(e) => setQuick({ ...quick, [z.key]: e.target.value })} onClick={(e) => { e.stopPropagation(); setZone(z.key); }}
               onKeyDown={(e) => { if (e.key === "Enter") submitQuick(z.key); }} placeholder={`или напиши, например: ${z.hint}`}
               className="w-full rounded-md border border-border bg-panel-2 px-2 py-1 text-xs outline-none focus:border-accent placeholder:text-muted/60" />
-            {unknown[z.key].length > 0 && <div className="mt-1 text-xs text-bad">не узнал: {unknown[z.key].join(", ")}</div>}
+            {unknown[z.key].length > 0 && <div className="mt-1 text-xs text-bad">{unknown[z.key].join(" · ")}</div>}
           </div>
         ))}
       </section>
@@ -406,7 +422,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
         <Card className="p-3 flex flex-col gap-3 min-w-0">
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Найти героя… Enter добавит в зону «${ZONES.find((z) => z.key === zone)!.label}»`}
             onKeyDown={(e) => { if (e.key === "Enter" && filtered.length > 0) add(filtered.find((h) => !taken.has(h.id))?.id ?? filtered[0].id); }}
-            className="w-full rounded-lg border border-border bg-panel-2 px-3 py-2 text-sm outline-none focus:border-accent" autoFocus />
+            className="w-full rounded-lg border border-border bg-panel-2 px-3 py-2 text-sm outline-none focus:border-accent" ref={searchRef} />
           <div className="flex gap-1 border-b border-border overflow-x-auto">
             {ATTRS.map((a) => (
               <button key={a.key} onClick={() => { setAttr(a.key); setQuery(""); }}
@@ -470,7 +486,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
           {laneOpp && <LaneCard lane={laneOpp} inPool={inPool} byId={byId} />}
           <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} hint="Герои, на которых ты играешь на этой роли (пул правится кнопкой «Мой пул»). Отсортированы по шансу победы в этом драфте." items={inPool} loading={loading} byId={byId} onTake={take} lane={laneOpp} featured canTake={!gsi?.connected} />
           <ResultBlock title="Вне пула, но хороши в этот драфт" hint="Герои не из твоего пула на этой роли: оценка только по мете и драфту, твой счёт на них показывается, но не учитывается. «Знакомый» значит 3-9 игр за год." items={outside} loading={loading} byId={byId} onTake={take} canTake={!gsi?.connected}
-            footer={<button onClick={() => setShowAll(!showAll)} className="text-xs text-muted underline">{showAll ? "Показать меньше" : "Показать больше"}</button>} />
+            footer={outsideAll.length > 8 ? <button onClick={() => setShowAll(!showAll)} className="text-xs text-muted underline">{showAll ? "Показать меньше" : "Показать больше"}</button> : undefined} />
         </section>
       </div>
 
@@ -559,7 +575,7 @@ function ResultBlock({ title, hint, items, loading, byId, footer, onTake, lane, 
   );
 }
 
-const signed = (v: number, digits = 0) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(digits)}`;
+const signed = (v: number, digits = 0) => `${v > 0 ? "+" : v < 0 ? "-" : ""}${Math.abs(v).toFixed(digits)}`;
 const signTone = (v: number) => (v >= 0.5 ? "text-good" : v <= -0.5 ? "text-bad" : "text-muted");
 
 /** Строка «из чего сложилась оценка» в раскрытой карточке героя. */
@@ -578,7 +594,7 @@ function why(c: Candidate, lane?: LaneOpponent | null): string {
   const parts: string[] = [];
   const rest = c.reasons.filter((r) => !(lane && c.vsLane && r.kind === "vs" && r.heroId === lane.heroId)).slice(0, 2);
   if (rest.length) parts.push(rest.map((r) => `${signed(r.value)} ${r.kind === "vs" ? "против" : "с"} ${r.name}`).join(", "));
-  parts.push(`винрейт на роли у Immortal ${Math.round(c.base)}%`);
+  parts.push(`винрейт на роли у Immortal ${c.base.toFixed(1)}%`);
   if (c.needsAdj > 0) parts.push("закрывает нехватку команды");
   if (c.poolStatus === "pool" && c.midGames > 0) parts.push(`${c.midGames} ${c.midGames % 10 === 1 && c.midGames % 100 !== 11 ? "игра" : c.midGames % 10 >= 2 && c.midGames % 10 <= 4 && (c.midGames % 100 < 10 || c.midGames % 100 >= 20) ? "игры" : "игр"} за год`);
   return parts.join(" · ");
@@ -627,7 +643,7 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
               <span className="font-medium leading-5">{c.name}</span>{shown}
             </div>
             <div className="flex items-center gap-1.5 flex-wrap text-xs leading-4">
-              {top.length === 0 && <span className="text-muted" title="Пока в драфте никого нет, герои идут по винрейту на этой роли у Immortal (5420+ MMR) за последние 4 недели с поправкой на наигранность и твой винрейт. Матчапы появятся, когда добавишь врагов или союзников.">{c.base}% винрейт на роли · врагов пока нет</span>}
+              {top.length === 0 && <span className="text-muted" title="Пока в драфте никого нет, герои идут по винрейту на этой роли у Immortal (5420+ MMR) за последние 4 недели с поправкой на наигранность и твой винрейт. Матчапы появятся, когда добавишь врагов или союзников.">{c.base.toFixed(1)}% винрейт на роли · врагов пока нет</span>}
               {top.map((r) => (
                 <span key={`${r.kind}-${r.heroId}`} className={`${signTone(r.value)} whitespace-nowrap`} title={`${r.kind === "vs" ? "Против" : "Вместе с"} ${r.name}: ${signed(r.value, 1)} к винрейту (${r.games} игр в выборке)${r.laneOpp ? ". Твой соперник по линии, вес выше" : ""}`}>
                   {signed(r.value)} <span className="text-muted">{r.kind === "vs" ? "против" : "с"}</span> {r.name}

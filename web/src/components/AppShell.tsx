@@ -51,7 +51,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </a>
           <div className="flex items-center gap-1 ml-2">
             {NAV.map((n) => (
-              <a key={n.href} href={n.href} className={`rounded-md px-3 py-1.5 text-sm ${path === n.href ? "bg-panel-2 text-foreground" : "text-muted hover:text-foreground"}`}>{n.label}</a>
+              <a key={n.href} href={n.href} className={`rounded-md px-3 py-1.5 text-sm ${(n.href === "/" ? path === "/" : path.startsWith(n.href)) ? "bg-panel-2 text-foreground" : "text-muted hover:text-foreground"}`}>{n.label}</a>
             ))}
           </div>
           <div className="ml-auto text-xs text-muted">{version ? `v${version}` : null}</div>

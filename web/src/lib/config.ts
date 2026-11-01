@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { USER_DIR } from "./paths";
+import { readJsonOrAside, writeJsonAtomic } from "./fsx";
 
 /** Аккаунт Steam, для которого загружены пул и личная история. */
 export type Account = { id: number; name?: string; addedAt: number; anonymous?: boolean }; // anonymous: профиль закрыт в Доте, Stratz не видит его матчи
@@ -18,7 +19,7 @@ const FILE = path.join(USER_DIR, "config.json");
 /** Настройки: файл config.json в папке пользователя, с запасным вариантом из переменных окружения (.env в разработке). */
 export function readConfig(): AppConfig {
   let c: Partial<AppConfig> = {};
-  try { c = JSON.parse(fs.readFileSync(FILE, "utf8")); } catch {}
+  c = readJsonOrAside<Partial<AppConfig>>(FILE) ?? {};
   const steamAccountId = c.steamAccountId ?? (process.env.STEAM_ACCOUNT_ID ? Number(process.env.STEAM_ACCOUNT_ID) : null);
   const accounts = Array.isArray(c.accounts) ? c.accounts.filter((a) => Number.isInteger(a?.id) && a.id > 0) : [];
   // старый конфиг с одним Steam ID: он и есть первый аккаунт
@@ -35,7 +36,7 @@ export function readConfig(): AppConfig {
 
 export function writeConfig(c: AppConfig) {
   fs.mkdirSync(USER_DIR, { recursive: true });
-  fs.writeFileSync(FILE, JSON.stringify(c, null, 2));
+  writeJsonAtomic(FILE, c, 2);
 }
 
 /** Нормализует Steam ID: принимает и 64-битный. */

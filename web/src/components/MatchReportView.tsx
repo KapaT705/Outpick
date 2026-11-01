@@ -12,7 +12,7 @@ import { phaseLabel } from "@/lib/phases";
 // иконки с CDN Valve: у Stratz alchemist_icon.png оказался копией dragon_knight_icon.png
 const icon = (short: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${short}.png`;
 const portrait = (short: string) => `https://cdn.stratz.com/images/dota2/heroes/${short}_horz.png`;
-const mmss = (t: number) => `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+const mmss = (t: number) => { const s = Math.abs(Math.round(t)); return `${t < 0 ? "-" : ""}${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 const ROLE_NAME: Record<number, string> = { 1: "керри", 2: "мид", 3: "офлейн", 4: "саппорт 4", 5: "саппорт 5" };
 const OUTCOME: Record<NonNullable<LaneOutcome>, { text: string; tone: "good" | "bad" | "muted" }> = {
   stomp: { text: "разгромная победа на линии", tone: "good" }, won: { text: "линия выиграна", tone: "good" }, even: { text: "линия вничью", tone: "muted" },
@@ -190,7 +190,7 @@ function GameCurve({ r }: { r: MatchReport }) {
             <line x1="0" x2="1000" y1="0" y2="0" stroke="var(--border)" vectorEffect="non-scaling-stroke" />
             <line x1="0" x2="1000" y1="100" y2="100" stroke="var(--border)" vectorEffect="non-scaling-stroke" />
             <line x1="0" x2="1000" y1="50" y2="50" stroke="var(--border)" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
-            {r.deathList.map((d) => <line key={d.t} x1={x(d.t) * 10} x2={x(d.t) * 10} y1="0" y2="100" stroke={d.traded ? "var(--muted)" : "var(--bad)"} strokeOpacity="0.25" vectorEffect="non-scaling-stroke" />)}
+            {r.deathList.map((d, i) => <line key={`${d.t}-${i}`} x1={x(d.t) * 10} x2={x(d.t) * 10} y1="0" y2="100" stroke={d.traded ? "var(--muted)" : "var(--bad)"} strokeOpacity="0.25" vectorEffect="non-scaling-stroke" />)}
             <polyline points={pts} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
           </svg>
         </div>
@@ -211,7 +211,7 @@ function DotRow({ items, x }: { items: { t: number; text: string; cls: string }[
   const dots = items.map((it) => { const px = x(it.t); const row = px - lastRow0 < 1.2 ? 1 : 0; if (row === 0) lastRow0 = px; return { ...it, px, row }; });
   return (
     <div className={`relative mt-1.5 ${dots.some((o) => o.row === 1) ? "h-[26px]" : "h-3"}`}>
-      {dots.map((d) => <span key={d.t} title={`${mmss(d.t)} · ${d.text}`} className={`absolute h-3 w-3 -translate-x-1/2 rounded-full ring-2 ring-panel cursor-default ${d.row ? "top-3.5" : "top-0"} ${d.cls}`} style={{ left: `${d.px}%` }} />)}
+      {dots.map((d, i) => <span key={`${d.t}-${i}`} title={`${mmss(d.t)} · ${d.text}`} className={`absolute h-3 w-3 -translate-x-1/2 rounded-full ring-2 ring-panel cursor-default ${d.row ? "top-3.5" : "top-0"} ${d.cls}`} style={{ left: `${d.px}%` }} />)}
     </div>
   );
 }
@@ -228,7 +228,7 @@ function Good({ r }: { r: MatchReport }) {
       )}
       {r.moments.length > 0 && (
         <div className={`grid grid-cols-[40px_minmax(0,1fr)] gap-x-2.5 gap-y-3 text-sm ${r.strengths.length ? "mt-4 border-t border-border pt-4" : ""}`}>
-          {r.moments.map((m) => <Fragment key={m.t}><span className="text-xs text-muted tabular-nums pt-0.5">{mmss(m.t)}</span><p className="leading-relaxed">{m.text}</p></Fragment>)}
+          {r.moments.map((m, i) => <Fragment key={`${m.t}-${i}`}><span className="text-xs text-muted tabular-nums pt-0.5">{mmss(m.t)}</span><p className="leading-relaxed">{m.text}</p></Fragment>)}
         </div>
       )}
       {!r.strengths.length && !r.moments.length && <p className="text-sm text-muted">Ярких плюсов в этом матче не нашлось: тяжёлая игра. Ниже видно, где её потеряли.</p>}

@@ -62,6 +62,8 @@ export async function POST(req: Request) {
     fs.writeFileSync(file, cfgText(origin));
     return NextResponse.json({ ok: true, file });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String((e as Error).message) }, { status: 500 });
+    const m = String((e as Error).message);
+    const text = /EACCES|EPERM/i.test(m) ? "нет доступа к папке Доты: проверь путь или запусти программу от администратора" : /ENOENT|ENOTDIR/i.test(m) ? "папка Доты не найдена по этому пути" : `не удалось записать конфиг: ${m}`;
+    return NextResponse.json({ ok: false, error: text }, { status: 500 });
   }
 }

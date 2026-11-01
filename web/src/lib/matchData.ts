@@ -66,7 +66,7 @@ export async function fetchMatchData(id: number, opts: { fresh?: boolean } = {})
   const { stratzToken } = readConfig();
   if (!stratzToken) return null;
   try {
-    const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${stratzToken}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: Q(id) }) });
+    const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${stratzToken}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: Q(id) }), signal: AbortSignal.timeout(30_000) });
     const j = await r.json();
     const m = j?.data?.match;
     if (!m || !Array.isArray(m.players) || !m.players.length) return null;

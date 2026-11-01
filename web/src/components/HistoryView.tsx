@@ -44,7 +44,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
   const wantedKey = wanted.join(",");
   useEffect(() => {
     const need = wantedKey ? wantedKey.split(",").map(Number).filter((id) => !remote[id]) : [];
-    if (!need.length) return;
+    if (!need.length) { setRemoteBusy(false); return; } // всё уже загружено: индикатор гасим и здесь, иначе он мог остаться после смены аккаунта
     let alive = true;
     setRemoteBusy(true);
     Promise.all(need.map((id) => fetch(`/api/matches?acc=${id}`).then((x) => x.json()).catch(() => null).then((j) => [id, j] as const))).then((res) => {
@@ -460,7 +460,7 @@ function PlayVsNorm({ rows, norms, period, busy }: { rows: AccMatch[]; norms: Re
   const sorted = [...list].sort((a, b) => b.better - a.better);
   const strong = sorted.filter((r) => r.better >= 1.05).slice(0, 2);
   const weak = [...sorted].reverse().filter((r) => r.better <= 0.95).slice(0, 1);
-  const fmtN = (v: number) => (v >= 1000 ? `${(Math.round(v / 100) / 10).toLocaleString("ru-RU")}к` : String(Math.round(v * 10) / 10));
+  const fmtN = (v: number) => (v >= 1000 ? `${Math.round(v / 100) / 10}к` : String(Math.round(v * 10) / 10));
   const head = strong.length
     ? `Сильные стороны: ${strong.map((r) => r.label.toLowerCase()).join(" и ")}${weak.length ? `. Над чем работать: ${weak[0].label.toLowerCase()}` : ""}.`
     : `Ближе всего к норме: ${sorted[0].label.toLowerCase()}${weak.length ? `. Над чем работать: ${weak[0].label.toLowerCase()}` : ""}.`;
