@@ -350,7 +350,7 @@ function Stat({ title, hint, hintAlign, s }: { title: string; hint?: string; hin
   );
 }
 
-const WINDOWS: [number, number, string][] = [[0, 10, "0–10 минута"], [10, 20, "10–20 минута"], [20, Infinity, "после 20-й"]];
+const WINDOWS: [number, number, string][] = [[0, 10, "0–10 минута · линия"], [10, 20, "10–20 минута · мидгейм"], [20, Infinity, "после 20-й · лейт"]];
 
 /** Смерти на 10 минут игры по отрезкам матча за период: твои и норма Divine/Immortal на тех же героях и позициях. */
 function deathRates(ms: AccMatch[], norms: Record<string, MatchNorm>, from: number, to: number) {
@@ -383,6 +383,7 @@ function DeathTrend({ rows, norms, period, busy, error }: { rows: AccMatch[]; no
   return (
     <Card>
       <CardTitle hint="Сколько раз ты умираешь за 10 минут игры на каждом отрезке матча. Норма — средние Divine/Immortal на тех же героях и позициях, что играл ты. Считаются рейтинговые матчи, которые Stratz разобрал подробно.">Смерти по отрезкам игры</CardTitle>
+      <p className="-mt-1 mb-3 text-sm text-muted">Сколько раз ты умираешь за каждые 10 минут игры.</p>
       {busy && cur.n === 0 ? <Crystals size={14} label="Загружаю матчи из Stratz, в первый раз это до 20 секунд…" />
         : cur.n === 0 ? <p className="text-sm text-muted">{error ?? `За ${period ? `${period} дней` : "всё время"} нет рейтинговых матчей, разобранных Stratz.`}</p>
         : <>
@@ -398,15 +399,15 @@ function DeathTrend({ rows, norms, period, busy, error }: { rows: AccMatch[]; no
                   <div className="text-xs text-muted">{label}</div>
                   <div className="flex items-baseline gap-2">
                     <span className={`text-2xl font-semibold tabular-nums ${tone}`}>{f(w.me)}</span>
-                    <span className="text-xs text-muted tabular-nums">норма {f(w.norm)}{over > 5 ? ` · больше на ${over}%` : over < -5 ? ` · меньше на ${-over}%` : ""}</span>
+                    <span className="text-xs text-muted tabular-nums">норма {f(w.norm)}{over > 5 ? ` · на ${over}% больше` : over < -5 ? ` · на ${-over}% меньше` : ""}</span>
                   </div>
-                  {p ? <div className="text-xs text-muted tabular-nums">прошлые {period} дней: {f(p.me)} <span className={delta <= -0.1 ? "text-good" : delta >= 0.1 ? "text-bad" : ""}>{delta <= -0.1 ? "↓ стало меньше" : delta >= 0.1 ? "↑ стало больше" : "без изменений"}</span></div>
-                    : <div className="text-xs text-muted">{period ? `за прошлые ${period} дней матчей нет` : "за все загруженные матчи"}</div>}
+                  {p ? <div className="text-xs text-muted tabular-nums">{prevName(period).toLowerCase()}: {f(p.me)} · <span className={delta <= -0.1 ? "text-good" : delta >= 0.1 ? "text-bad" : ""}>{delta <= -0.1 ? "стало меньше" : delta >= 0.1 ? "стало больше" : "без изменений"}</span></div>
+                    : <div className="text-xs text-muted">{period ? `${prevName(period).toLowerCase()}: матчей нет` : "за все загруженные матчи"}</div>}
                 </div>
               );
             })}
           </div>
-          <div className="mt-2 text-xs text-muted">Смертей на 10 минут игры · {cur.n} {plural(cur.n, "матч", "матча", "матчей")} за {period ? `${period} дней` : "всё время"}{error ? ` · ${error}` : ""}</div>
+          <div className="mt-3 text-xs text-muted">{cur.n} {plural(cur.n, "матч", "матча", "матчей")} за {period ? `${period} дней` : "всё время"}{error ? ` · ${error}` : ""}</div>
         </>}
     </Card>
   );
@@ -421,6 +422,16 @@ const METRICS: { key: string; label: string; hint: string; lowerBetter?: boolean
   { key: "push", label: "Пуш", hint: "Урон по строениям за матч", mine: (m) => m.towerDamage, norm: (n, min) => (n.towerDamage / n.dur) * min },
   { key: "deaths", label: "Смерти", hint: "Смерти за матч, здесь меньше — лучше", lowerBetter: true, mine: (m) => m.deaths, norm: (n, min) => (n.d / n.dur) * min },
 ];
+
+/** Прошлый период тех же размеров: «прошлая неделя», «прошлый месяц». */
+const prevName = (p: number) => (p === 7 ? "Прошлая неделя" : p === 30 ? "Прошлый месяц" : p === 90 ? "3 месяца до этого" : `Прошлые ${p} дней`);
+const curName = (p: number) => (p === 7 ? "Эта неделя" : p === 30 ? "Этот месяц" : p === 90 ? "Последние 3 месяца" : p ? `Последние ${p} дней` : "За всё время");
+/** Отличие от нормы словами: «на 20% выше», «на 35% больше» (для смертей), «как норма». */
+const vsText = (r: { ratio: number; lowerBetter?: boolean }) => {
+  const p = Math.round((r.ratio - 1) * 100);
+  if (Math.abs(p) < 3) return "как норма";
+  return `на ${Math.abs(p)}% ${r.lowerBetter ? (p > 0 ? "больше" : "меньше") : (p > 0 ? "выше" : "ниже")}`;
+};
 
 function vsNorm(ms: AccMatch[], norms: Record<string, MatchNorm>, from: number, to: number) {
   let n = 0;
@@ -443,7 +454,6 @@ function PlayVsNorm({ rows, norms, period, busy }: { rows: AccMatch[]; norms: Re
   const list = cur.rows.filter((r): r is NonNullable<typeof r> => !!r);
   if (busy && cur.n === 0) return null; // загрузку уже показывает карточка смертей
   if (cur.n === 0 || list.length === 0) return null;
-  const pct = (r: number) => Math.round((r - 1) * 100);
   const sorted = [...list].sort((a, b) => b.better - a.better);
   const strong = sorted.filter((r) => r.better >= 1.05).slice(0, 2);
   const weak = [...sorted].reverse().filter((r) => r.better <= 0.95).slice(0, 1);
@@ -455,24 +465,32 @@ function PlayVsNorm({ rows, norms, period, busy }: { rows: AccMatch[]; norms: Re
     <Card>
       <CardTitle hint="Твои средние за матчи периода против средних Divine/Immortal на тех же героях и позициях, с поправкой на длину каждого матча. Полоса вправо от середины — лучше нормы, влево — хуже. Считаются рейтинговые матчи, которые Stratz разобрал подробно.">Твоя игра против нормы</CardTitle>
       <p className="mb-4 text-sm">{head}</p>
-      <div className="grid grid-cols-[150px_minmax(0,1fr)_64px_150px] items-center gap-x-4 gap-y-3 text-sm">
+      <div className={`grid ${prev ? "grid-cols-[150px_minmax(0,1fr)_120px_130px]" : "grid-cols-[150px_minmax(0,1fr)_120px]"} items-center gap-x-5 gap-y-3 text-sm`}>
+        {/* шапка: ось полос и подписи колонок */}
+        <span />
+        <div className="relative h-4 text-[11px] text-muted">
+          <span className="absolute left-0">хуже нормы</span>
+          <span className="absolute left-1/2 -translate-x-1/2">норма</span>
+          <span className="absolute right-0">лучше нормы</span>
+        </div>
+        <span className="text-[11px] text-muted">{curName(period)}</span>
+        {prev && <span className="text-[11px] text-muted">{prevName(period)}</span>}
         {list.map((r) => {
           const d = r.better - 1, w = Math.min(Math.abs(d), 0.5) / 0.5 * 50;
           const good = d >= 0.05, bad = d <= -0.05;
           const p = prev?.rows.find((x) => x?.key === r.key);
-          const word = r.lowerBetter ? (r.ratio > 1 ? "больше" : "меньше") : (r.ratio >= 1 ? "выше" : "ниже");
           return [
             <span key={`${r.key}l`} className="text-muted">{r.label}</span>,
             <div key={`${r.key}b`} className="relative h-2.5 rounded-full bg-panel-2" title={`${r.hint}: у тебя в среднем ${fmtN(r.avg)}, норма ${fmtN(r.avgNorm)}`}>
-              <span className="absolute left-1/2 top-[-3px] h-4 w-px -translate-x-1/2 bg-border" />
+              <span className="absolute left-1/2 top-[-3px] h-4 w-px -translate-x-1/2 bg-muted/50" />
               <span className={`absolute top-0 h-2.5 ${d >= 0 ? "left-1/2 rounded-r-full" : "right-1/2 rounded-l-full"} ${good ? "bg-good" : bad ? "bg-bad" : "bg-muted"}`} style={{ width: `${Math.max(w, 1)}%` }} />
             </div>,
-            <span key={`${r.key}v`} className={`text-right tabular-nums font-semibold ${good ? "text-good" : bad ? "text-bad" : ""}`} title={`${Math.abs(pct(r.ratio))}% ${word} нормы`}>{pct(r.ratio) > 0 ? "+" : ""}{pct(r.ratio)}%</span>,
-            <span key={`${r.key}p`} className="text-xs text-muted tabular-nums">{p ? `прошлые ${period} дней: ${pct(p.ratio) > 0 ? "+" : ""}${pct(p.ratio)}%` : ""}</span>,
+            <span key={`${r.key}v`} className={`tabular-nums font-semibold ${good ? "text-good" : bad ? "text-bad" : ""}`}>{vsText(r)}</span>,
+            ...(prev ? [<span key={`${r.key}p`} className="text-muted tabular-nums">{p ? vsText(p) : "—"}</span>] : []),
           ];
         })}
       </div>
-      <div className="mt-3 text-xs text-muted">Процент — насколько твоё среднее отличается от нормы героя · {cur.n} {plural(cur.n, "матч", "матча", "матчей")} за {period ? `${period} дней` : "всё время"}</div>
+      <div className="mt-4 text-xs text-muted">Твоё среднее за матч против среднего Divine/Immortal на тех же героях и позициях · {cur.n} {plural(cur.n, "матч", "матча", "матчей")} за {period ? `${period} дней` : "всё время"}. Наведи на полосу, чтобы увидеть цифры.</div>
     </Card>
   );
 }

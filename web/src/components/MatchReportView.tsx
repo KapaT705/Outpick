@@ -238,45 +238,52 @@ function LaneCard({ r, byId }: { r: MatchReport; byId: Map<number, Hero> }) {
   const lane = r.lane;
   if (!lane || lane.rows.length === 0) return null;
   const opp = lane.oppHeroId ? byId.get(lane.oppHeroId) : null;
+  const mine = byId.get(r.heroId);
+  const oppName = opp ? heroRu(opp.id, byId).name : null;
   const out = lane.outcome ? OUTCOME[lane.outcome] : null;
   return (
     <Card>
-      <CardTitle right={out ? <Chip tone={out.tone} title="Итог линии по оценке Stratz">{out.text}</Chip> : undefined}>
-        {opp ? <span className="flex items-center gap-2">Соперник по линии: <img src={icon(opp.short)} alt="" className="h-5 w-5 rounded" />{heroRu(opp.id, byId).name}</span> : "Линия"}
-      </CardTitle>
-      <table className="w-full max-w-2xl text-sm tabular-nums">
-        <thead>
-          <tr className="text-xs text-muted text-left">
-            <th className="pb-2 font-normal w-20" />
-            <th className="pb-2 font-normal">Добито</th>
-            <th className="pb-2 font-normal">Денаи</th>
-            <th className="pb-2 font-normal">Золото</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lane.rows.map((row) => (
-            <tr key={row.minute} className="border-t border-border align-baseline">
-              <td className="py-2 text-xs text-muted">к {row.minute} мин</td>
-              <LaneTd c={row.lh} />
-              <LaneTd c={row.dn} />
-              <LaneTd c={row.nw} gold />
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="mt-2 text-xs text-muted">Ты{opp ? " / соперник" : ""}. Норма — средние Divine/Immortal на этом герое{r.position ? ` (${ROLE_NAME[r.position]})` : ""}.</div>
+      <CardTitle right={out ? <Chip tone={out.tone} title="Итог линии по оценке Stratz">{out.text}</Chip> : undefined}>Линия</CardTitle>
+      {opp && (
+        <div className="mb-5 flex flex-wrap items-center gap-3 text-sm">
+          <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-ally" />{mine && <img src={icon(mine.short)} alt="" className="h-5 w-5 rounded" />}Ты</span>
+          <span className="text-muted">против</span>
+          <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-enemy" /><img src={icon(opp.short)} alt="" className="h-5 w-5 rounded" />{oppName}</span>
+        </div>
+      )}
+      <div className="grid gap-x-12 gap-y-6 md:grid-cols-2">
+        {lane.rows.map((row) => (
+          <div key={row.minute} className="flex flex-col gap-4">
+            <div className="text-xs font-semibold text-muted">К {row.minute}-й минуте</div>
+            <Duel label="Добито" c={row.lh} oppName={oppName} />
+            <Duel label="Денаи" c={row.dn} oppName={oppName} />
+            <Duel label="Золото" c={row.nw} oppName={oppName} gold />
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 text-xs text-muted">Норма — средние Divine/Immortal на этом герое{r.position ? ` (${ROLE_NAME[r.position]})` : ""} к той же минуте.</div>
     </Card>
   );
 }
 
-function LaneTd({ c, gold }: { c: LaneCell; gold?: boolean }) {
+/** Ты против соперника по одному показателю: полоса делится по долям, у кого больше — тот дальше «перетянул». */
+function Duel({ label, c, oppName, gold }: { label: string; c: LaneCell; oppName: string | null; gold?: boolean }) {
   const f = (n: number) => (gold ? Math.round(n).toLocaleString("ru-RU") : String(Math.round(n)));
-  const ref = c.opp ?? c.norm;
-  const tone = ref == null || ref === 0 ? "" : c.me >= ref * 1.1 ? "text-good" : c.me <= ref * 0.9 ? "text-bad" : "";
+  const head = <div className="mb-1.5 flex items-baseline gap-2 text-xs"><span>{label}</span>{c.norm != null && <span className="text-muted">норма {f(c.norm)}</span>}</div>;
+  if (c.opp == null) return <div>{head}<div className="text-sm font-semibold tabular-nums">{f(c.me)}</div></div>;
+  const share = c.me + c.opp > 0 ? c.me / (c.me + c.opp) : 0.5;
   return (
-    <td className="py-2">
-      <b className={tone}>{f(c.me)}</b>{c.opp != null ? <span className="text-muted"> / {f(c.opp)}</span> : null}
-      {c.norm != null && <div className="text-[11px] text-muted">норма {f(c.norm)}</div>}
-    </td>
+    <div>
+      {head}
+      <div className="grid grid-cols-[52px_minmax(0,1fr)_52px] items-center gap-3 text-sm tabular-nums" title={`Ты ${f(c.me)}, ${oppName ?? "соперник"} ${f(c.opp)}${c.norm != null ? `, норма ${f(c.norm)}` : ""}`}>
+        <span className={`text-right ${c.me >= c.opp ? "font-semibold" : "text-muted"}`}>{f(c.me)}</span>
+        <div className="flex h-2.5 overflow-hidden rounded-full">
+          <span className="h-full bg-ally" style={{ width: `${share * 100}%` }} />
+          <span className="h-full w-0.5 shrink-0 bg-panel" />
+          <span className="h-full flex-1 bg-enemy" />
+        </div>
+        <span className={c.opp >= c.me ? "font-semibold" : "text-muted"}>{f(c.opp)}</span>
+      </div>
+    </div>
   );
 }
