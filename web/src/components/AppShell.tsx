@@ -74,7 +74,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <button onClick={() => { window.desktop?.installUpdate(); setUpd({ type: "installing", version: banner.version }); }} className="rounded-md bg-accent px-3 py-1 text-xs font-semibold text-black hover:brightness-110">Перезапустить сейчас</button>
             </>}
             {banner.type === "installing" && <Crystals size={12} label={`Устанавливаю ${banner.version}… программа закроется и откроется сама через несколько секунд.`} />}
-            {banner.type === "error" && <span className="text-bad">Не удалось проверить обновления: {banner.message}</span>}
+            {banner.type === "error" && <span className="text-bad">{banner.message}</span>}
             <button onClick={() => setDismissed(true)} className="ml-auto text-xs text-muted hover:text-foreground">Скрыть</button>
           </div>
         </div>

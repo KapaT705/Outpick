@@ -213,7 +213,7 @@ export default function SettingsForm() {
           </div>
         )}
         <div className="flex items-center gap-3">
-          <button onClick={async () => { const d = (window as unknown as { desktop?: { checkForUpdates: () => Promise<{ ok: boolean; reason?: string }> } }).desktop; if (!d) { setUpdMsg("Проверка работает только в приложении"); return; } setUpdMsg("проверяю…"); const r = await d.checkForUpdates(); setUpdMsg(r.ok ? "запросил GitHub, результат появится полосой сверху" : r.reason === "dev" ? "в режиме разработки не проверяется" : `ошибка: ${r.reason}`); }}
+          <button onClick={async () => { const d = (window as unknown as { desktop?: { checkForUpdates: () => Promise<{ ok: boolean; reason?: string }> } }).desktop; if (!d) { setUpdMsg("Проверка работает только в приложении"); return; } setUpdMsg("проверяю…"); const r = await d.checkForUpdates(); setUpdMsg(r.ok ? "запросил GitHub, результат появится полосой сверху" : r.reason === "dev" ? "в режиме разработки не проверяется" : r.reason ?? "не удалось проверить"); }}
             className="rounded-lg border border-border px-3.5 py-2 text-sm hover:border-accent/60 hover:bg-panel-2 disabled:opacity-50 disabled:cursor-not-allowed transition">Проверить обновления</button>
           {updMsg && <span className="text-xs text-muted">{updMsg}</span>}
         </div>

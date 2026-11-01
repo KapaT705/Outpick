@@ -92,7 +92,7 @@
       "provider": "github",
       "owner": "KapaT705",
       "repo": "Outpick",
-      "releaseType": "release"
+      "releaseType": "draft"
     }
   },
   "dependencies": {

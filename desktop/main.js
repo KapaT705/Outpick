@@ -166,6 +166,19 @@ function configureFeed() {
   autoUpdater.setFeedURL({ provider: "github", owner: "KapaT705", repo: "Outpick" });
   return true;
 }
+// Сырые ошибки electron-updater (стек, заголовки GitHub) в окно не идут: короткий текст для человека, полный - в лог и диагностику.
+// 404 на latest.yml значит, что релиз уже открыт, а файл обновления ещё загружается (или сборка под эту систему не удалась).
+function updateErrorText(e, stage) {
+  const m = String(e?.message ?? e);
+  const what = stage === "download" ? "Не удалось скачать обновление" : "Не удалось проверить обновления";
+  if (/latest(-mac|-linux)?\.yml/i.test(m) && /404/.test(m)) return "Новая версия ещё выкладывается на GitHub. Проверь через пару минут.";
+  if (/sha512|checksum/i.test(m)) return `${what}: файл пришёл с ошибкой. Попробуй ещё раз.`;
+  if (/\b(403|429)\b|rate limit/i.test(m)) return `${what}: GitHub временно ограничил запросы. Попробуй через час.`;
+  if (/ENOTFOUND|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|net::ERR_|getaddrinfo|socket hang up/i.test(m)) return `${what}: нет связи с GitHub. Проверь интернет.`;
+  return `${what}. Подробности в диагностике.`;
+}
+let updateStage = "quiet"; // quiet - тихая проверка при запуске, check - кнопка в настройках, download - скачивание
+let quietRetried = false;
 function setupUpdater() {
   autoUpdater.autoDownload = false;
   autoUpdater.on("checking-for-update", () => send({ type: "checking" }));
@@ -173,7 +186,15 @@ function setupUpdater() {
   autoUpdater.on("update-not-available", () => send({ type: "none", current: app.getVersion() }));
   autoUpdater.on("download-progress", (p) => send({ type: "progress", percent: Math.round(p.percent) }));
   autoUpdater.on("update-downloaded", (info) => send({ type: "downloaded", version: info.version }));
-  autoUpdater.on("error", (e) => send({ type: "error", message: String(e?.message ?? e) }));
+  autoUpdater.on("error", (e) => {
+    console.error(`[update] ${updateStage}: ${String(e?.stack ?? e?.message ?? e)}`);
+    // тихая проверка при запуске полосу с ошибкой не показывает; если релиз ещё выкладывается, повторяем один раз через 3 минуты
+    if (updateStage === "quiet") {
+      if (!quietRetried && /404/.test(String(e?.message ?? e))) { quietRetried = true; setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 3 * 60 * 1000); }
+      return;
+    }
+    send({ type: "error", message: updateErrorText(e, updateStage) });
+  });
   ipcMain.handle("app:version", () => app.getVersion());
   // Тестовая сборка на маке: кнопка в настройках запускает desktop/scripts/install-mac.sh из папки проекта
   // (собирает текущий код, подменяет программу в /Applications, перезапускает). Только macOS и только если папка есть.
@@ -188,9 +209,10 @@ function setupUpdater() {
   ipcMain.handle("update:check", async () => {
     if (isDev) return { ok: false, reason: "dev" };
     configureFeed();
-    try { await autoUpdater.checkForUpdates(); return { ok: true }; } catch (e) { return { ok: false, reason: String(e?.message ?? e) }; }
+    updateStage = "check";
+    try { await autoUpdater.checkForUpdates(); return { ok: true }; } catch (e) { return { ok: false, reason: updateErrorText(e, "check") }; }
   });
-  ipcMain.handle("update:download", async () => { try { await autoUpdater.downloadUpdate(); return { ok: true }; } catch (e) { return { ok: false, reason: String(e?.message ?? e) }; } });
+  ipcMain.handle("update:download", async () => { updateStage = "download"; try { await autoUpdater.downloadUpdate(); return { ok: true }; } catch (e) { return { ok: false, reason: updateErrorText(e, "download") }; } });
   // тихая установка (NSIS /S) и автозапуск после неё: без мастера «Далее → Готово», окно программы просто возвращается
   ipcMain.handle("update:install", () => { setTimeout(() => autoUpdater.quitAndInstall(true, true), 300); return { ok: true }; });
   // тихая проверка при старте
