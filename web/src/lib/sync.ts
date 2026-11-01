@@ -65,7 +65,9 @@ export async function attachDetails(rec: DraftLog, ME: number) {
   if (!rec.matchId || rec.details) return;
   rec.details = await fetchMatchDetails(rec.matchId, ME, rec.chosenHeroId);
   const pos = rec.details?.position ?? rec.role ?? 2;
-  rec.bench = await fetchBench(rec.chosenHeroId, pos);
+  // поминутные строки нормы в журнал не пишутся: они нужны только отчёту и лежат в кэше норм
+  const b = await fetchBench(rec.chosenHeroId, pos);
+  rec.bench = b ? { ...b, byTime: undefined } : null;
 }
 
 function apply(rec: DraftLog, m: M, me: P, now: number, labels: MatchLabel[]) {

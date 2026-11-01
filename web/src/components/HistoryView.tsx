@@ -1,31 +1,60 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DraftLog } from "@/lib/log";
 import type { MatchDetails } from "@/lib/matchDetails";
 import type { Bench } from "@/lib/bench";
+import type { AccMatch } from "@/lib/accountMatches";
 import type { Hero } from "@/lib/types";
 import { Button, Card, CardTitle, Chip, Empty, Hint } from "@/components/ui";
+import Crystals from "@/components/Crystals";
 
 // иконки с CDN Valve: у Stratz alchemist_icon.png оказался копией dragon_knight_icon.png
 const icon = (short: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${short}.png`;
 const portrait = (short: string) => `https://cdn.stratz.com/images/dota2/heroes/${short}_horz.png`;
 const fmt = (t: number) => new Date(t * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+const ROLE_NAME: Record<number, string> = { 1: "керри", 2: "мид", 3: "офлейн", 4: "саппорт 4", 5: "саппорт 5" };
+const reportHref = (matchId: number, acc: number | null, heroId?: number) => `/history/${matchId}?${new URLSearchParams({ ...(acc ? { me: String(acc) } : {}), ...(heroId ? { hero: String(heroId) } : {}) })}`;
 
-export default function HistoryView({ items: initial, heroes, accounts = {}, defaultAccountId = null, currentAccountId = null }: { items: DraftLog[]; heroes: Hero[]; accounts?: Record<number, string>; defaultAccountId?: number | null; currentAccountId?: number | null }) {
+/** Рейтинговые матчи аккаунта из Stratz и нормы смертей для сводки (см. /api/matches). */
+type Remote = { items: AccMatch[]; norms: Record<string, number[]>; error: string | null };
+
+export default function HistoryView({ items: initial, heroes, accounts = {}, stratzAccounts = [], defaultAccountId = null, currentAccountId = null }: { items: DraftLog[]; heroes: Hero[]; accounts?: Record<number, string>; stratzAccounts?: number[]; defaultAccountId?: number | null; currentAccountId?: number | null }) {
   const [all, setItems] = useState(initial);
   // история по аккаунтам: открывается на текущем (под которым идёт игра или выбран по умолчанию), переключатель на любой или на все
   const accOf = (x: DraftLog) => x.accountId ?? defaultAccountId;
-  const accountIds = [...new Set(all.map(accOf).filter((id): id is number => !!id))];
+  const accountIds = [...new Set([...all.map(accOf), ...stratzAccounts].filter((id): id is number => !!id))];
   const [acc, setAcc] = useState<number | "all">(currentAccountId && accountIds.includes(currentAccountId) ? currentAccountId : accountIds.length > 1 ? "all" : (accountIds[0] ?? "all"));
   const items = acc === "all" ? all : all.filter((x) => accOf(x) === acc);
   const multiAccount = acc === "all" && accountIds.length > 1;
   const accName = (x: DraftLog) => { const id = accOf(x); return id ? (accounts[id] ?? String(id)) : "?"; };
+  // полный разбор только там, где Stratz видит матч: у закрытого профиля его там нет, остаются цифры из OpenDota
+  const canReport = (x: DraftLog): x is DraftLog & { matchId: number } => !!x.matchId && stratzAccounts.includes(accOf(x) ?? 0);
   const [busy, setBusy] = useState(false);
   const [period, setPeriod] = useState<number>(30); // дней для сводки; 0 = всё время
   const [openId, setOpenId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const byId = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes]);
+
+  // рейтинговые матчи из Stratz: и те, что пикер не записывал; для сводки смертей и списка матчей
+  const [remote, setRemote] = useState<Record<number, Remote>>({});
+  const [remoteBusy, setRemoteBusy] = useState(false);
+  const wanted = (acc === "all" ? accountIds : [acc]).filter((id) => stratzAccounts.includes(id));
+  const wantedKey = wanted.join(",");
+  useEffect(() => {
+    const need = wantedKey ? wantedKey.split(",").map(Number).filter((id) => !remote[id]) : [];
+    if (!need.length) return;
+    let alive = true;
+    setRemoteBusy(true);
+    Promise.all(need.map((id) => fetch(`/api/matches?acc=${id}`).then((x) => x.json()).catch(() => null).then((j) => [id, j] as const))).then((res) => {
+      if (!alive) return;
+      setRemote((cur) => { const next = { ...cur }; for (const [id, j] of res) next[id] = j?.ok ? { items: j.items, norms: j.norms, error: j.error } : { items: [], norms: {}, error: "Stratz не ответил" }; return next; });
+      setRemoteBusy(false);
+    });
+    return () => { alive = false; };
+  }, [wantedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const remoteRows = wanted.flatMap((id) => (remote[id]?.items ?? []).map((m) => ({ m, acc: id })));
+  const norms = Object.assign({}, ...wanted.map((id) => remote[id]?.norms ?? {})) as Record<string, number[]>;
 
   const sync = async () => {
     setBusy(true); setMsg(null);
@@ -73,6 +102,18 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
   });
   const periodLabel = period ? `${period} дней` : "всё время";
 
+  // матчи из Stratz, которых нет среди драфтов (пикер в них не записывал)
+  const draftMatchIds = new Set(all.map((x) => x.matchId).filter((id): id is number => !!id));
+  const stratzOnly = remoteRows.filter(({ m }) => !draftMatchIds.has(m.id)).sort((a, b) => b.m.startDateTime - a.m.startDateTime);
+  const lastRemote = stratzOnly[0] && (!last || stratzOnly[0].m.startDateTime > last.createdAt) ? stratzOnly[0] : null;
+  const [listMode, setListMode] = useState<"all" | "drafts">("all");
+  const [shown, setShown] = useState(40);
+  type Row = { kind: "draft"; t: number; x: DraftLog } | { kind: "match"; t: number; m: AccMatch; acc: number };
+  const rows: Row[] = [
+    ...items.map((x): Row => ({ kind: "draft", t: x.createdAt, x })),
+    ...(listMode === "all" ? stratzOnly.map(({ m, acc: a }): Row => ({ kind: "match", t: m.startDateTime, m, acc: a })) : []),
+  ].sort((a, b) => b.t - a.t);
+
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-5 flex flex-col gap-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -91,7 +132,24 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
 
       {msg && <Card tone={msg.startsWith("Готово") ? "good" : "default"} className="py-2.5 text-sm">{msg}</Card>}
 
-      {last && (() => { const h = byId.get(last.chosenHeroId); const adv = last.topPool[0]; const advAll = last.topAll[0]; return (
+      {lastRemote && (() => { const { m, acc: a } = lastRemote; const h = byId.get(m.heroId); return (
+        <Card tone={m.won ? "good" : "bad"} className="flex flex-wrap items-center gap-4">
+          {h && <img src={portrait(h.short)} alt="" className="h-14 w-[100px] rounded-lg object-cover shrink-0" />}
+          <div className="min-w-0 flex-1 flex flex-col gap-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted">Последний матч</span>
+              <b className="text-base">{h?.name}</b>
+              <Chip tone={m.won ? "good" : "bad"}>{m.won ? "победа" : "поражение"}</Chip>
+              {m.position ? <Chip>{ROLE_NAME[m.position]}</Chip> : null}
+              <span className="text-xs text-muted tabular-nums">{Math.round(m.durationSeconds / 60)} мин · {m.kills}/{m.deaths}/{m.assists}</span>
+            </div>
+            <div className="text-xs text-muted">Пикер в этом матче драфт не записывал.</div>
+          </div>
+          <a href={reportHref(m.id, a)} className="rounded-lg border border-border px-3.5 py-2 text-sm hover:border-accent/60 hover:bg-panel-2 transition">Разбор матча →</a>
+        </Card>
+      ); })()}
+
+      {!lastRemote && last && (() => { const h = byId.get(last.chosenHeroId); const adv = last.topPool[0]; const advAll = last.topAll[0]; return (
         <Card tone={last.won ? "good" : "bad"} className="flex flex-wrap items-center gap-4">
           {h && <img src={portrait(h.short)} alt="" className="h-14 w-[100px] rounded-lg object-cover shrink-0" />}
           <div className="min-w-0 flex-1 flex flex-col gap-1.5">
@@ -109,6 +167,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
               {advAll && advAll.heroId !== last.chosenHeroId && advAll.heroId !== adv?.heroId ? ` · лучший вообще ${advAll.name} ${Math.round(advAll.finalScore)}%` : ""}
             </div>
           </div>
+          {canReport(last) ? <a href={reportHref(last.matchId, accOf(last), last.chosenHeroId)} className="rounded-lg border border-border px-3.5 py-2 text-sm hover:border-accent/60 hover:bg-panel-2 transition">Разбор матча →</a> : null}
         </Card>
       ); })()}
 
@@ -125,6 +184,8 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
           </span>
         ) : <span className="text-muted">за {periodLabel} матчей с результатом нет</span>}
       </section>
+
+      {wanted.length > 0 && <DeathTrend rows={remoteRows.map((r) => r.m)} norms={norms} period={period} busy={remoteBusy} error={wanted.map((id) => remote[id]?.error).find(Boolean) ?? null} />}
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat title="Взял первого по совету" hint="Матчи, где ты взял героя, которого пикер ставил первым" s={top1} />
@@ -158,9 +219,34 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
       </Card>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-base font-semibold">Все драфты</h2>
-        {items.length === 0 && <Empty>Пока пусто. Когда Дота на связи, драфт записывается сам после твоего пика. Без связи нажми «Беру» на взятом герое в пикере.</Empty>}
-        {items.map((x) => {
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-base font-semibold">Матчи</h2>
+          <div className="flex rounded-lg border border-border overflow-hidden text-xs">
+            <button onClick={() => setListMode("all")} className={`px-3 py-1.5 ${listMode === "all" ? "bg-panel-2 text-foreground font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`} title="Драфты пикера и рейтинговые матчи из Stratz, где пикер не записывал драфт">все</button>
+            <button onClick={() => setListMode("drafts")} className={`px-3 py-1.5 ${listMode === "drafts" ? "bg-panel-2 text-foreground font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`} title="Только матчи, где пикер записал драфт">с драфтом</button>
+          </div>
+          {remoteBusy && <Crystals size={12} label="загружаю матчи из Stratz…" />}
+        </div>
+        {rows.length === 0 && !remoteBusy && <Empty>Пока пусто. Когда Дота на связи, драфт записывается сам после твоего пика. Без связи нажми «Беру» на взятом герое в пикере.</Empty>}
+        {rows.slice(0, shown).map((row) => {
+          if (row.kind === "match") {
+            const { m } = row; const h = byId.get(m.heroId);
+            return (
+              <a key={`m${m.id}`} href={reportHref(m.id, row.acc)} className="rounded-xl border border-border bg-panel p-3 flex flex-wrap items-center gap-3 text-sm transition hover:border-accent/40">
+                <span className="text-xs text-muted w-24 tabular-nums">{fmt(m.startDateTime)}</span>
+                {h && <img src={icon(h.short)} alt="" className="h-9 w-9 rounded-md" />}
+                <div className="min-w-0 flex-1 flex flex-wrap items-center gap-2">
+                  <b>{h?.name ?? m.heroId}</b>{m.won ? <Chip tone="good">победа</Chip> : <Chip tone="bad">поражение</Chip>}
+                  {m.position ? <Chip>{ROLE_NAME[m.position]}</Chip> : null}
+                  {multiAccount && <Chip tone="muted" title="Аккаунт Steam, с которого играли">{accounts[row.acc] ?? row.acc}</Chip>}
+                  <span className="text-xs text-muted tabular-nums">{Math.round(m.durationSeconds / 60)} мин · {m.kills}/{m.deaths}/{m.assists}</span>
+                  <span className="text-xs text-muted">без драфта</span>
+                </div>
+                <span className="text-xs text-accent" title={m.parsed ? undefined : "Stratz ещё не разобрал этот матч подробно: будут только итоговые цифры"}>{m.parsed ? "Разбор →" : "Итог →"}</span>
+              </a>
+            );
+          }
+          const x = row.x;
           const h = byId.get(x.chosenHeroId);
           const open = openId === x.id;
           const res = x.won === undefined ? <Chip tone="muted">{x.noMatch ? "матч не найден" : "ждёт результата"}</Chip> : x.won ? <Chip tone="good">победа</Chip> : <Chip tone="bad">поражение</Chip>;
@@ -172,7 +258,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
                 <div className="flex flex-wrap items-center gap-2">
                   <b>{h?.name ?? x.chosenHeroId}</b>{res}
                   {multiAccount && <Chip tone="muted" title="Аккаунт Steam, с которого играли">{accName(x)}</Chip>}
-                  {x.durationSeconds ? <span className="text-xs text-muted">{Math.round(x.durationSeconds / 60)} мин</span> : null}
+                  {x.durationSeconds ? <span className="text-xs text-muted tabular-nums">{Math.round(x.durationSeconds / 60)} мин{x.details ? ` · ${x.details.kills}/${x.details.deaths}/${x.details.assists}` : ""}</span> : null}
                   <span className="text-xs text-muted">{x.chosen ? `шанс ${Math.round(x.chosen.finalScore)}% · место ${x.chosen.rank}` : "герой не оценивался"}{x.topPool[0] && x.topPool[0].heroId !== x.chosenHeroId ? ` · совет был ${x.topPool[0].name}` : ""}</span>
                 </div>
                 <div className="text-xs text-muted flex flex-wrap items-center gap-1">
@@ -181,6 +267,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
                 </div>
               </div>
               {x.matchId ? <a className="text-xs text-muted hover:text-foreground underline" href={`https://stratz.com/matches/${x.matchId}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Stratz</a> : null}
+              {canReport(x) ? <a className="text-xs text-accent hover:underline" href={reportHref(x.matchId, accOf(x), x.chosenHeroId)} onClick={(e) => e.stopPropagation()}>Разбор →</a> : null}
               <button onClick={(e) => { e.stopPropagation(); del(x.id); }} className="text-xs text-muted hover:text-bad" title="Удалить запись">удалить</button>
               {open && (
                 <div className="basis-full border-t border-border pt-3 text-xs text-muted grid gap-3 sm:grid-cols-2" onClick={(e) => e.stopPropagation()}>
@@ -193,7 +280,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
                     <ol className="grid gap-0.5">{x.topAll.map((r) => <li key={r.heroId} className={r.heroId === x.chosenHeroId ? "text-accent" : ""}>{r.rank}. {r.name} <span className="opacity-70">{Math.round(r.finalScore)}%</span>{r.heroId === x.chosenHeroId ? " · ты" : ""}</li>)}</ol>
                   </div>
                   <div className="sm:col-span-2">
-                    <div className="text-foreground font-medium mb-1">Разбор матча</div>
+                    <div className="text-foreground font-medium mb-1 flex items-center gap-3">Цифры матча{canReport(x) ? <a className="font-normal text-accent hover:underline" href={reportHref(x.matchId, accOf(x), x.chosenHeroId)}>полный разбор →</a> : null}</div>
                     {x.details ? <MatchStats d={x.details} b={x.bench ?? null} byId={byId} /> : x.matchId ? <Button size="sm" onClick={() => loadDetails(x.id)} disabled={detailsBusy === x.id}>{detailsBusy === x.id ? "загружаю…" : "Загрузить разбор"}</Button> : <span>Появится, когда подтянется результат.</span>}
                   </div>
                   {x.enemyRoles?.length > 0 && <div className="sm:col-span-2">Роли врагов: {x.enemyRoles.map((g) => `${byId.get(g.id)?.name ?? g.id} ${g.role}`).join(", ")}{x.role ? ` · твоя роль ${x.role}` : ""}</div>}
@@ -202,6 +289,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
             </div>
           );
         })}
+        {rows.length > shown && <Button size="sm" className="self-center" onClick={() => setShown(shown + 40)}>Показать ещё ({rows.length - shown})</Button>}
       </section>
     </main>
   );
@@ -257,6 +345,68 @@ function Stat({ title, hint, hintAlign, s }: { title: string; hint?: string; hin
       <div className="text-xs text-muted flex items-center gap-1.5">{title}{hint && <Hint text={hint} align={hintAlign} />}</div>
       <div className={`text-2xl font-semibold tabular-nums ${s.wr === null ? "text-muted" : s.wr >= 55 ? "text-good" : s.wr <= 45 ? "text-bad" : ""}`}>{s.wr === null ? "—" : `${s.wr}%`}</div>
       <div className="text-xs text-muted">{s.n ? `${s.w}–${s.n - s.w} · ${s.n} ${plural(s.n, "игра", "игры", "игр")}` : "игр нет"}</div>
+    </Card>
+  );
+}
+
+const WINDOWS: [number, number, string][] = [[0, 10, "0–10 минута"], [10, 20, "10–20 минута"], [20, Infinity, "после 20-й"]];
+
+/** Смерти на 10 минут игры по отрезкам матча за период: твои и норма Divine/Immortal на тех же героях и позициях. */
+function deathRates(ms: AccMatch[], norms: Record<string, number[]>, from: number, to: number) {
+  const acc = WINDOWS.map(() => ({ mine: 0, norm: 0, min: 0 }));
+  let n = 0;
+  for (const m of ms) {
+    if (!m.parsed || !m.position || m.startDateTime < from || m.startDateTime >= to) continue;
+    const nm = norms[`${m.heroId}-${m.position}`];
+    if (!nm) continue;
+    n++;
+    const dur = m.durationSeconds / 60;
+    const at = (t: number) => nm[Math.min(nm.length - 1, Math.floor(t))];
+    WINDOWS.forEach(([a, b], i) => {
+      if (dur <= a) return;
+      const e = Math.min(dur, b);
+      acc[i].min += e - a;
+      acc[i].mine += m.deathTimes.filter((t) => t >= a * 60 && t < e * 60).length;
+      acc[i].norm += at(e) - at(a);
+    });
+  }
+  // меньше получаса игры на отрезке — это шум
+  return { n, w: acc.map((x) => (x.min >= 30 ? { me: (x.mine / x.min) * 10, norm: (x.norm / x.min) * 10 } : null)) };
+}
+
+function DeathTrend({ rows, norms, period, busy, error }: { rows: AccMatch[]; norms: Record<string, number[]>; period: number; busy: boolean; error: string | null }) {
+  const now = Math.floor(Date.now() / 1000);
+  const cur = deathRates(rows, norms, period ? now - period * 86400 : 0, now + 1);
+  const prev = period ? deathRates(rows, norms, now - 2 * period * 86400, now - period * 86400) : null;
+  const f = (n: number) => n.toFixed(1);
+  return (
+    <Card>
+      <CardTitle hint="Сколько раз ты умираешь за 10 минут игры на каждом отрезке матча. Норма — средние Divine/Immortal на тех же героях и позициях, что играл ты. Считаются рейтинговые матчи, которые Stratz разобрал подробно.">Смерти по отрезкам игры</CardTitle>
+      {busy && cur.n === 0 ? <Crystals size={14} label="Загружаю матчи из Stratz, в первый раз это до 20 секунд…" />
+        : cur.n === 0 ? <p className="text-sm text-muted">{error ?? `За ${period ? `${period} дней` : "всё время"} нет рейтинговых матчей, разобранных Stratz.`}</p>
+        : <>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {WINDOWS.map(([, , label], i) => {
+              const w = cur.w[i], p = prev?.w[i];
+              if (!w) return <div key={label} className="rounded-xl bg-panel-2 p-3"><div className="text-xs text-muted">{label}</div><div className="text-2xl font-semibold text-muted">—</div><div className="text-xs text-muted">мало игры на этом отрезке</div></div>;
+              const over = w.norm > 0 ? Math.round((w.me / w.norm - 1) * 100) : 0;
+              const tone = over >= 25 ? "text-bad" : over <= 5 ? "text-good" : "";
+              const delta = p ? w.me - p.me : 0;
+              return (
+                <div key={label} className="rounded-xl bg-panel-2 p-3 flex flex-col gap-0.5">
+                  <div className="text-xs text-muted">{label}</div>
+                  <div className="flex items-baseline gap-2">
+                    <span className={`text-2xl font-semibold tabular-nums ${tone}`}>{f(w.me)}</span>
+                    <span className="text-xs text-muted tabular-nums">норма {f(w.norm)}{over > 5 ? ` · больше на ${over}%` : over < -5 ? ` · меньше на ${-over}%` : ""}</span>
+                  </div>
+                  {p ? <div className="text-xs text-muted tabular-nums">прошлые {period} дней: {f(p.me)} <span className={delta <= -0.1 ? "text-good" : delta >= 0.1 ? "text-bad" : ""}>{delta <= -0.1 ? "↓ стало меньше" : delta >= 0.1 ? "↑ стало больше" : "без изменений"}</span></div>
+                    : <div className="text-xs text-muted">{period ? `за прошлые ${period} дней матчей нет` : "за все загруженные матчи"}</div>}
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-2 text-xs text-muted">Смертей на 10 минут игры · {cur.n} {plural(cur.n, "матч", "матча", "матчей")} за {period ? `${period} дней` : "всё время"}{error ? ` · ${error}` : ""}</div>
+        </>}
     </Card>
   );
 }

@@ -13,5 +13,7 @@ export default function HistoryPage() {
   // имена аккаунтов для пометок в записях; старые записи без аккаунта относятся к аккаунту по умолчанию
   const accounts = Object.fromEntries(cfg.accounts.map((a) => [a.id, a.name ?? String(a.id)]));
   // история по умолчанию только текущего аккаунта (того, под которым идёт игра или выбран по умолчанию)
-  return <HistoryView items={items} heroes={heroes} accounts={accounts} defaultAccountId={cfg.steamAccountId} currentAccountId={currentAccount().id} />;
+  // аккаунты, чьи рейтинговые матчи можно взять из Stratz (у закрытого профиля их там нет)
+  const stratzAccounts = cfg.accounts.filter((a) => !a.anonymous).map((a) => a.id);
+  return <HistoryView items={items} heroes={heroes} accounts={accounts} stratzAccounts={stratzAccounts} defaultAccountId={cfg.steamAccountId} currentAccountId={currentAccount().id} />;
 }
