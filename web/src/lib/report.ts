@@ -20,6 +20,8 @@ export type ReportWindow = { from: number; to: number | null; label: string; min
 export type LaneCell = { me: number; opp: number | null; norm: number | null };
 export type LaneRow = { minute: number; lh: LaneCell; dn: LaneCell; nw: LaneCell };
 export type ReportTip = { t: number; text: string };
+/** Полезное действие: выигранная драка, мультикилл, соло-килл, первая кровь, вышка, линия. */
+export type ReportMoment = { t: number; text: string; kind: "fight" | "multi" | "solo" | "first" | "tower" | "lane" | "trade" | "runes" };
 export type LaneOutcome = "stomp" | "won" | "even" | "lost" | "stomped" | null; // итог линии по Stratz для тебя
 export type MatchReport = {
   matchId: number; startDateTime: number; durationSeconds: number; lobbyType: string | null;
@@ -34,6 +36,8 @@ export type MatchReport = {
   windows: ReportWindow[];
   lane: { oppHeroId: number | null; outcome: LaneOutcome; rows: LaneRow[] } | null;
   tips: ReportTip[];
+  moments: ReportMoment[];   // что получилось, по времени
+  strengths: string[];       // сильные стороны матча против нормы
   benchMatches: number | null;
 };
 
@@ -109,7 +113,7 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     won: me.isVictory, heroId: me.heroId, position: me.position, isRadiant: me.isRadiant,
     kills: me.kills, deaths: me.deaths, assists: me.assists, lastHits: me.lastHits, denies: me.denies, gpm: me.gpm, xpm: me.xpm, networth: me.networth,
     allies: allies.map((p) => p.heroId), enemies: enemies.map((p) => p.heroId),
-    plan, parsed: m.parsed, summary: [], winCurve, deathList: [], windows: [], lane: null, tips: [], benchMatches: bench?.matchCount ?? null,
+    plan, parsed: m.parsed, summary: [], winCurve, deathList: [], windows: [], lane: null, tips: [], moments: [], strengths: [], benchMatches: bench?.matchCount ?? null,
   };
   if (!m.parsed) return base;
 
@@ -137,9 +141,9 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
       : enemyLosses < ownLosses ? ` Драку проиграли: отдали ${ownLosses}, забрали ${enemyLosses}.`
       : enemyLosses === ownLosses ? ` Драка вничью: ${ownLosses} на ${enemyLosses}.`
       : ` Драку выиграли: забрали ${enemyLosses}, отдали ${ownLosses}.`;
-    // респ в пару секунд бывает только после выкупа
-    const gold = d.goldLost > 0 ? `Минус ${d.goldLost} золота, ` : "";
-    const loss = d.timeDead <= 3 ? ` ${gold ? gold + "сразу выкупился" : "Сразу выкупился"}.` : ` ${gold ? gold + "респ" : "Респ"} ${d.timeDead} сек.`;
+    // респ в пару секунд бывает только после выкупа; само время респа владелец просил не писать
+    const bought = d.timeDead <= 3;
+    const loss = d.goldLost > 0 ? ` Минус ${d.goldLost} золота${bought ? ", сразу выкупился" : ""}.` : bought ? " Сразу выкупился." : "";
     // пояснение через план героя, у каждого вида один раз, чтобы не повторяться
     let note: string | null = null;
     const once = (key: string, text: string) => { if (!notes.has(key)) { notes.add(key); note = text; } };
@@ -242,10 +246,87 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     const late = deathList.find((d) => !used.has(d.t) && d.t >= 1200 && !d.traded && d.timeDead >= 40);
     if (late) {
       const i = Math.floor(late.t / 60), j = Math.min(winCurve.length - 1, i + 2);
-      if (winCurve[i] != null && winCurve[i] - winCurve[j] >= 8) tips.push({ t: late.t, text: `Смерть без размена в лейте: ${late.timeDead} сек респа, и за две минуты шанс на победу упал с ${winCurve[i]}% до ${winCurve[j]}%. ${late.enemyHalf ? "Без тиммейтов и варда на чужую половину не ходи." : "Фарми там, куда свои успеют быстрее врагов."}` });
+      if (winCurve[i] != null && winCurve[i] - winCurve[j] >= 8) tips.push({ t: late.t, text: `Смерть без размена в лейте: за две минуты шанс на победу упал с ${winCurve[i]}% до ${winCurve[j]}%. ${late.enemyHalf ? "Без тиммейтов и варда на чужую половину не ходи." : "Фарми там, куда свои успеют быстрее врагов."}` });
     }
   }
   tips.sort((a, b) => a.t - b.t);
 
-  return { ...base, summary, deathList, windows, lane, tips: tips.slice(0, 3) };
+  // что получилось: драки, мультикиллы, соло-киллы, вышки, линия; чтобы было видно сильные стороны, а не только ошибки
+  const moments: (ReportMoment & { w: number })[] = [];
+  const myKills = [...me.kills2].sort((a, b) => a.t - b.t);
+  const whereKill = (k: { x: number; y: number }) => region(k.x, k.y, me.isRadiant).text;
+  // мультикиллы: убийства с промежутком до 18 секунд, как в игре
+  const multis: { t: number; n: number; last: (typeof myKills)[number] }[] = [];
+  for (let i = 0; i < myKills.length;) {
+    let j = i;
+    while (j + 1 < myKills.length && myKills[j + 1].t - myKills[j].t <= 18) j++;
+    if (j > i) multis.push({ t: myKills[i].t, n: j - i + 1, last: myKills[j] });
+    i = j + 1;
+  }
+  const MULTI = ["", "", "Дабл-килл", "Трипл-килл", "Ультра-килл", "Рампага!"];
+  // драки: подряд идущие смерти обеих команд с перерывом не больше 15 секунд
+  const allDeaths = [...[me, ...allies].flatMap((p) => p.deathsAt.map((d) => ({ ...d, ours: true }))), ...enemies.flatMap((p) => p.deathsAt.map((d) => ({ ...d, ours: false })))].sort((a, b) => a.t - b.t);
+  const fights: (typeof allDeaths)[] = [];
+  for (const d of allDeaths) { const last = fights[fights.length - 1]; if (last && d.t - last[last.length - 1].t <= 15) last.push(d); else fights.push([d]); }
+  const usedMulti = new Set<number>();
+  for (const f of fights) {
+    const theirs = f.filter((d) => !d.ours), ours = f.filter((d) => d.ours);
+    const from = f[0].t - 3, to = f[f.length - 1].t + 3;
+    const k = me.killsAt.filter((t) => t >= from && t <= to).length, a = me.assistsAt.filter((t) => t >= from && t <= to).length;
+    if (theirs.length < 2 || theirs.length <= ours.length || k + a === 0) continue;
+    const multi = multis.find((x) => x.t >= from && x.t <= to);
+    if (multi) usedMulti.add(multi.t);
+    const mine = multi ? ` У тебя ${MULTI[Math.min(multi.n, 5)].replace("!", "").toLowerCase()}.` : ` У тебя ${[k ? `${k} ${plural(k, "килл", "килла", "киллов")}` : "", a ? `${a} ${plural(a, "ассист", "ассиста", "ассистов")}` : ""].filter(Boolean).join(" и ")}.`;
+    const i = Math.floor(f[0].t / 60), j = Math.min((winCurve?.length ?? 1) - 1, Math.floor(f[f.length - 1].t / 60) + 2);
+    const swing = winCurve && winCurve[i] != null && winCurve[j] != null && winCurve[j] - winCurve[i] >= 8 ? ` Шанс на победу вырос с ${winCurve[i]}% до ${winCurve[j]}%.` : "";
+    moments.push({ t: f[0].t, kind: "fight", w: 3 + theirs.length - ours.length + (swing ? 2 : 0) + (multi ? multi.n : 0), text: `Выиграли драку ${region(theirs[0].x, theirs[0].y, me.isRadiant).text}: забрали ${theirs.length}, отдали ${ours.length}.${mine}${swing}` });
+  }
+  for (const x of multis) if (!usedMulti.has(x.t)) moments.push({ t: x.t, kind: "multi", w: 2 + x.n * 2, text: `${MULTI[Math.min(x.n, 5)]} ${whereKill(x.last)}.`.replace("!.", "!") });
+  const firstKill = m.players.flatMap((p) => p.kills2.map((k2) => ({ ...k2, p }))).sort((a, b) => a.t - b.t)[0];
+  if (firstKill && firstKill.p === me) moments.push({ t: firstKill.t, kind: "first", w: 4, text: `Первая кровь за тобой: ${H(firstKill.target).name}, ${whereKill(firstKill)}.` });
+  const isFirst = (k2: { t: number; target: number }) => firstKill?.p === me && firstKill.t === k2.t && firstKill.target === k2.target;
+  for (const k2 of myKills.filter((k2) => k2.solo && !isFirst(k2)).slice(0, 3)) moments.push({ t: k2.t, kind: "solo", w: 3, text: `Соло-килл ${whereKill(k2)}: ${H(k2.target).name}.` });
+  for (const d of deathList.filter((d) => d.ownLosses === 1 && d.enemyLosses >= 2)) moments.push({ t: d.t, kind: "trade", w: 2 + d.enemyLosses, text: `Твоя смерть окупилась: за тебя забрали ${["", "", "двоих", "троих", "четверых", "пятерых"][Math.min(d.enemyLosses, 5)]}.` });
+  const towersMine = m.towers.filter((t) => t.attacker === me.heroId && t.radiant !== me.isRadiant);
+  for (const t of towersMine.slice(0, 3)) moments.push({ t: t.t, kind: "tower", w: 2, text: "Добил вражескую вышку." });
+  if (r10) {
+    const diff = r10.nw.opp != null ? r10.nw.me - r10.nw.opp : null;
+    const farm = r10.lh.norm ? r10.lh.me / r10.lh.norm : 0;
+    const laneWon = (diff != null && diff >= 500) || lane.outcome === "won" || lane.outcome === "stomp";
+    const farmText = farm >= 1.1 ? `${r10.lh.me} добитых при норме ${Math.round(r10.lh.norm!)}` : "";
+    if (laneWon) moments.push({ t: 600, kind: "lane", w: 4, text: `Линия за тобой${diff != null && diff > 0 ? `: к 10-й минуте на ${r1(diff / 1000)}к нетворса больше, чем у соперника` : ""}${farmText ? `${diff != null && diff > 0 ? "," : ":"} ${farmText}` : ""}.` });
+    else if (farmText) moments.push({ t: 600, kind: "lane", w: 3, text: `Фарм на линии выше нормы: к 10-й минуте ${farmText}.` });
+  }
+  // руны на миде: силовые руны до 20-й минуты против соперника
+  if ((me.position ?? 2) === 2 && opp) {
+    const power = (p: MPlayer) => p.runes.filter((r, i, a) => r.t < 1200 && !["BOUNTY", "WATER", "WISDOM"].includes(r.rune) && !a.slice(0, i).some((x) => x.rune === r.rune && r.t - x.t < 60));
+    const mineR = power(me), theirR = power(opp);
+    if (mineR.length >= 3 && mineR.length >= theirR.length + 2) moments.push({ t: mineR[mineR.length - 1].t, kind: "runes", w: 2, text: `Контроль рун: до 20-й минуты ты забрал ${mineR.length} ${plural(mineR.length, "руну", "руны", "рун")}, соперник ${theirR.length}.` });
+  }
+  const topMoments = moments.sort((a, b) => b.w - a.w).slice(0, 6).sort((a, b) => a.t - b.t).map(({ w: _w, ...x }) => x);
+
+  // сильные стороны против нормы героя (средние Divine/Immortal за матч, пересчитанные на длину этого матча)
+  const strengths: { score: number; label: string; text: string }[] = [];
+  const mins = dur / 60;
+  const teamKills = enemies.reduce((n, p) => n + p.deathsAt.length, 0);
+  const kp = teamKills ? (me.kills + me.assists) / teamKills : 0;
+  if (teamKills >= 10 && kp >= 0.6) strengths.push({ score: kp * 1.6, label: "участие в драках", text: `Участие в ${Math.round(kp * 100)}% убийств команды: ты был почти в каждой драке.` });
+  if (bench?.avgDuration) {
+    const per = (v: number) => v / bench.avgDuration;
+    const dmg = me.heroDamage / mins, dmgN = per(bench.overall.heroDamage);
+    if (dmgN > 0 && dmg / dmgN >= 1.15) strengths.push({ score: dmg / dmgN, label: "дамаг по героям", text: `Дамаг по героям ${Math.round(dmg)} в минуту при норме ${Math.round(dmgN)}: на ${Math.round((dmg / dmgN - 1) * 100)}% выше.` });
+    const tw = me.towerDamage / mins, twN = per(bench.overall.towerDamage);
+    if (twN > 20 && tw / twN >= 1.3) strengths.push({ score: tw / twN * 0.9, label: "пуш", text: `Урон по строениям на ${Math.round((tw / twN - 1) * 100)}% выше нормы: хорошо пушил.` });
+    const nw = me.networth / mins, nwN = per(bench.overall.networth);
+    if (nwN > 0 && nw / nwN >= 1.1) strengths.push({ score: nw / nwN, label: "фарм", text: `Нафармил больше нормы: ${r1(me.networth / 1000)}к нетворса, в среднем на этом герое за такую игру ${r1((nwN * mins) / 1000)}к.` });
+  }
+  if (r10?.lh.norm && r10.lh.me / r10.lh.norm >= 1.1) strengths.push({ score: r10.lh.me / r10.lh.norm, label: "фарм на линии", text: `Фарм на линии: ${r10.lh.me} добитых к 10-й минуте при норме ${Math.round(r10.lh.norm)}.` });
+  for (const w of windows) if (w.norm != null && w.norm >= 1 && w.mine <= w.norm * 0.7) strengths.push({ score: 1.1 + (w.norm - w.mine) / w.norm / 2, label: `мало смертей ${w.label}`, text: `${w.label[0].toUpperCase() + w.label.slice(1)} ${w.mine === 0 ? "ни одной смерти" : `${w.mine} ${plural(w.mine, "смерть", "смерти", "смертей")}`} при норме ${w.norm}: играл аккуратно.` });
+  if (plan.style === "support" && me.wardsPlaced >= 12) strengths.push({ score: 1.2 + me.wardsPlaced / 100, label: "обзор", text: `Обзор: поставил ${me.wardsPlaced} ${plural(me.wardsPlaced, "вард", "варда", "вардов")}${me.wardsKilled ? ` и снёс ${me.wardsKilled} ${plural(me.wardsKilled, "вражеский", "вражеских", "вражеских")}` : ""}.` });
+  const top3 = strengths.sort((a, b) => b.score - a.score).filter((x, i, a) => !(x.label === "фарм на линии" && a.some((y) => y.label === "фарм"))).slice(0, 3);
+  const labels = top3.slice(0, 2).map((x) => x.label);
+  if (labels.length) summary.splice(1, 0, `${labels.length > 1 ? "Сильные стороны матча" : "Сильная сторона матча"}: ${labels.join(" и ")}.`);
+  const topStrengths = top3.map((x) => x.text);
+
+  return { ...base, summary, deathList, windows, lane, tips: tips.slice(0, 3), moments: topMoments, strengths: topStrengths };
 }

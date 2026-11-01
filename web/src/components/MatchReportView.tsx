@@ -49,11 +49,12 @@ export default function MatchReportView({ matchId, me, hero, heroes, draft }: { 
       {r && <>
         <Header r={r} byId={byId} draft={draft} />
         {r.parsed ? <>
-          <Deaths r={r} />
           <div className="grid gap-5 lg:grid-cols-2 items-start">
+            <Good r={r} />
             <Tips r={r} />
-            <LaneCard r={r} byId={byId} />
           </div>
+          <Deaths r={r} />
+          <LaneCard r={r} byId={byId} />
         </> : (() => { const recent = Date.now() / 1000 - (r.startDateTime + r.durationSeconds) < 12 * 3600; return (
           <Card className="flex flex-col gap-3">
             <CardTitle>{recent ? "Подробного разбора пока нет" : "Подробного разбора нет"}</CardTitle>
@@ -121,7 +122,9 @@ function Deaths({ r }: { r: MatchReport }) {
   const list = all ? r.deathList : r.deathList.slice(0, 6);
   return (
     <Card>
-      <CardTitle hint="Линия на графике — шанс твоей команды на победу по оценке Stratz. Точки — твои смерти: красные без размена, серые в драке, где враги тоже кого-то потеряли. Наведи на точку, чтобы прочитать, что было. Норма — средние Divine/Immortal на этом герое и позиции.">Смерти · {r.deathList.length}</CardTitle>
+      <CardTitle hint="Линия — шанс твоей команды на победу по оценке Stratz. Зелёные точки — полезные моменты, красные — смерти без размена, серые — смерти в драке, где враги тоже кого-то потеряли. Наведи на точку, чтобы прочитать, что было. Норма смертей — средние Divine/Immortal на этом герое и позиции.">Ход игры</CardTitle>
+      <GameCurve r={r} />
+      <div className="mt-5 mb-3 text-sm font-semibold">Смерти · {r.deathList.length}</div>
       {r.windows.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2">
           {r.windows.map((w) => (
@@ -132,9 +135,8 @@ function Deaths({ r }: { r: MatchReport }) {
           ))}
         </div>
       )}
-      <GameCurve r={r} />
-      {r.deathList.length === 0 ? <p className="mt-4 text-sm text-muted">Ни одной смерти за матч.</p> : (
-        <div className="mt-4 grid grid-cols-[40px_10px_minmax(0,1fr)] gap-x-2.5 gap-y-2.5 text-sm">
+      {r.deathList.length === 0 ? <p className="text-sm text-muted">Ни одной смерти за матч.</p> : (
+        <div className="grid grid-cols-[40px_10px_minmax(0,1fr)] gap-x-2.5 gap-y-2.5 text-sm">
           {list.map((d) => <DeathRow key={d.t} d={d} />)}
         </div>
       )}
@@ -161,10 +163,6 @@ function GameCurve({ r }: { r: MatchReport }) {
   const curve = r.winCurve;
   const pts = curve?.map((v, i) => `${(x(i * 60) * 10).toFixed(1)},${100 - v}`).join(" ");
   // подписи каждые 10 минут; у правого края место под длительность матча
-  // точки смертей, которые слиплись бы (ближе 1.2% ширины), уходят во второй ряд
-  let lastRow0 = -Infinity;
-  const dots = r.deathList.map((d) => { const px = x(d.t); const row = px - lastRow0 < 1.2 ? 1 : 0; if (row === 0) lastRow0 = px; return { d, px, row }; });
-  const rows2 = dots.some((o) => o.row === 1);
   const ticks = Array.from({ length: Math.floor(dur / 600) + 1 }, (_, i) => i * 10).filter((m) => m * 60 <= dur * 0.92);
   return (
     <div className="pl-9 pr-1">
@@ -182,16 +180,44 @@ function GameCurve({ r }: { r: MatchReport }) {
           </svg>
         </div>
       )}
-      <div className={`relative mt-1.5 ${rows2 ? "h-[26px]" : "h-3"}`}>
-        {dots.map(({ d, px, row }) => (
-          <span key={d.t} title={`${mmss(d.t)} · ${d.text}`} className={`absolute h-3 w-3 -translate-x-1/2 rounded-full ring-2 ring-panel cursor-default ${row ? "top-3.5" : "top-0"} ${d.traded ? "bg-muted" : "bg-bad"}`} style={{ left: `${px}%` }} />
-        ))}
-      </div>
+      {r.moments.length > 0 && <DotRow x={x} items={r.moments.map((m) => ({ t: m.t, text: m.text, cls: "bg-good" }))} />}
+      <DotRow x={x} items={r.deathList.map((d) => ({ t: d.t, text: d.text, cls: d.traded ? "bg-muted" : "bg-bad" }))} />
       <div className="relative mt-1 h-3.5 text-[10px] text-muted tabular-nums">
         {ticks.map((m) => <span key={m} className="absolute -translate-x-1/2" style={{ left: `${x(m * 60)}%` }}>{m}</span>)}
         <span className="absolute right-0">{Math.round(dur / 60)} мин</span>
       </div>
     </div>
+  );
+}
+
+/** Ряд точек на оси времени; точки, которые слиплись бы (ближе 1.2% ширины), уходят во второй ряд. */
+function DotRow({ items, x }: { items: { t: number; text: string; cls: string }[]; x: (sec: number) => number }) {
+  let lastRow0 = -Infinity;
+  const dots = items.map((it) => { const px = x(it.t); const row = px - lastRow0 < 1.2 ? 1 : 0; if (row === 0) lastRow0 = px; return { ...it, px, row }; });
+  return (
+    <div className={`relative mt-1.5 ${dots.some((o) => o.row === 1) ? "h-[26px]" : "h-3"}`}>
+      {dots.map((d) => <span key={d.t} title={`${mmss(d.t)} · ${d.text}`} className={`absolute h-3 w-3 -translate-x-1/2 rounded-full ring-2 ring-panel cursor-default ${d.row ? "top-3.5" : "top-0"} ${d.cls}`} style={{ left: `${d.px}%` }} />)}
+    </div>
+  );
+}
+
+/** Что получилось: сильные стороны против нормы и полезные моменты. Без этого разбор выглядит так, будто в матче всё было плохо. */
+function Good({ r }: { r: MatchReport }) {
+  return (
+    <Card tone="good">
+      <CardTitle hint="Сильные стороны против нормы героя и полезные моменты матча: выигранные драки, мультикиллы, соло-киллы, вышки, линия. На них стоит делать упор.">Что получилось</CardTitle>
+      {r.strengths.length > 0 && (
+        <ul className="flex flex-col gap-2 text-sm">
+          {r.strengths.map((s) => <li key={s} className="flex items-start gap-2.5 leading-relaxed"><span className="mt-[7px] h-2 w-2 shrink-0 rounded-full bg-good" />{s}</li>)}
+        </ul>
+      )}
+      {r.moments.length > 0 && (
+        <div className={`grid grid-cols-[40px_minmax(0,1fr)] gap-x-2.5 gap-y-3 text-sm ${r.strengths.length ? "mt-4 border-t border-border pt-4" : ""}`}>
+          {r.moments.map((m) => <Fragment key={m.t}><span className="text-xs text-muted tabular-nums pt-0.5">{mmss(m.t)}</span><p className="leading-relaxed">{m.text}</p></Fragment>)}
+        </div>
+      )}
+      {!r.strengths.length && !r.moments.length && <p className="text-sm text-muted">Ярких плюсов в этом матче не нашлось: тяжёлая игра. Ниже видно, где её потеряли.</p>}
+    </Card>
   );
 }
 
@@ -218,7 +244,7 @@ function LaneCard({ r, byId }: { r: MatchReport; byId: Map<number, Hero> }) {
       <CardTitle right={out ? <Chip tone={out.tone} title="Итог линии по оценке Stratz">{out.text}</Chip> : undefined}>
         {opp ? <span className="flex items-center gap-2">Соперник по линии: <img src={icon(opp.short)} alt="" className="h-5 w-5 rounded" />{heroRu(opp.id, byId).name}</span> : "Линия"}
       </CardTitle>
-      <table className="w-full text-sm tabular-nums">
+      <table className="w-full max-w-2xl text-sm tabular-nums">
         <thead>
           <tr className="text-xs text-muted text-left">
             <th className="pb-2 font-normal w-20" />
