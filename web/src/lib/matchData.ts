@@ -16,6 +16,9 @@ export type MPlayer = {
   kills: number; deaths: number; assists: number; lastHits: number; denies: number; gpm: number; xpm: number; level: number; networth: number;
   lh: number[]; dn: number[]; xp: number[]; // прирост за каждую минуту (сумма первых t = к минуте t)
   nw: number[];                             // золото героя по минутам (элемент t-1 = к минуте t)
+  dmg: number[];                            // урон по героям, прирост за каждую минуту
+  stacks: number[];                         // стаки лагерей, накопительно (элемент t-1 = к минуте t)
+  lvlAt: number[];                          // секунды, когда герой брал каждый уровень (первый элемент — первый уровень)
   deathsAt: MDeath[]; killsAt: number[]; assistsAt: number[]; // секунды
   kills2: MKill[];                          // настоящие убийства с подробностями (соло, смок, где)
   heroDamage: number; towerDamage: number; heroHealing: number;
@@ -34,19 +37,20 @@ export type MatchData = {
 };
 
 const DIR = path.join(USER_DIR, "data", "matches");
-const V = 3;
+const V = 4;
 const UNPARSED_TTL = 20 * 60;
 const LANE: Record<string, Lane | null> = { SAFE_LANE: "safe", MID_LANE: "mid", OFF_LANE: "off", JUNGLE: "jungle", ROAMING: null };
 
 const Q = (id: number) => `{ match(id: ${id}) { id startDateTime durationSeconds didRadiantWin lobbyType parsedDateTime winRates topLaneOutcome midLaneOutcome bottomLaneOutcome
   towerDeaths { time isRadiant attacker }
   players { steamAccountId heroId isRadiant isVictory lane position kills deaths assists numLastHits numDenies goldPerMinute experiencePerMinute level networth heroDamage towerDamage heroHealing
-    stats { lastHitsPerMinute deniesPerMinute experiencePerMinute networthPerMinute
+    stats { lastHitsPerMinute deniesPerMinute experiencePerMinute networthPerMinute heroDamagePerMinute campStack level
       deathEvents { time attacker assist positionX positionY goldLost timeDead } killEvents { time target isSolo isSmoke positionX positionY } assistEvents { time target }
       wards { time } wardDestruction { time isWard } runes { time rune action } } } } }`;
 
 type SP = { steamAccountId: number | null; heroId: number; isRadiant: boolean; isVictory: boolean; lane: string | null; position: string | null; kills: number; deaths: number; assists: number; numLastHits: number; numDenies: number; goldPerMinute: number; experiencePerMinute: number; level: number; networth: number; heroDamage: number | null; towerDamage: number | null; heroHealing: number | null;
-  stats?: { lastHitsPerMinute?: number[] | null; deniesPerMinute?: number[] | null; experiencePerMinute?: number[] | null; networthPerMinute?: number[] | null; deathEvents?: { time: number; attacker: number | null; assist: number[] | null; positionX: number; positionY: number; goldLost: number | null; timeDead: number | null }[] | null;
+  stats?: { lastHitsPerMinute?: number[] | null; deniesPerMinute?: number[] | null; experiencePerMinute?: number[] | null; networthPerMinute?: number[] | null;
+    heroDamagePerMinute?: number[] | null; campStack?: number[] | null; level?: number[] | null; deathEvents?: { time: number; attacker: number | null; assist: number[] | null; positionX: number; positionY: number; goldLost: number | null; timeDead: number | null }[] | null;
     killEvents?: { time: number; target: number | null; isSolo: boolean | null; isSmoke: boolean | null; positionX: number; positionY: number }[] | null; assistEvents?: { time: number; target: number | null }[] | null;
     wards?: { time: number }[] | null; wardDestruction?: { time: number; isWard: boolean | null }[] | null; runes?: { time: number; rune: string; action: string }[] | null } | null };
 
@@ -87,6 +91,7 @@ export async function fetchMatchData(id: number, opts: { fresh?: boolean } = {})
         lane: p.lane ? LANE[p.lane] ?? null : null, position: p.position ? Number(p.position.replace("POSITION_", "")) || null : null,
         kills: p.kills, deaths: p.deaths, assists: p.assists, lastHits: p.numLastHits, denies: p.numDenies, gpm: p.goldPerMinute, xpm: p.experiencePerMinute, level: p.level, networth: p.networth,
         lh: s.lastHitsPerMinute ?? [], dn: s.deniesPerMinute ?? [], xp: s.experiencePerMinute ?? [], nw: s.networthPerMinute ?? [],
+        dmg: s.heroDamagePerMinute ?? [], stacks: s.campStack ?? [], lvlAt: s.level ?? [],
         deathsAt: (s.deathEvents ?? []).filter((d) => mine.has(d.time)).filter((d, i, a) => a.findIndex((x) => x.time === d.time) === i).map((d) => ({ t: d.time, attacker: d.attacker ?? null, assist: d.assist ?? [], x: d.positionX, y: d.positionY, goldLost: d.goldLost ?? 0, timeDead: d.timeDead ?? 0 })),
         killsAt: (s.killEvents ?? []).filter((k) => isReal(k.target, k.time)).map((k) => k.time), assistsAt: (s.assistEvents ?? []).filter((k) => isReal(k.target, k.time)).map((k) => k.time),
         kills2: (s.killEvents ?? []).filter((k) => isReal(k.target, k.time)).map((k) => ({ t: k.time, target: k.target!, solo: !!k.isSolo, smoke: !!k.isSmoke, x: k.positionX, y: k.positionY })),

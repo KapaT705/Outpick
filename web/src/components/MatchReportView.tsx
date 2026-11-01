@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { DraftLog } from "@/lib/log";
 import type { Hero } from "@/lib/types";
-import type { LaneCell, LaneOutcome, MatchReport, ReportDeath, ReportWindow } from "@/lib/report";
+import type { LaneCell, LaneOutcome, MatchReport, NormCell, ReportDeath, ReportWindow } from "@/lib/report";
 import { Button, Card, CardTitle, Chip, Hint } from "@/components/ui";
 import Crystals from "@/components/Crystals";
 import { heroRu } from "@/lib/heroRu";
@@ -236,6 +236,7 @@ function Tips({ r }: { r: MatchReport }) {
 
 function LaneCard({ r, byId }: { r: MatchReport; byId: Map<number, Hero> }) {
   const lane = r.lane;
+  if (lane?.sup) return <SupLaneCard r={r} byId={byId} />;
   if (!lane || lane.rows.length === 0) return null;
   const opp = lane.oppHeroId ? byId.get(lane.oppHeroId) : null;
   const mine = byId.get(r.heroId);
@@ -255,9 +256,9 @@ function LaneCard({ r, byId }: { r: MatchReport; byId: Map<number, Hero> }) {
         {lane.rows.map((row) => (
           <div key={row.minute} className="flex flex-col gap-4">
             <div className="text-xs font-semibold text-muted">К {row.minute}-й минуте</div>
-            <Duel label="Добито" c={row.lh} oppName={oppName} />
-            <Duel label="Денаи" c={row.dn} oppName={oppName} />
-            <Duel label="Золото" c={row.nw} oppName={oppName} gold />
+            <Duel label="Добито" c={row.lh} names={["Ты", oppName ?? "соперник"]} />
+            <Duel label="Денаи" c={row.dn} names={["Ты", oppName ?? "соперник"]} />
+            <Duel label="Золото" c={row.nw} names={["Ты", oppName ?? "соперник"]} gold />
           </div>
         ))}
       </div>
@@ -266,23 +267,80 @@ function LaneCard({ r, byId }: { r: MatchReport; byId: Map<number, Hero> }) {
   );
 }
 
+/** Линия саппорта: ваша пара против их пары (золото, убийства) и твой вклад против нормы героя. */
+function SupLaneCard({ r, byId }: { r: MatchReport; byId: Map<number, Hero> }) {
+  const lane = r.lane!, sup = lane.sup!;
+  if (sup.rows.length === 0) return null;
+  const out = lane.outcome ? OUTCOME[lane.outcome] : null;
+  const names = sup.enemies.map((id) => heroRu(id, byId).name);
+  const theirName = names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} и ${names[names.length - 1]}`;
+  const icons = (ids: number[]) => ids.map((id) => byId.get(id)).filter((h): h is Hero => !!h).map((h) => <img key={h.id} src={icon(h.short)} alt="" className="h-5 w-5 rounded" />);
+  const duel = sup.enemies.length > 0;
+  return (
+    <Card>
+      <CardTitle right={out ? <Chip tone={out.tone} title="Итог линии по оценке Stratz">{out.text}</Chip> : undefined}>Линия</CardTitle>
+      {duel && (
+        <div className="mb-5 flex flex-wrap items-center gap-3 text-sm">
+          <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-ally" /><span className="flex gap-1">{icons(sup.allies)}</span>{sup.allies.length > 1 ? "Вы" : "Ты"}</span>
+          <span className="text-muted">против</span>
+          <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-enemy" /><span className="flex gap-1">{icons(sup.enemies)}</span>{theirName}</span>
+        </div>
+      )}
+      <div className="grid gap-x-12 gap-y-6 md:grid-cols-2">
+        {sup.rows.map((row) => (
+          <div key={row.minute} className="flex flex-col gap-4">
+            <div className="text-xs font-semibold text-muted">К {row.minute}-й минуте</div>
+            {row.gold && <Duel label={sup.allies.length > 1 ? "Золото пары" : "Золото"} c={{ ...row.gold, norm: null }} names={["Вы", theirName]} gold />}
+            {row.kills && <Duel label="Убийства" c={{ ...row.kills, norm: null }} names={["Вы убили", `${theirName} ${sup.enemies.length > 1 ? "убили" : "убил"}`]} />}
+            <div className={`flex flex-col gap-2 ${duel ? "mt-1" : ""}`}>
+              <div className="text-xs">Твой вклад</div>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_88px] items-baseline gap-x-3 gap-y-2 text-sm tabular-nums">
+                <NormRow label="Урон по героям" c={row.dmg} judge={(a, n) => a / n >= 1.15 ? 1 : a / n <= 0.85 ? -1 : 0} big />
+                <NormRow label="Уровень" c={row.level} judge={(a, n) => a - n >= 0.9 ? 1 : a - n <= -0.9 ? -1 : 0} />
+                <NormRow label="Стаки" c={row.stacks} judge={(a, n) => a - n >= 0.8 ? 1 : a - n <= -0.5 ? -1 : 0} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 text-xs text-muted">{duel ? "Золото и убийства — всех героев на вашей линии. " : ""}Норма — средние Divine/Immortal на этом герое{r.position ? ` (${ROLE_NAME[r.position]})` : ""} к той же минуте.</div>
+    </Card>
+  );
+}
+
+/** Твой показатель против нормы: число, норма и словами, выше или ниже. */
+function NormRow({ label, c, judge, big }: { label: string; c: NormCell; judge: (me: number, norm: number) => -1 | 0 | 1; big?: boolean }) {
+  const f = (n: number) => (big ? Math.round(n).toLocaleString("ru-RU") : String(n));
+  const j = c.norm != null ? judge(c.me, c.norm) : null;
+  return (
+    <>
+      <span className="text-muted">{label}</span>
+      <span className="text-right font-semibold">{f(c.me)}</span>
+      <span className="text-xs text-muted">{c.norm != null ? `норма ${f(c.norm)}` : ""}</span>
+      <span className={`text-xs ${j === 1 ? "text-good" : j === -1 ? "text-bad" : "text-muted"}`}>{j === 1 ? "выше нормы" : j === -1 ? "ниже нормы" : j === 0 ? "как норма" : ""}</span>
+    </>
+  );
+}
+
 /** Ты против соперника по одному показателю: полоса делится по долям, у кого больше — тот дальше «перетянул». */
-function Duel({ label, c, oppName, gold }: { label: string; c: LaneCell; oppName: string | null; gold?: boolean }) {
+function Duel({ label, c, names, gold }: { label: string; c: LaneCell; names: [string, string]; gold?: boolean }) {
   const f = (n: number) => (gold ? Math.round(n).toLocaleString("ru-RU") : String(Math.round(n)));
   const head = <div className="mb-1.5 flex items-baseline gap-2 text-xs"><span>{label}</span>{c.norm != null && <span className="text-muted">норма {f(c.norm)}</span>}</div>;
   if (c.opp == null) return <div>{head}<div className="text-sm font-semibold tabular-nums">{f(c.me)}</div></div>;
-  const share = c.me + c.opp > 0 ? c.me / (c.me + c.opp) : 0.5;
+  const none = c.me + c.opp === 0;
+  const share = none ? 0.5 : c.me / (c.me + c.opp);
   return (
     <div>
       {head}
-      <div className="grid grid-cols-[52px_minmax(0,1fr)_52px] items-center gap-3 text-sm tabular-nums" title={`Ты ${f(c.me)}, ${oppName ?? "соперник"} ${f(c.opp)}${c.norm != null ? `, норма ${f(c.norm)}` : ""}`}>
-        <span className={`text-right ${c.me >= c.opp ? "font-semibold" : "text-muted"}`}>{f(c.me)}</span>
-        <div className="flex h-2.5 overflow-hidden rounded-full">
-          <span className="h-full bg-ally" style={{ width: `${share * 100}%` }} />
-          <span className="h-full w-0.5 shrink-0 bg-panel" />
-          <span className="h-full flex-1 bg-enemy" />
-        </div>
-        <span className={c.opp >= c.me ? "font-semibold" : "text-muted"}>{f(c.opp)}</span>
+      <div className="grid grid-cols-[52px_minmax(0,1fr)_52px] items-center gap-3 text-sm tabular-nums" title={`${names[0]} ${f(c.me)}, ${names[1]} ${f(c.opp)}${c.norm != null ? `, норма ${f(c.norm)}` : ""}`}>
+        <span className={`text-right ${c.me >= c.opp && !none ? "font-semibold" : "text-muted"}`}>{f(c.me)}</span>
+        {none ? <div className="h-2.5 rounded-full bg-panel-2" />
+          : <div className="flex h-2.5 overflow-hidden rounded-full">
+            <span className="h-full bg-ally" style={{ width: `${share * 100}%` }} />
+            <span className="h-full w-0.5 shrink-0 bg-panel" />
+            <span className="h-full flex-1 bg-enemy" />
+          </div>}
+        <span className={c.opp >= c.me && !none ? "font-semibold" : "text-muted"}>{f(c.opp)}</span>
       </div>
     </div>
   );

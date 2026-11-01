@@ -6,24 +6,24 @@ import path from "node:path";
 import { USER_DIR } from "./paths";
 import { readConfig } from "./config";
 
-/** Средние к минуте t (накопительно с начала матча): добито, не отдано, золото, смерти, уровень, опыт. */
-export type BenchAt = { t: number; cs: number; dn: number; networth: number; deaths: number; level: number; xp: number };
+/** Средние к минуте t (накопительно с начала матча): добито, не отдано, золото, смерти, уровень, опыт, урон по героям, стаки. */
+export type BenchAt = { t: number; cs: number; dn: number; networth: number; deaths: number; level: number; xp: number; heroDamage: number; stacks: number };
 
 export type Bench = {
   heroId: number; position: number; matchCount: number; winrate: number; avgDuration: number;
   overall: { kills: number; deaths: number; assists: number; cs: number; dn: number; xp: number; level: number; networth: number; heroDamage: number; towerDamage: number };
   at10: { cs: number; dn: number; networth: number; deaths: number; level: number; xp: number } | null;
-  byTime?: BenchAt[]; // минуты 1..60; в старом кэше нет, тогда норма перекачивается
+  byTime?: BenchAt[]; // минуты 1..60; в старом кэше нет (или нет урона и стаков), тогда норма перекачивается
   at: number;
 };
 
 const DIR = path.join(USER_DIR, "data", "bench");
 const TTL = 14 * 86400;
-const F = "heroId matchCount winCount time position kills deaths assists cs dn xp level networth heroDamage towerDamage";
-type Row = { heroId: number; matchCount: number; winCount: number; time: number; kills: number; deaths: number; assists: number; cs: number; dn: number; xp: number; level: number; networth: number; heroDamage: number; towerDamage: number };
+const F = "heroId matchCount winCount time position kills deaths assists cs dn xp level networth heroDamage towerDamage campsStacked";
+type Row = { heroId: number; matchCount: number; winCount: number; time: number; kills: number; deaths: number; assists: number; cs: number; dn: number; xp: number; level: number; networth: number; heroDamage: number; towerDamage: number; campsStacked: number };
 
 export function cachedBench(heroId: number, position: number): Bench | null {
-  try { const b = JSON.parse(fs.readFileSync(path.join(DIR, `${heroId}-${position}.json`), "utf8")) as Bench; return Date.now() / 1000 - b.at < TTL && b.byTime ? b : null; } catch { return null; }
+  try { const b = JSON.parse(fs.readFileSync(path.join(DIR, `${heroId}-${position}.json`), "utf8")) as Bench; return Date.now() / 1000 - b.at < TTL && b.byTime?.[0]?.stacks != null ? b : null; } catch { return null; }
 }
 
 /** Норма к минуте t: строка этой минуты или ближайшая раньше (у коротких матчей поздних минут нет). */
@@ -57,7 +57,7 @@ export async function fetchBenches(position: number, heroIds: number[]): Promise
     for (const o of overall) {
       if (!need.includes(o.heroId)) continue;
       const rows = byTime.filter((x) => x.heroId === o.heroId).sort((a, b) => a.time - b.time)
-        .map((x): BenchAt => ({ t: x.time, cs: x.cs, dn: x.dn, networth: x.networth, deaths: x.deaths, level: x.level, xp: x.xp }));
+        .map((x): BenchAt => ({ t: x.time, cs: x.cs, dn: x.dn, networth: x.networth, deaths: x.deaths, level: x.level, xp: x.xp, heroDamage: x.heroDamage, stacks: x.campsStacked ?? 0 }));
       const t = rows.find((x) => x.t === 10);
       const b: Bench = {
         heroId: o.heroId, position, matchCount: o.matchCount, winrate: o.matchCount ? o.winCount / o.matchCount : 0.5, avgDuration: o.time,

@@ -378,7 +378,6 @@ function deathRates(ms: AccMatch[], norms: Record<string, MatchNorm>, from: numb
 function DeathTrend({ rows, norms, period, busy, error }: { rows: AccMatch[]; norms: Record<string, MatchNorm>; period: number; busy: boolean; error: string | null }) {
   const now = Math.floor(Date.now() / 1000);
   const cur = deathRates(rows, norms, period ? now - period * 86400 : 0, now + 1);
-  const prev = period ? deathRates(rows, norms, now - 2 * period * 86400, now - period * 86400) : null;
   const f = (n: number) => n.toFixed(1);
   return (
     <Card>
@@ -389,11 +388,10 @@ function DeathTrend({ rows, norms, period, busy, error }: { rows: AccMatch[]; no
         : <>
           <div className="grid gap-3 sm:grid-cols-3">
             {WINDOWS.map(([, , label], i) => {
-              const w = cur.w[i], p = prev?.w[i];
+              const w = cur.w[i];
               if (!w) return <div key={label} className="rounded-xl bg-panel-2 p-3"><div className="text-xs text-muted">{label}</div><div className="text-2xl font-semibold text-muted">—</div><div className="text-xs text-muted">мало игры на этом отрезке</div></div>;
               const over = w.norm > 0 ? Math.round((w.me / w.norm - 1) * 100) : 0;
               const tone = over >= 25 ? "text-bad" : over <= 5 ? "text-good" : "";
-              const delta = p ? w.me - p.me : 0;
               return (
                 <div key={label} className="rounded-xl bg-panel-2 p-3 flex flex-col gap-0.5">
                   <div className="text-xs text-muted">{label}</div>
@@ -401,8 +399,6 @@ function DeathTrend({ rows, norms, period, busy, error }: { rows: AccMatch[]; no
                     <span className={`text-2xl font-semibold tabular-nums ${tone}`}>{f(w.me)}</span>
                     <span className="text-xs text-muted tabular-nums">норма {f(w.norm)}{over > 5 ? ` · на ${over}% больше` : over < -5 ? ` · на ${-over}% меньше` : ""}</span>
                   </div>
-                  {p ? <div className="text-xs text-muted tabular-nums">{prevName(period).toLowerCase()}: {f(p.me)} · <span className={delta <= -0.1 ? "text-good" : delta >= 0.1 ? "text-bad" : ""}>{delta <= -0.1 ? "стало меньше" : delta >= 0.1 ? "стало больше" : "без изменений"}</span></div>
-                    : <div className="text-xs text-muted">{period ? `${prevName(period).toLowerCase()}: матчей нет` : "за все загруженные матчи"}</div>}
                 </div>
               );
             })}
@@ -423,9 +419,6 @@ const METRICS: { key: string; label: string; hint: string; lowerBetter?: boolean
   { key: "deaths", label: "Смерти", hint: "Смерти за матч, здесь меньше — лучше", lowerBetter: true, mine: (m) => m.deaths, norm: (n, min) => (n.d / n.dur) * min },
 ];
 
-/** Прошлый период тех же размеров: «прошлая неделя», «прошлый месяц». */
-const prevName = (p: number) => (p === 7 ? "Прошлая неделя" : p === 30 ? "Прошлый месяц" : p === 90 ? "3 месяца до этого" : `Прошлые ${p} дней`);
-const curName = (p: number) => (p === 7 ? "Эта неделя" : p === 30 ? "Этот месяц" : p === 90 ? "Последние 3 месяца" : p ? `Последние ${p} дней` : "За всё время");
 /** Отличие от нормы словами: «на 20% выше», «на 35% больше» (для смертей), «как норма». */
 const vsText = (r: { ratio: number; lowerBetter?: boolean }) => {
   const p = Math.round((r.ratio - 1) * 100);
@@ -450,7 +443,6 @@ function vsNorm(ms: AccMatch[], norms: Record<string, MatchNorm>, from: number, 
 function PlayVsNorm({ rows, norms, period, busy }: { rows: AccMatch[]; norms: Record<string, MatchNorm>; period: number; busy: boolean }) {
   const now = Math.floor(Date.now() / 1000);
   const cur = vsNorm(rows, norms, period ? now - period * 86400 : 0, now + 1);
-  const prev = period ? vsNorm(rows, norms, now - 2 * period * 86400, now - period * 86400) : null;
   const list = cur.rows.filter((r): r is NonNullable<typeof r> => !!r);
   if (busy && cur.n === 0) return null; // загрузку уже показывает карточка смертей
   if (cur.n === 0 || list.length === 0) return null;
@@ -465,20 +457,18 @@ function PlayVsNorm({ rows, norms, period, busy }: { rows: AccMatch[]; norms: Re
     <Card>
       <CardTitle hint="Твои средние за матчи периода против средних Divine/Immortal на тех же героях и позициях, с поправкой на длину каждого матча. Полоса вправо от середины — лучше нормы, влево — хуже. Считаются рейтинговые матчи, которые Stratz разобрал подробно.">Твоя игра против нормы</CardTitle>
       <p className="mb-4 text-sm">{head}</p>
-      <div className={`grid ${prev ? "grid-cols-[150px_minmax(0,1fr)_120px_130px]" : "grid-cols-[150px_minmax(0,1fr)_120px]"} items-center gap-x-5 gap-y-3 text-sm`}>
-        {/* шапка: ось полос и подписи колонок */}
+      <div className="grid grid-cols-[150px_minmax(0,1fr)_120px] items-center gap-x-5 gap-y-3 text-sm">
+        {/* шапка: ось полос */}
         <span />
         <div className="relative h-4 text-[11px] text-muted">
           <span className="absolute left-0">хуже нормы</span>
           <span className="absolute left-1/2 -translate-x-1/2">норма</span>
           <span className="absolute right-0">лучше нормы</span>
         </div>
-        <span className="text-[11px] text-muted">{curName(period)}</span>
-        {prev && <span className="text-[11px] text-muted">{prevName(period)}</span>}
+        <span />
         {list.map((r) => {
           const d = r.better - 1, w = Math.min(Math.abs(d), 0.5) / 0.5 * 50;
           const good = d >= 0.05, bad = d <= -0.05;
-          const p = prev?.rows.find((x) => x?.key === r.key);
           return [
             <span key={`${r.key}l`} className="text-muted">{r.label}</span>,
             <div key={`${r.key}b`} className="relative h-2.5 rounded-full bg-panel-2" title={`${r.hint}: у тебя в среднем ${fmtN(r.avg)}, норма ${fmtN(r.avgNorm)}`}>
@@ -486,7 +476,6 @@ function PlayVsNorm({ rows, norms, period, busy }: { rows: AccMatch[]; norms: Re
               <span className={`absolute top-0 h-2.5 ${d >= 0 ? "left-1/2 rounded-r-full" : "right-1/2 rounded-l-full"} ${good ? "bg-good" : bad ? "bg-bad" : "bg-muted"}`} style={{ width: `${Math.max(w, 1)}%` }} />
             </div>,
             <span key={`${r.key}v`} className={`tabular-nums font-semibold ${good ? "text-good" : bad ? "text-bad" : ""}`}>{vsText(r)}</span>,
-            ...(prev ? [<span key={`${r.key}p`} className="text-muted tabular-nums">{p ? vsText(p) : "—"}</span>] : []),
           ];
         })}
       </div>

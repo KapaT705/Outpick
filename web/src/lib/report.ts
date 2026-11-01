@@ -19,6 +19,9 @@ export type ReportDeath = {
 export type ReportWindow = { from: number; to: number | null; label: string; mine: number; norm: number | null };
 export type LaneCell = { me: number; opp: number | null; norm: number | null };
 export type LaneRow = { minute: number; lh: LaneCell; dn: LaneCell; nw: LaneCell };
+/** Саппорт на линии: ваша пара против их пары (золото, сколько раз умирали) и твой вклад против нормы героя. */
+export type NormCell = { me: number; norm: number | null };
+export type SupLaneRow = { minute: number; gold: { me: number; opp: number } | null; kills: { me: number; opp: number } | null; dmg: NormCell; level: NormCell; stacks: NormCell };
 export type ReportTip = { t: number; text: string };
 /** Полезное действие: выигранная драка, мультикилл, соло-килл, первая кровь, вышка, линия. */
 export type ReportMoment = { t: number; text: string; kind: "fight" | "multi" | "solo" | "first" | "tower" | "lane" | "trade" | "runes" };
@@ -34,7 +37,7 @@ export type MatchReport = {
   winCurve: number[] | null; // шанс своей команды на победу по минутам, %
   deathList: ReportDeath[];
   windows: ReportWindow[];
-  lane: { oppHeroId: number | null; outcome: LaneOutcome; rows: LaneRow[] } | null;
+  lane: { oppHeroId: number | null; outcome: LaneOutcome; rows: LaneRow[]; sup: { allies: number[]; enemies: number[]; rows: SupLaneRow[] } | null } | null;
   tips: ReportTip[];
   moments: ReportMoment[];   // что получилось, по времени
   strengths: string[];       // сильные стороны матча против нормы
@@ -170,7 +173,27 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     const nT = n && n.t === t ? n : null;
     return { minute: t, lh: { me: a.lh, opp: o?.lh ?? null, norm: nT ? r1(nT.cs) : null }, dn: { me: a.dn, opp: o?.dn ?? null, norm: nT ? r1(nT.dn) : null }, nw: { me: a.nw ?? 0, opp: o?.nw ?? null, norm: nT ? Math.round(nT.networth) : null } };
   });
-  const lane = { oppHeroId: opp?.heroId ?? null, outcome: laneOutcome(m, me), rows };
+  // саппорту добивания не главное: важно, кто выиграл линию парой, и что он сам сделал (харас, опыт, стаки)
+  const isSup = (me.position ?? 0) >= 4;
+  const mirror = me.lane === "safe" ? "off" : me.lane === "off" ? "safe" : me.lane === "mid" ? "mid" : null;
+  const pairUs = mirror ? [me, ...allies.filter((p) => p.lane === me.lane)] : [me];
+  const pairThem = mirror ? enemies.filter((p) => p.lane === mirror) : [];
+  const duel = pairThem.length > 0;
+  const supRows: SupLaneRow[] = !isSup ? [] : [5, 10].filter((t) => dur >= t * 60 && me.nw.length >= t).map((t) => {
+    const n = benchAt(bench, t), nT = n && n.t === t ? n : null;
+    const gold = (ps: MPlayer[]) => ps.reduce((a, p) => a + (p.nw[t - 1] ?? 0), 0);
+    const died = (ps: MPlayer[]) => ps.reduce((a, p) => a + p.deathsAt.filter((d) => d.t < t * 60).length, 0);
+    return {
+      minute: t,
+      gold: duel ? { me: gold(pairUs), opp: gold(pairThem) } : null,
+      kills: duel ? { me: died(pairThem), opp: died(pairUs) } : null,
+      dmg: { me: sum(me.dmg, t), norm: nT ? Math.round(nT.heroDamage) : null },
+      level: { me: Math.max(1, me.lvlAt.filter((x) => x < t * 60).length), norm: nT ? r1(nT.level) : null },
+      stacks: { me: me.stacks[t - 1] ?? 0, norm: nT ? r1(nT.stacks) : null },
+    };
+  });
+  const lane = { oppHeroId: opp?.heroId ?? null, outcome: laneOutcome(m, me), rows, sup: isSup ? { allies: pairUs.map((p) => p.heroId), enemies: pairThem.map((p) => p.heroId), rows: supRows } : null };
+  const s10 = supRows.find((r) => r.minute === 10);
 
   // итог: где решилась игра, смерти, линия
   const summary: string[] = [];
@@ -200,7 +223,12 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     summary.push(`${label} ${worst.w.mine} ${plural(worst.w.mine, "смерть", "смерти", "смертей")} при норме ${worst.w.norm}${tk && top[1] >= 2 && top[1] * 2 >= inW.length ? `, из них ${times(top[1])} ${v(tk, "убил", "убила")} ${tk.name}` : ""}.`);
   } else if (windows.some((w) => w.norm != null)) summary.push("Заметно больше нормы не умирал ни на одном отрезке игры.");
   const r10 = rows.find((r) => r.minute === 10);
-  if (opp && r10 && r10.nw.opp != null && Math.abs(r10.nw.me - r10.nw.opp) >= 800) {
+  if (isSup) {
+    if (s10?.gold && Math.abs(s10.gold.me - s10.gold.opp) >= 800) {
+      const d = `${r1(Math.abs(s10.gold.me - s10.gold.opp) / 1000)}к`;
+      summary.push(s10.gold.me > s10.gold.opp ? `Линию выиграли: к 10-й минуте ваша пара на ${d} золота впереди.` : `Линию проиграли: к 10-й минуте ${list(pairThem.map((p) => p.heroId))} на ${d} золота впереди вашей пары.`);
+    }
+  } else if (opp && r10 && r10.nw.opp != null && Math.abs(r10.nw.me - r10.nw.opp) >= 800) {
     const k = (n: number) => `${r1(n / 1000)}к`;
     const o = H(opp.heroId);
     summary.push(r10.nw.me > r10.nw.opp ? `Линию выиграл: к 10-й минуте у тебя ${k(r10.nw.me)} нетворса, а ${o.name} ${v(o, "нафармил", "нафармила")} ${k(r10.nw.opp)}.` : `${o.name} ${v(o, "выиграл", "выиграла")} у тебя линию: к 10-й минуте ${k(r10.nw.opp)} нетворса против твоих ${k(r10.nw.me)}.`);
@@ -289,7 +317,12 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
   for (const d of deathList.filter((d) => d.ownLosses === 1 && d.enemyLosses >= 2)) moments.push({ t: d.t, kind: "trade", w: 2 + d.enemyLosses, text: `Твоя смерть окупилась: за тебя забрали ${["", "", "двоих", "троих", "четверых", "пятерых"][Math.min(d.enemyLosses, 5)]}.` });
   const towersMine = m.towers.filter((t) => t.attacker === me.heroId && t.radiant !== me.isRadiant);
   for (const t of towersMine.slice(0, 3)) moments.push({ t: t.t, kind: "tower", w: 2, text: "Добил вражескую вышку." });
-  if (r10) {
+  if (s10) {
+    const diff = s10.gold ? s10.gold.me - s10.gold.opp : null;
+    if ((diff != null && diff >= 500) || lane.outcome === "won" || lane.outcome === "stomp") moments.push({ t: 600, kind: "lane", w: 4, text: `Линия за вами${diff != null && diff > 0 ? `: к 10-й минуте ваша пара на ${r1(diff / 1000)}к золота впереди` : ""}.` });
+    if (s10.dmg.norm && s10.dmg.me >= s10.dmg.norm * 1.25) moments.push({ t: 600, kind: "lane", w: 3, text: `Хорошо харасил на линии: к 10-й минуте ${s10.dmg.me.toLocaleString("ru-RU")} урона по героям при норме ${s10.dmg.norm.toLocaleString("ru-RU")}.` });
+    if (s10.stacks.me >= 2 && s10.stacks.norm != null && s10.stacks.me >= s10.stacks.norm + 1) moments.push({ t: 600, kind: "lane", w: 2, text: `Стаки: до 10-й минуты ${s10.stacks.me} ${plural(s10.stacks.me, "лагерь", "лагеря", "лагерей")} при норме ${s10.stacks.norm}.` });
+  } else if (r10) {
     const diff = r10.nw.opp != null ? r10.nw.me - r10.nw.opp : null;
     const farm = r10.lh.norm ? r10.lh.me / r10.lh.norm : 0;
     const laneWon = (diff != null && diff >= 500) || lane.outcome === "won" || lane.outcome === "stomp";
@@ -320,7 +353,7 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     const nw = me.networth / mins, nwN = per(bench.overall.networth);
     if (nwN > 0 && nw / nwN >= 1.1) strengths.push({ score: nw / nwN, label: "фарм", text: `Нафармил больше нормы: ${r1(me.networth / 1000)}к нетворса, в среднем на этом герое за такую игру ${r1((nwN * mins) / 1000)}к.` });
   }
-  if (r10?.lh.norm && r10.lh.me / r10.lh.norm >= 1.1) strengths.push({ score: r10.lh.me / r10.lh.norm, label: "фарм на линии", text: `Фарм на линии: ${r10.lh.me} добитых к 10-й минуте при норме ${Math.round(r10.lh.norm)}.` });
+  if (!isSup && r10?.lh.norm && r10.lh.me / r10.lh.norm >= 1.1) strengths.push({ score: r10.lh.me / r10.lh.norm, label: "фарм на линии", text: `Фарм на линии: ${r10.lh.me} добитых к 10-й минуте при норме ${Math.round(r10.lh.norm)}.` });
   for (const w of windows) if (w.norm != null && w.norm >= 1 && w.mine <= w.norm * 0.7) strengths.push({ score: 1.1 + (w.norm - w.mine) / w.norm / 2, label: `мало смертей ${w.label}`, text: `${w.label[0].toUpperCase() + w.label.slice(1)} ${w.mine === 0 ? "ни одной смерти" : `${w.mine} ${plural(w.mine, "смерть", "смерти", "смертей")}`} при норме ${w.norm}: играл аккуратно.` });
   if (plan.style === "support" && me.wardsPlaced >= 12) strengths.push({ score: 1.2 + me.wardsPlaced / 100, label: "обзор", text: `Обзор: поставил ${me.wardsPlaced} ${plural(me.wardsPlaced, "вард", "варда", "вардов")}${me.wardsKilled ? ` и снёс ${me.wardsKilled} ${plural(me.wardsKilled, "вражеский", "вражеских", "вражеских")}` : ""}.` });
   const top3 = strengths.sort((a, b) => b.score - a.score).filter((x, i, a) => !(x.label === "фарм на линии" && a.some((y) => y.label === "фарм"))).slice(0, 3);
