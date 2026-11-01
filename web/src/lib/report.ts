@@ -5,11 +5,12 @@
 import type { MatchData, MDeath, MPlayer } from "./matchData";
 import { benchAt, type Bench } from "./bench";
 import { heroPlan, type HeroPlan } from "./heroPlan";
+import { heroRu, v } from "./heroRu";
 import type { Hero } from "./types";
 
 export type ReportDeath = {
   t: number; killer: number | null; helpers: number[]; enemies: number;
-  where: string; enemyHalf: boolean;
+  where: string; enemyHalf: boolean; zone: Zone;
   ownLosses: number; enemyLosses: number; // смерти своих (с тобой) и врагов в той же стычке, ±20 секунд
   goldLost: number; timeDead: number;
   traded: boolean;                         // враги тоже кого-то потеряли
@@ -36,6 +37,7 @@ export type MatchReport = {
   benchMatches: number | null;
 };
 
+export type Zone = "mid" | "top" | "bot" | "river" | "jungle" | "base";
 export const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.abs(t) % 60).padStart(2, "0")}`;
 export function plural(n: number, one: string, few: string, many: string) {
   const m10 = n % 10, m100 = n % 100;
@@ -44,21 +46,24 @@ export function plural(n: number, one: string, few: string, many: string) {
   return many;
 }
 const together = (n: number) => ["", "", "вдвоём", "втроём", "вчетвером", "впятером"][Math.min(n, 5)];
+const times = (n: number) => (n === 2 ? "дважды" : n === 3 ? "трижды" : `${n} ${plural(n, "раз", "раза", "раз")}`);
+const inN = (n: number) => ["", "одной", "двух", "трёх", "четырёх", "пяти"][n] ?? String(n);
+const timesN = (n: number) => (n === 1 ? "один раз" : n === 2 ? "два раза" : `${n} ${plural(n, "раз", "раза", "раз")}`);
 const r1 = (n: number) => Math.round(n * 10) / 10;
 const sum = (a: number[], n: number) => a.slice(0, n).reduce((x, y) => x + (y ?? 0), 0);
 
 /** Где на карте (координаты Stratz: от 60 до 190, Свет внизу слева, Тьма вверху справа, река по диагонали x+y≈252). */
-export function region(x: number, y: number, radiant: boolean): { text: string; enemyHalf: boolean } {
+export function region(x: number, y: number, radiant: boolean): { text: string; enemyHalf: boolean; zone: Zone } {
   const rBase = x < 100 && y < 100 && x + y < 184, dBase = x > 156 && y > 152 && x + y > 318;
-  if (rBase || dBase) { const own = rBase === radiant; return { text: own ? "на своей базе" : "на базе врага", enemyHalf: !own }; }
+  if (rBase || dBase) { const own = rBase === radiant; return { text: own ? "у себя на базе" : "на базе врага", enemyHalf: !own, zone: "base" }; }
   const side = x + y < 244 ? "radiant" : x + y > 260 ? "dire" : "river";
   const enemyHalf = side !== "river" && (side === "radiant") !== radiant;
-  const half = enemyHalf ? ", на половине врага" : "";
-  if (Math.abs(x - y) <= 13) return { text: "на миде" + half, enemyHalf };
-  if (x <= 90 || y >= 166) return { text: "на верхней линии" + half, enemyHalf };
-  if (y <= 90 || x >= 164) return { text: "на нижней линии" + half, enemyHalf };
-  if (side === "river") return { text: "у реки", enemyHalf };
-  return { text: enemyHalf ? "в лесу врага" : "в своём лесу", enemyHalf };
+  const half = enemyHalf ? " на чужой стороне" : "";
+  if (Math.abs(x - y) <= 13) return { text: "на миде" + half, enemyHalf, zone: "mid" };
+  if (x <= 90 || y >= 166) return { text: "на топе" + half, enemyHalf, zone: "top" };
+  if (y <= 90 || x >= 164) return { text: "на боте" + half, enemyHalf, zone: "bot" };
+  if (side === "river") return { text: "на реке", enemyHalf, zone: "river" };
+  return { text: enemyHalf ? "во вражеском лесу" : "в своём лесу", enemyHalf, zone: "jungle" };
 }
 
 export function findMe(m: MatchData, me: number | null, heroId?: number | null): MPlayer | null {
@@ -87,9 +92,10 @@ function laneOutcome(m: MatchData, p: MPlayer): LaneOutcome {
 }
 
 export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, heroes: Map<number, Hero>): MatchReport {
-  const name = (id: number | null | undefined) => (id ? heroes.get(id)?.name ?? "враг" : "враг");
+  const H = (id: number | null | undefined) => heroRu(id, heroes);
+  const list = (ids: number[]) => { const ns = ids.map((id) => H(id).name); return ns.length < 2 ? ns.join("") : `${ns.slice(0, -1).join(", ")} и ${ns[ns.length - 1]}`; };
   const hero = heroes.get(me.heroId);
-  const heroName = hero?.name ?? "Герой";
+  const heroName = H(me.heroId).name;
   const plan = heroPlan(hero, me.position ?? (me.lane === "mid" ? 2 : null));
   const allies = m.players.filter((p) => p.isRadiant === me.isRadiant && p !== me);
   const enemies = m.players.filter((p) => p.isRadiant !== me.isRadiant);
@@ -117,19 +123,30 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     const where = region(d.x, d.y, me.isRadiant);
     const ownLosses = 1 + near(allies, d.t), enemyLosses = near(enemies, d.t);
     const traded = enemyLosses > 0;
-    const who = enemiesN === 0 ? "Без героев врага: крипы, башня или нейтралы"
-      : enemiesN === 1 ? `${name(killer ?? helpers[0])}${ownLosses === 1 && enemyLosses === 0 ? " один на один" : ""}`
-      : enemiesN === 2 ? `${name(killer ?? helpers[0])} и ${name(killer ? helpers[0] : helpers[1])}`
-      : `${ownLosses > 1 ? "Драка" : "Ганг"} ${together(enemiesN)}${killer ? `, добил ${name(killer)}` : ""}`;
-    const fight = ownLosses === 1 && enemyLosses === 0 ? "" : ownLosses === 1 ? ` Размен: ты за ${enemyLosses}.` : ` Свои потеряли ${ownLosses}, враги ${enemyLosses}.`;
-    const loss = d.goldLost > 0 ? ` Потерял ${d.goldLost} золота, лежал ${d.timeDead} сек.` : ` Лежал ${d.timeDead} сек.`;
+    const all = killer ? [killer, ...helpers] : helpers;
+    const pickoff = ownLosses === 1 && enemyLosses === 0; // поймали одного, в ответ никого
+    const k = H(all[0]);
+    const who = all.length === 0 ? `Умер от крипов, вышки или нейтралов ${where.text}.`
+      : all.length === 1 ? `${k.name}${pickoff ? " соло" : ""} ${v(k, "убил", "убила")} тебя ${where.text}.`
+      : all.length === 2 ? `${list(all)} ${pickoff ? "поймали" : "убили"} тебя ${where.text}.`
+      : pickoff ? `Ганг ${together(all.length)} ${where.text}: ${list(all)}.`
+      : `Тебя зафокусили ${together(all.length)} ${where.text}${killer ? `, ${v(k, "добил", "добила")} ${k.name}` : ""}.`;
+    const fight = pickoff ? ""
+      : ownLosses === 1 ? (enemyLosses === 1 ? " Размен один на один." : ` Размен в плюс: за тебя забрали ${enemyLosses}.`)
+      : enemyLosses === 0 ? (ownLosses === 2 ? " Рядом умер и тиммейт, в ответ никого." : ` Драку слили всухую: отдали ${ownLosses}, не забрали никого.`)
+      : enemyLosses < ownLosses ? ` Драку проиграли: отдали ${ownLosses}, забрали ${enemyLosses}.`
+      : enemyLosses === ownLosses ? ` Драка вничью: ${ownLosses} на ${enemyLosses}.`
+      : ` Драку выиграли: забрали ${enemyLosses}, отдали ${ownLosses}.`;
+    // респ в пару секунд бывает только после выкупа
+    const gold = d.goldLost > 0 ? `Минус ${d.goldLost} золота, ` : "";
+    const loss = d.timeDead <= 3 ? ` ${gold ? gold + "сразу выкупился" : "Сразу выкупился"}.` : ` ${gold ? gold + "респ" : "Респ"} ${d.timeDead} сек.`;
     // пояснение через план героя, у каждого вида один раз, чтобы не повторяться
     let note: string | null = null;
     const once = (key: string, text: string) => { if (!notes.has(key)) { notes.add(key); note = text; } };
-    if (plan.style === "farm" && d.t < plan.onlineAt * 60 && !traded) once("farm", `До ${plan.onlineAt}-й минуты ${heroName} фармит: смерть без размена отодвигает выход.`);
-    else if (plan.style === "tempo" && d.t >= plan.fightFrom * 60 && traded) once("tempo", `Для ${heroName} смерть в драке с разменом после ${plan.fightFrom}-й минуты в порядке вещей.`);
-    else if (plan.style === "initiator" && d.t < plan.fightFrom * 60 && !traded) once("init", `До ${plan.fightFrom}-й минуты ${heroName} копит на ключевой предмет: смерть без размена его откладывает.`);
-    return { t: d.t, killer, helpers, enemies: enemiesN, where: where.text, enemyHalf: where.enemyHalf, ownLosses, enemyLosses, goldLost: d.goldLost, timeDead: d.timeDead, traded, text: `${who}, ${where.text}.${fight}${loss}`, note };
+    if (plan.style === "farm" && d.t < plan.onlineAt * 60 && !traded) once("farm", `${heroName} до ${plan.onlineAt}-й минуты фармит, и смерть без размена отодвигает выход.`);
+    else if (plan.style === "tempo" && d.t >= plan.fightFrom * 60 && traded) once("tempo", `${heroName} с ${plan.fightFrom}-й минуты дерётся, так что смерть с разменом — нормальная цена.`);
+    else if (plan.style === "initiator" && d.t < plan.fightFrom * 60 && !traded) once("init", `${heroName} до ${plan.fightFrom}-й минуты копит на ключевой предмет, а смерть без размена его откладывает.`);
+    return { t: d.t, killer, helpers, enemies: enemiesN, where: where.text, enemyHalf: where.enemyHalf, zone: where.zone, ownLosses, enemyLosses, goldLost: d.goldLost, timeDead: d.timeDead, traded, text: `${who}${fight}${loss}`, note };
   });
 
   // смерти по отрезкам игры против нормы героя на этой позиции
@@ -160,11 +177,12 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
       if (swing > best.swing) best = { i, j, swing };
     }
     if (best.swing >= 20) {
-      const phase = best.j <= 10 ? "на линии" : best.j <= 25 ? "в середине игры" : "в поздней игре";
+      const phase = best.j <= 10 ? "на линии" : best.j <= 25 ? "в мидгейме" : "в лейте";
       const ourDeaths = [me, ...allies].reduce((n, p) => n + p.deathsAt.filter((d) => d.t >= best.i * 60 && d.t < best.j * 60).length, 0);
       const theirDeaths = enemies.reduce((n, p) => n + p.deathsAt.filter((d) => d.t >= best.i * 60 && d.t < best.j * 60).length, 0);
-      summary.push(`Главный перелом ${phase}: к ${best.j}-й минуте шанс на победу ${me.isVictory ? "вырос" : "упал"} с ${winCurve[best.i]}% до ${winCurve[best.j]}%${ourDeaths + theirDeaths === 0 ? "" : ourDeaths === 0 ? `, за эти минуты враги умерли ${theirDeaths} ${plural(theirDeaths, "раз", "раза", "раз")}, свои ни разу` : `, за эти минуты свои умерли ${ourDeaths} ${plural(ourDeaths, "раз", "раза", "раз")}, враги ${theirDeaths === 0 ? "ни разу" : theirDeaths}`}.`);
-    } else summary.push("Резкого перелома не было: шанс на победу менялся постепенно.");
+      const deaths = ourDeaths + theirDeaths === 0 ? "" : ourDeaths === 0 ? ` За это время враги умерли ${timesN(theirDeaths)}, наши ни разу.` : ` За это время наши умерли ${timesN(ourDeaths)}, враги ${theirDeaths === 0 ? "ни разу" : theirDeaths}.`;
+      summary.push(`${me.isVictory ? "Игру переломили" : "Игра сломалась"} ${phase}: к ${best.j}-й минуте шанс на победу ${me.isVictory ? "вырос" : "упал"} с ${winCurve[best.i]}% до ${winCurve[best.j]}%.${deaths}`);
+    } else summary.push("Резких переломов не было: шанс на победу менялся постепенно.");
   }
   // худший отрезок по превышению нормы в разах: пять смертей до 10 минуты при норме 0.9 важнее семи после 20 при норме 2
   const worst = windows.filter((w) => w.norm != null && w.mine >= 2 && w.mine - w.norm >= 1.5).sort((a, b) => b.mine / Math.max(b.norm!, 0.5) - a.mine / Math.max(a.norm!, 0.5)).map((w) => ({ w }))[0];
@@ -173,38 +191,43 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     const byKiller = new Map<number, number>();
     for (const d of inW) if (d.killer) byKiller.set(d.killer, (byKiller.get(d.killer) ?? 0) + 1);
     const top = [...byKiller].sort((a, b) => b[1] - a[1])[0];
-    summary.push(`${worst.w.mine} ${plural(worst.w.mine, "смерть", "смерти", "смертей")} ${worst.w.label} при норме ${worst.w.norm}${top && top[1] >= 2 && top[1] * 2 >= inW.length ? `, ${top[1]} из них от ${name(top[0])}` : ""}.`);
-  } else if (windows.some((w) => w.norm != null)) summary.push("Заметно больше нормы героя не умирал ни на одном отрезке игры.");
+    const label = worst.w.label[0].toUpperCase() + worst.w.label.slice(1);
+    const tk = top ? H(top[0]) : null;
+    summary.push(`${label} ${worst.w.mine} ${plural(worst.w.mine, "смерть", "смерти", "смертей")} при норме ${worst.w.norm}${tk && top[1] >= 2 && top[1] * 2 >= inW.length ? `, из них ${times(top[1])} ${v(tk, "убил", "убила")} ${tk.name}` : ""}.`);
+  } else if (windows.some((w) => w.norm != null)) summary.push("Заметно больше нормы не умирал ни на одном отрезке игры.");
   const r10 = rows.find((r) => r.minute === 10);
   if (opp && r10 && r10.nw.opp != null && Math.abs(r10.nw.me - r10.nw.opp) >= 800) {
     const k = (n: number) => `${r1(n / 1000)}к`;
-    summary.push(`Линию против ${name(opp.heroId)} ${r10.nw.me > r10.nw.opp ? "выиграл" : "проиграл"}: к 10-й минуте золото ${k(r10.nw.me)} против ${k(r10.nw.opp)}.`);
+    const o = H(opp.heroId);
+    summary.push(r10.nw.me > r10.nw.opp ? `Линию выиграл: к 10-й минуте у тебя ${k(r10.nw.me)} нетворса, а ${o.name} ${v(o, "нафармил", "нафармила")} ${k(r10.nw.opp)}.` : `${o.name} ${v(o, "выиграл", "выиграла")} у тебя линию: к 10-й минуте ${k(r10.nw.opp)} нетворса против твоих ${k(r10.nw.me)}.`);
   }
 
   // советы: минута + что сделать иначе
   const tips: ReportTip[] = [];
   const used = new Set<number>();
   if (opp) {
-    const laneDeaths = deathList.filter((d) => d.t < 600 && (d.killer === opp.heroId || d.helpers.includes(opp.heroId)));
+    // смерти на своей линии (или у реки рядом с ней) с участием соперника; размен в ноль или в плюс не в счёт
+    const laneZone: Zone | null = me.lane === "mid" ? "mid" : me.lane === "safe" ? (me.isRadiant ? "bot" : "top") : me.lane === "off" ? (me.isRadiant ? "top" : "bot") : null;
+    const laneDeaths = deathList.filter((d) => d.t < 600 && (d.killer === opp.heroId || d.helpers.includes(opp.heroId)) && (d.zone === laneZone || d.zone === "river") && d.enemyLosses < d.ownLosses);
     if (laneDeaths.length >= 2) {
       const d = laneDeaths[1]; used.add(d.t);
-      const o = name(opp.heroId);
-      tips.push({ t: d.t, text: plan.style === "farm" ? `После второй смерти от ${o} играть от своей башни и забирать опыт: ${heroName} важнее уровни и фарм, чем размен на линии.`
-        : plan.style === "tempo" && d.t < (plan.fightFrom + 1) * 60 ? `До 6 уровня не размениваться с ${o}: ${heroName} сильнее после 6, а смерти на линии отдают ему темп.`
-        : `После второй смерти от ${o} играть осторожнее: от своей башни и с обзором у реки.` });
+      const o = H(opp.heroId), killed = `${o.name} ${v(o, "убил", "убила")} тебя на линии уже второй раз.`;
+      tips.push({ t: d.t, text: plan.style === "farm" ? `${killed} Дальше играй от вышки и забирай опыт: ${heroName} — герой на фарм, уровни важнее размена.`
+        : plan.style === "tempo" && d.t < (plan.fightFrom + 1) * 60 ? `${killed} Не лезь в размен до 6 уровня: после ульты ${heroName} сильнее, а ранние смерти отдают сопернику темп.`
+        : `${killed} Дальше играй осторожнее: от вышки и с вардом на реке.` });
     }
   }
   const gank = deathList.find((d) => !used.has(d.t) && d.enemies >= 3 && d.ownLosses === 1 && !d.traded && d.t >= 300 && d.t < 1500);
   if (gank) {
     used.add(gank.t);
-    tips.push({ t: gank.t, text: `Тебя поймали ${together(gank.enemies)} без размена, ${gank.where}. ${gank.enemyHalf ? "На половину врага без обзора и союзников не ходить, особенно когда враги пропали с карты." : "Когда враги собираются вместе, фармить ближе к своей башне и проверять обзор перед выходом."}` });
+    tips.push({ t: gank.t, text: `Ганг ${together(gank.enemies)} ${gank.where} без размена. ${gank.enemyHalf ? "На чужую половину без варда и тиммейтов не ходи, особенно когда враги пропали с карты." : `Когда враги пропадают с карты, ${plan.style === "support" ? "держись ближе к своим" : "фарми ближе к своим вышкам"} и ставь вард перед выходом.`}` });
   }
   if (plan.style === "farm") {
     // драки после линии: в стычке умерли хотя бы трое, свои потеряли больше
     const lost = deathList.filter((d) => d.t >= 600 && d.t < plan.onlineAt * 60 && d.ownLosses + d.enemyLosses >= 3 && d.enemyLosses < d.ownLosses);
     if (lost.length >= 2 && !used.has(lost[0].t)) {
       used.add(lost[0].t);
-      tips.push({ t: lost[0].t, text: `До ${plan.onlineAt}-й минуты ${heroName} слабее в драках, а ты умер в ${lost.length} ${plural(lost.length, "проигранной драке", "проигранных драках", "проигранных драках")}. Входить после союзников, а в уже проигранную драку не заходить.` });
+      tips.push({ t: lost[0].t, text: `До ${plan.onlineAt}-й минуты ${heroName} ещё не на силе, а ты умер в ${inN(lost.length)} ${plural(lost.length, "проигранной драке", "проигранных драках", "проигранных драках")}. Заходи после тиммейтов, а в уже проигранную драку не лезь: сохранить фарм важнее.` });
     }
   }
   if (plan.style === "tempo" || plan.style === "initiator") {
@@ -212,14 +235,14 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     if (to - from >= 300) {
       const teamKills = enemies.reduce((n, p) => n + p.deathsAt.filter((d) => d.t >= from && d.t < to).length, 0);
       const part = new Set([...me.killsAt, ...me.assistsAt].filter((t) => t >= from && t < to)).size;
-      if (teamKills >= 6 && part / teamKills < 0.4) tips.push({ t: from, text: `С ${plan.fightFrom}-й минуты ${heroName} должен драться: до 20-й минуты команда убила ${teamKills} ${plural(teamKills, "врага", "врагов", "врагов")}, а ты участвовал в ${part}. Чаще ходить к дракам и на ганги, даже ценой фарма.` });
+      if (teamKills >= 6 && part / teamKills < 0.4) tips.push({ t: from, text: `С ${plan.fightFrom}-й минуты пора драться, а до 20-й минуты ты был только в ${part} из ${teamKills} убийств команды. Чаще ходи на ганги и в драки, даже в ущерб фарму.` });
     }
   }
   if (winCurve) {
     const late = deathList.find((d) => !used.has(d.t) && d.t >= 1200 && !d.traded && d.timeDead >= 40);
     if (late) {
       const i = Math.floor(late.t / 60), j = Math.min(winCurve.length - 1, i + 2);
-      if (winCurve[i] != null && winCurve[i] - winCurve[j] >= 8) tips.push({ t: late.t, text: `Смерть без размена стоила ${late.timeDead} сек: за две минуты шанс на победу упал с ${winCurve[i]}% до ${winCurve[j]}%. После 20-й минуты ${late.enemyHalf ? "на половину врага без союзников и обзора не ходить" : "фармить там, куда свои успеют быстрее врагов"}.` });
+      if (winCurve[i] != null && winCurve[i] - winCurve[j] >= 8) tips.push({ t: late.t, text: `Смерть без размена в лейте: ${late.timeDead} сек респа, и за две минуты шанс на победу упал с ${winCurve[i]}% до ${winCurve[j]}%. ${late.enemyHalf ? "Без тиммейтов и варда на чужую половину не ходи." : "Фарми там, куда свои успеют быстрее врагов."}` });
     }
   }
   tips.sort((a, b) => a.t - b.t);

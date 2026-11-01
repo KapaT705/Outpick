@@ -6,6 +6,7 @@ import type { Hero } from "@/lib/types";
 import type { LaneCell, LaneOutcome, MatchReport, ReportDeath, ReportWindow } from "@/lib/report";
 import { Button, Card, CardTitle, Chip, Hint } from "@/components/ui";
 import Crystals from "@/components/Crystals";
+import { heroRu } from "@/lib/heroRu";
 
 // иконки с CDN Valve: у Stratz alchemist_icon.png оказался копией dragon_knight_icon.png
 const icon = (short: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${short}.png`;
@@ -96,7 +97,7 @@ function Header({ r, byId, draft }: { r: MatchReport; byId: Map<number, Hero>; d
       </div>
       {r.summary.length > 0 && <div className="flex flex-col gap-1 text-sm leading-relaxed">{r.summary.map((s) => <p key={s}>{s}</p>)}</div>}
       {r.parsed && <div className="text-xs text-muted flex flex-wrap items-center gap-1.5">
-        <span>План героя: {h?.name ?? "герой"} {r.plan.text}.</span>
+        <span>План героя: {heroRu(r.heroId, byId).name} {r.plan.text}.</span>
         <Hint align="right" text={r.plan.manual ? "По плану героя отчёт решает, какие смерти стоили дорого, а какие были ценой драки. План для этого героя на миде записан вручную." : "По плану героя отчёт решает, какие смерти стоили дорого, а какие были ценой драки. Для этого героя и позиции своей строки нет, план взят по позиции и типу героя."} />
       </div>}
       {draft && (
@@ -212,11 +213,10 @@ function LaneCard({ r, byId }: { r: MatchReport; byId: Map<number, Hero> }) {
   if (!lane || lane.rows.length === 0) return null;
   const opp = lane.oppHeroId ? byId.get(lane.oppHeroId) : null;
   const out = lane.outcome ? OUTCOME[lane.outcome] : null;
-  const h = byId.get(r.heroId);
   return (
     <Card>
       <CardTitle right={out ? <Chip tone={out.tone} title="Итог линии по оценке Stratz">{out.text}</Chip> : undefined}>
-        {opp ? <span className="flex items-center gap-2">Линия против <img src={icon(opp.short)} alt="" className="h-5 w-5 rounded" />{opp.name}</span> : "Линия"}
+        {opp ? <span className="flex items-center gap-2">Соперник по линии: <img src={icon(opp.short)} alt="" className="h-5 w-5 rounded" />{heroRu(opp.id, byId).name}</span> : "Линия"}
       </CardTitle>
       <table className="w-full text-sm tabular-nums">
         <thead>
@@ -238,7 +238,7 @@ function LaneCard({ r, byId }: { r: MatchReport; byId: Map<number, Hero> }) {
           ))}
         </tbody>
       </table>
-      <div className="mt-2 text-xs text-muted">Ты{opp ? ` / ${opp.name}` : ""}. Норма: средние Divine/Immortal на {h?.name ?? "герое"}{r.position ? ` (${ROLE_NAME[r.position]})` : ""}.</div>
+      <div className="mt-2 text-xs text-muted">Ты{opp ? " / соперник" : ""}. Норма — средние Divine/Immortal на этом герое{r.position ? ` (${ROLE_NAME[r.position]})` : ""}.</div>
     </Card>
   );
 }
