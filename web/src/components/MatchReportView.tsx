@@ -6,7 +6,7 @@ import type { Hero } from "@/lib/types";
 import type { LaneCell, LaneOutcome, MatchReport, NormCell, ReportDeath, ReportWindow } from "@/lib/report";
 import { Button, Card, CardTitle, Chip, Hint } from "@/components/ui";
 import Crystals from "@/components/Crystals";
-import { heroRu } from "@/lib/heroRu";
+import { heroName } from "@/lib/heroName";
 
 // иконки с CDN Valve: у Stratz alchemist_icon.png оказался копией dragon_knight_icon.png
 const icon = (short: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${short}.png`;
@@ -98,7 +98,7 @@ function Header({ r, byId, draft }: { r: MatchReport; byId: Map<number, Hero>; d
       </div>
       {r.summary.length > 0 && <div className="flex flex-col gap-1 text-sm leading-relaxed">{r.summary.map((s) => <p key={s}>{s}</p>)}</div>}
       {r.parsed && <div className="text-xs text-muted flex flex-wrap items-center gap-1.5">
-        <span>План героя: {heroRu(r.heroId, byId).name} {r.plan.text}.</span>
+        <span>План героя: {heroName(r.heroId, byId).name} {r.plan.text}.</span>
         <Hint align="right" text={r.plan.manual ? "По плану героя отчёт решает, какие смерти стоили дорого, а какие были ценой драки. План для этого героя на миде записан вручную." : "По плану героя отчёт решает, какие смерти стоили дорого, а какие были ценой драки. Для этого героя и позиции своей строки нет, план взят по позиции и типу героя."} />
       </div>}
       {draft && (
@@ -240,7 +240,7 @@ function LaneCard({ r, byId }: { r: MatchReport; byId: Map<number, Hero> }) {
   if (!lane || lane.rows.length === 0) return null;
   const opp = lane.oppHeroId ? byId.get(lane.oppHeroId) : null;
   const mine = byId.get(r.heroId);
-  const oppName = opp ? heroRu(opp.id, byId).name : null;
+  const oppName = opp ? heroName(opp.id, byId).name : null;
   const out = lane.outcome ? OUTCOME[lane.outcome] : null;
   return (
     <Card>
@@ -272,7 +272,7 @@ function SupLaneCard({ r, byId }: { r: MatchReport; byId: Map<number, Hero> }) {
   const lane = r.lane!, sup = lane.sup!;
   if (sup.rows.length === 0) return null;
   const out = lane.outcome ? OUTCOME[lane.outcome] : null;
-  const names = sup.enemies.map((id) => heroRu(id, byId).name);
+  const names = sup.enemies.map((id) => heroName(id, byId).name);
   const theirName = names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} и ${names[names.length - 1]}`;
   const icons = (ids: number[]) => ids.map((id) => byId.get(id)).filter((h): h is Hero => !!h).map((h) => <img key={h.id} src={icon(h.short)} alt="" className="h-5 w-5 rounded" />);
   const duel = sup.enemies.length > 0;

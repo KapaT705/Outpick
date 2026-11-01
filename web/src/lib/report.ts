@@ -5,7 +5,7 @@
 import type { MatchData, MDeath, MPlayer } from "./matchData";
 import { benchAt, type Bench } from "./bench";
 import { heroPlan, type HeroPlan } from "./heroPlan";
-import { heroRu, v } from "./heroRu";
+import { heroName as nameOf, v } from "./heroName";
 import type { Hero } from "./types";
 
 export type ReportDeath = {
@@ -99,7 +99,7 @@ function laneOutcome(m: MatchData, p: MPlayer): LaneOutcome {
 }
 
 export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, heroes: Map<number, Hero>): MatchReport {
-  const H = (id: number | null | undefined) => heroRu(id, heroes);
+  const H = (id: number | null | undefined) => nameOf(id, heroes);
   const list = (ids: number[]) => { const ns = ids.map((id) => H(id).name); return ns.length < 2 ? ns.join("") : `${ns.slice(0, -1).join(", ")} и ${ns[ns.length - 1]}`; };
   const hero = heroes.get(me.heroId);
   const heroName = H(me.heroId).name;
