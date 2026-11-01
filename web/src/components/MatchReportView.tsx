@@ -160,6 +160,10 @@ function GameCurve({ r }: { r: MatchReport }) {
   const curve = r.winCurve;
   const pts = curve?.map((v, i) => `${(x(i * 60) * 10).toFixed(1)},${100 - v}`).join(" ");
   // подписи каждые 10 минут; у правого края место под длительность матча
+  // точки смертей, которые слиплись бы (ближе 1.2% ширины), уходят во второй ряд
+  let lastRow0 = -Infinity;
+  const dots = r.deathList.map((d) => { const px = x(d.t); const row = px - lastRow0 < 1.2 ? 1 : 0; if (row === 0) lastRow0 = px; return { d, px, row }; });
+  const rows2 = dots.some((o) => o.row === 1);
   const ticks = Array.from({ length: Math.floor(dur / 600) + 1 }, (_, i) => i * 10).filter((m) => m * 60 <= dur * 0.92);
   return (
     <div className="pl-9 pr-1">
@@ -177,9 +181,9 @@ function GameCurve({ r }: { r: MatchReport }) {
           </svg>
         </div>
       )}
-      <div className="relative mt-1.5 h-3">
-        {r.deathList.map((d) => (
-          <span key={d.t} title={`${mmss(d.t)} · ${d.text}`} className={`absolute top-0 h-3 w-3 -translate-x-1/2 rounded-full ring-2 ring-panel cursor-default ${d.traded ? "bg-muted" : "bg-bad"}`} style={{ left: `${x(d.t)}%` }} />
+      <div className={`relative mt-1.5 ${rows2 ? "h-[26px]" : "h-3"}`}>
+        {dots.map(({ d, px, row }) => (
+          <span key={d.t} title={`${mmss(d.t)} · ${d.text}`} className={`absolute h-3 w-3 -translate-x-1/2 rounded-full ring-2 ring-panel cursor-default ${row ? "top-3.5" : "top-0"} ${d.traded ? "bg-muted" : "bg-bad"}`} style={{ left: `${px}%` }} />
         ))}
       </div>
       <div className="relative mt-1 h-3.5 text-[10px] text-muted tabular-nums">
@@ -225,7 +229,7 @@ function LaneCard({ r, byId }: { r: MatchReport; byId: Map<number, Hero> }) {
         </thead>
         <tbody>
           {lane.rows.map((row) => (
-            <tr key={row.minute} className="border-t border-border align-top">
+            <tr key={row.minute} className="border-t border-border align-baseline">
               <td className="py-2 text-xs text-muted">к {row.minute} мин</td>
               <LaneTd c={row.lh} />
               <LaneTd c={row.dn} />
