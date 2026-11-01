@@ -9,7 +9,7 @@ const PERSONAL_SHRINK = 30;   // personal games at which personal winrate gets h
 const PERSONAL_MIN_GAMES = 3;
 // наигранность: сколько игр на герое на этой роли за год. Это опыт, он отдельно от винрейта:
 // бонус растёт с числом игр и насыщается (половина EXP_MAX при EXP_HALF играх), только у героев пула
-const EXP_MAX = 2.5, EXP_HALF = 25; // меньше игр на роли: счёт показываем, но оценку не двигаем (2–0 ничего не значит)
+const EXP_MAX = 2.5, EXP_HALF = 25; // меньше игр на роли: счёт показываем, но оценку не двигаем (2-0 ничего не значит)
 const PERSONAL_WEIGHT = 0.6;  // how strongly personal winrate moves the final score
 const MID_RATE_MIN = 0.15;    // hero counts as a mid hero if >= 15% of its games are mid
 const MID_GAMES_MIN = 4500;   // ...and has enough games on the role in the last 4 weeks (Immortal only: ~29% of the old Divine+Immortal volume, thresholds scaled)
@@ -23,7 +23,7 @@ const FAMILIAR_MIN_GAMES = 3;
 // Очередь пика: пока врагов известно мало, они ответят контрпиком, и устойчивость к нему важнее лучшего матчапа
 // против уже взятых. Риск контрпика = средний проигрыш героя его худшим популярным матчапам (взвешено по популярности).
 const RISK_N = 8, RISK_W: Record<DraftStage, number> = { early: 0.6, mid: 0.3, late: 0 };
-// Нехватка команды по тегам героев: союзники (без тебя) суммарно по тегу с уровнями 1–3; ниже NEED_MIN — не хватает.
+// Нехватка команды по тегам героев: союзники (без тебя) суммарно по тегу с уровнями 1-3; ниже NEED_MIN - не хватает.
 const NEED_MIN: Partial<Record<HeroTag, number>> = { DISABLER: 3, INITIATOR: 2, PUSHER: 2, DURABLE: 2, CARRY: 2, ESCAPE: 0, NUKER: 2, SUPPORT: 0 };
 const NEED_LABEL: Record<HeroTag, string> = { DISABLER: "контроля", INITIATOR: "инициации", PUSHER: "пуша", DURABLE: "фронта", CARRY: "урона в лейте", NUKER: "бурста", ESCAPE: "мобильности", SUPPORT: "саппорта" };
 const NEED_BONUS = 0.6;       // pp за уровень тега, закрывающего нехватку (максимум 1.8 за тег)
@@ -64,7 +64,7 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
   const enemyRoles = inferRoles(enemyPicks, [], enemyPicks.map((p) => { const ps = playerAt(enemyTeam, p.slot); return ps?.rolesKnown ? ps.roles : null; }));
   // союзники: твоя роль занята тобой, поэтому её для них исключаем
   const allyRoles = inferRoles(allyPicks.map((p) => (p.role === role ? { ...p, role: null } : p)), [role]);
-  // соперник по линии: враг с наибольшей вероятностью стоять против тебя (для мида — их мидер)
+  // соперник по линии: враг с наибольшей вероятностью стоять против тебя (для мида - их мидер)
   let laneOpponent: LaneOpponent | null = null;
   for (const e of enemies) {
     const prob = roleProbability(enemyRoles, e, laneRoles);
@@ -80,7 +80,7 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
   const takenRoles = new Set(enemyRoles.map((g) => g.role));
   const predicted: PredictedPicks[] = [];
   const freeRoles = ([1, 2, 3, 4, 5] as Role[]).filter((r) => !takenRoles.has(r));
-  // по игрокам: враги, чьи слоты ещё без героя, с известной историей — их вероятная роль и любимые герои
+  // по игрокам: враги, чьи слоты ещё без героя, с известной историей - их вероятная роль и любимые герои
   const usedSlots = new Set(enemyPicks.map((p) => p.slot).filter((s) => s !== undefined));
   const rolesByPlayer = new Set<Role>();
   if (lobby && enemyTeam) for (let slot = 0; slot < 5; slot++) {

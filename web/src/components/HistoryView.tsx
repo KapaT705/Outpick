@@ -31,7 +31,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
     setBusy(true); setMsg(null);
     const r = await fetch("/api/log/sync", { method: "POST" }).then((x) => x.json()).catch(() => null);
     if (r?.ok) {
-      setMsg(r.updated > 0 ? `Готово: результат найден у ${r.updated} ${r.updated === 1 ? "записи" : "записей"}${r.pending ? `, ещё ${r.pending} без результата` : ""}` : r.pending > 0 ? `Пока без результата: ${r.pending}. Stratz получает матч через 5–15 минут после игры, попробуй позже.` : "Нечего обновлять: все записи уже с результатом или история пуста.");
+      setMsg(r.updated > 0 ? `Готово: результат найден у ${r.updated} ${r.updated === 1 ? "записи" : "записей"}${r.pending ? `, ещё ${r.pending} без результата` : ""}` : r.pending > 0 ? `Пока без результата: ${r.pending}. Stratz получает матч через 5-15 минут после игры, попробуй позже.` : "Нечего обновлять: все записи уже с результатом или история пуста.");
       const fresh = await fetch("/api/log").then((x) => x.json()).catch(() => null);
       if (fresh?.items) setItems(fresh.items);
       // по подтянутым матчам программа доучивает портреты (персоны, арканы) с кадров стадии пиков
@@ -69,7 +69,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
   // калибровка: предсказанный % против реального
   const buckets = [[0, 48], [48, 52], [52, 56], [56, 100]].map(([lo, hi]) => {
     const s = done.filter((x) => x.chosen && x.chosen.finalScore >= lo && x.chosen.finalScore < hi);
-    return { label: hi === 100 ? `${lo}%+` : `${lo}–${hi}%`, n: s.length, wr: s.length ? Math.round((s.filter((x) => x.won).length / s.length) * 100) : null, avg: s.length ? Math.round(s.reduce((a, x) => a + x.chosen!.finalScore, 0) / s.length) : null };
+    return { label: hi === 100 ? `${lo}%+` : `${lo}-${hi}%`, n: s.length, wr: s.length ? Math.round((s.filter((x) => x.won).length / s.length) * 100) : null, avg: s.length ? Math.round(s.reduce((a, x) => a + x.chosen!.finalScore, 0) / s.length) : null };
   });
   const periodLabel = period ? `${period} дней` : "всё время";
 
@@ -138,7 +138,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
           <CardTitle hint={`Герои, на которых ты играл за ${periodLabel}: счёт и винрейт. Зелёные 55% и выше, красные 45% и ниже.`}>Твои герои</CardTitle>
           <div className="flex flex-wrap gap-2 text-xs">
             {heroRows.map((r) => { const h = byId.get(r.id); return (
-              <span key={r.id} className={`flex items-center gap-1.5 rounded-md bg-panel-2 px-2 py-1 ${r.wr >= 55 ? "text-good" : r.wr <= 45 ? "text-bad" : "text-foreground"}`}>{h && <img src={icon(h.short)} alt="" className="h-5 w-5 rounded" />}{h?.name} <span className="text-muted">{r.w}–{r.n - r.w}</span> {r.wr}%</span>
+              <span key={r.id} className={`flex items-center gap-1.5 rounded-md bg-panel-2 px-2 py-1 ${r.wr >= 55 ? "text-good" : r.wr <= 45 ? "text-bad" : "text-foreground"}`}>{h && <img src={icon(h.short)} alt="" className="h-5 w-5 rounded" />}{h?.name} <span className="text-muted">{r.w}-{r.n - r.w}</span> {r.wr}%</span>
             ); })}
           </div>
         </Card>
@@ -150,7 +150,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, def
           {buckets.map((b) => (
             <div key={b.label} className="rounded-lg bg-panel-2 p-2.5">
               <div className="text-muted text-xs">прогноз {b.label}</div>
-              <div className={`text-xl font-semibold tabular-nums ${b.wr === null ? "text-muted" : ""}`}>{b.wr === null ? "—" : `${b.wr}%`}</div>
+              <div className={`text-xl font-semibold tabular-nums ${b.wr === null ? "text-muted" : ""}`}>{b.wr === null ? "-" : `${b.wr}%`}</div>
               <div className="text-xs text-muted">{b.n} {plural(b.n, "игра", "игры", "игр")}{b.avg !== null ? ` · средний прогноз ${b.avg}%` : ""}</div>
             </div>
           ))}
@@ -237,7 +237,7 @@ function MatchStats({ d, b, byId }: { d: MatchDetails; b: Bench | null; byId: Ma
   if (d.lh10 != null) cells.push({ label: "Добито к 10 мин", value: String(d.lh10), cls: tone(d.lh10, b?.at10?.cs), norm: b?.at10 ? String(fmtN(b.at10.cs)) : null });
   if (d.nw10 != null) cells.push({ label: "Золото к 10 мин", value: String(d.nw10), cls: tone(d.nw10, b?.at10?.networth), norm: b?.at10 ? String(fmtN(b.at10.networth)) : null });
   if (d.deaths10 != null) cells.push({ label: "Смертей к 10 мин", value: String(d.deaths10), cls: tone(d.deaths10, b?.at10?.deaths, true), norm: b?.at10 ? String(fmtN(b.at10.deaths, 1)) : null });
-  if (oppName) cells.push({ label: `Линия против ${oppName}`, value: laneDiff != null ? `${laneDiff > 0 ? "+" : ""}${laneDiff}` : "—", cls: laneDiff == null ? "text-foreground" : laneDiff >= 300 ? "text-good" : laneDiff <= -300 ? "text-bad" : "text-foreground", norm: laneDiff != null ? "золота к 10 мин" : null });
+  if (oppName) cells.push({ label: `Линия против ${oppName}`, value: laneDiff != null ? `${laneDiff > 0 ? "+" : ""}${laneDiff}` : "-", cls: laneDiff == null ? "text-foreground" : laneDiff >= 300 ? "text-good" : laneDiff <= -300 ? "text-bad" : "text-foreground", norm: laneDiff != null ? "золота к 10 мин" : null });
   return (
     <div className="flex flex-wrap gap-1.5" title={b ? `Норма: средние Divine/Immortal на этом герое и позиции, ${b.matchCount} матчей, винрейт ${Math.round(b.winrate * 100)}%. Зелёное лучше нормы на 10% и больше, красное хуже.` : "Нормы нет: Stratz не ответил"}>
       {cells.map((c) => (
@@ -255,8 +255,8 @@ function Stat({ title, hint, hintAlign, s }: { title: string; hint?: string; hin
   return (
     <Card className="p-3">
       <div className="text-xs text-muted flex items-center gap-1.5">{title}{hint && <Hint text={hint} align={hintAlign} />}</div>
-      <div className={`text-2xl font-semibold tabular-nums ${s.wr === null ? "text-muted" : s.wr >= 55 ? "text-good" : s.wr <= 45 ? "text-bad" : ""}`}>{s.wr === null ? "—" : `${s.wr}%`}</div>
-      <div className="text-xs text-muted">{s.n ? `${s.w}–${s.n - s.w} · ${s.n} ${plural(s.n, "игра", "игры", "игр")}` : "игр нет"}</div>
+      <div className={`text-2xl font-semibold tabular-nums ${s.wr === null ? "text-muted" : s.wr >= 55 ? "text-good" : s.wr <= 45 ? "text-bad" : ""}`}>{s.wr === null ? "-" : `${s.wr}%`}</div>
+      <div className="text-xs text-muted">{s.n ? `${s.w}-${s.n - s.w} · ${s.n} ${plural(s.n, "игра", "игры", "игр")}` : "игр нет"}</div>
     </Card>
   );
 }

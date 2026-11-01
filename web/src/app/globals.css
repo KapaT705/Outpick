@@ -31,7 +31,7 @@
   --color-ban: var(--ban);
 }
 
-/* шкала текста: основной 14px, вторичный 12px (text-xs), 10–11px только подписи ячеек и бейджи */
+/* шкала текста: основной 14px, вторичный 12px (text-xs), 10-11px только подписи ячеек и бейджи */
 body {
   background: var(--background);
   color: var(--foreground);

@@ -39,7 +39,7 @@ function migrateLegacy() {
   for (const f of files) { const src = path.join(legacy, f); if (fs.existsSync(src)) fs.renameSync(src, path.join(dst, f)); }
 }
 
-/** Файл с данными аккаунта: папка аккаунта, для владельца упакованных данных — файл из сборки, иначе null. */
+/** Файл с данными аккаунта: папка аккаунта, для владельца упакованных данных - файл из сборки, иначе null. */
 export function accountFile(id: number, name: "player-pool.json" | "personal-pairs.json"): string | null {
   migrateLegacy();
   const own = path.join(accountDir(id), name);

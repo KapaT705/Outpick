@@ -41,7 +41,7 @@ export function Chip({ children, tone = "muted", title, className = "" }: { chil
   return <span title={title} className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs leading-4 whitespace-nowrap ${t} ${className}`}>{children}</span>;
 }
 
-/** Точка состояния с подписью: зелёная — работает, серая — нет, жёлтая — ждёт. */
+/** Точка состояния с подписью: зелёная - работает, серая - нет, жёлтая - ждёт. */
 export function Status({ ok, label, title, pending }: { ok: boolean; label: string; title?: string; pending?: boolean }) {
   return (
     <span title={title} className="inline-flex items-center gap-1.5 text-xs text-muted cursor-default">

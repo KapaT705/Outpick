@@ -90,7 +90,7 @@ export default function Onboarding() {
 
         {step === 1 && (
           <div className="flex flex-col gap-3">
-            <p className="text-sm">Stratz — это сайт со статистикой Доты. По токену программа берёт контрпики, мету и твои матчи. <Hint text="Токен хранится только на этом компьютере и никуда больше не отправляется." /></p>
+            <p className="text-sm">Stratz - это сайт со статистикой Доты. По токену программа берёт контрпики, мету и твои матчи. <Hint text="Токен хранится только на этом компьютере и никуда больше не отправляется." /></p>
             <ol className="text-sm text-muted list-decimal pl-5 flex flex-col gap-1">
               <li>Открой <a href="https://stratz.com/api" target="_blank" rel="noreferrer" className="text-accent underline">stratz.com/api</a> и войди через Steam.</li>
               <li>Нажми «Create token» и скопируй длинную строку.</li>
