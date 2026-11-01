@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { DraftLog } from "@/lib/log";
 import type { MatchDetails } from "@/lib/matchDetails";
 import type { Bench } from "@/lib/bench";
-import type { AccMatch } from "@/lib/accountMatches";
+import type { AccMatch, MatchNorm } from "@/lib/accountMatches";
 import type { Hero } from "@/lib/types";
 import { Button, Card, CardTitle, Chip, Empty, Hint } from "@/components/ui";
 import Crystals from "@/components/Crystals";
@@ -17,7 +17,7 @@ const ROLE_NAME: Record<number, string> = { 1: "керри", 2: "мид", 3: "о
 const reportHref = (matchId: number, acc: number | null, heroId?: number) => `/history/${matchId}?${new URLSearchParams({ ...(acc ? { me: String(acc) } : {}), ...(heroId ? { hero: String(heroId) } : {}) })}`;
 
 /** Рейтинговые матчи аккаунта из Stratz и нормы смертей для сводки (см. /api/matches). */
-type Remote = { items: AccMatch[]; norms: Record<string, number[]>; error: string | null };
+type Remote = { items: AccMatch[]; norms: Record<string, MatchNorm>; error: string | null };
 
 export default function HistoryView({ items: initial, heroes, accounts = {}, stratzAccounts = [], defaultAccountId = null, currentAccountId = null }: { items: DraftLog[]; heroes: Hero[]; accounts?: Record<number, string>; stratzAccounts?: number[]; defaultAccountId?: number | null; currentAccountId?: number | null }) {
   const [all, setItems] = useState(initial);
@@ -54,7 +54,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
     return () => { alive = false; };
   }, [wantedKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const remoteRows = wanted.flatMap((id) => (remote[id]?.items ?? []).map((m) => ({ m, acc: id })));
-  const norms = Object.assign({}, ...wanted.map((id) => remote[id]?.norms ?? {})) as Record<string, number[]>;
+  const norms = Object.assign({}, ...wanted.map((id) => remote[id]?.norms ?? {})) as Record<string, MatchNorm>;
 
   const sync = async () => {
     setBusy(true); setMsg(null);
@@ -186,6 +186,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
       </section>
 
       {wanted.length > 0 && <DeathTrend rows={remoteRows.map((r) => r.m)} norms={norms} period={period} busy={remoteBusy} error={wanted.map((id) => remote[id]?.error).find(Boolean) ?? null} />}
+      {wanted.length > 0 && <PlayVsNorm rows={remoteRows.map((r) => r.m)} norms={norms} period={period} busy={remoteBusy} />}
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat title="Взял первого по совету" hint="Матчи, где ты взял героя, которого пикер ставил первым" s={top1} />
@@ -352,12 +353,12 @@ function Stat({ title, hint, hintAlign, s }: { title: string; hint?: string; hin
 const WINDOWS: [number, number, string][] = [[0, 10, "0–10 минута"], [10, 20, "10–20 минута"], [20, Infinity, "после 20-й"]];
 
 /** Смерти на 10 минут игры по отрезкам матча за период: твои и норма Divine/Immortal на тех же героях и позициях. */
-function deathRates(ms: AccMatch[], norms: Record<string, number[]>, from: number, to: number) {
+function deathRates(ms: AccMatch[], norms: Record<string, MatchNorm>, from: number, to: number) {
   const acc = WINDOWS.map(() => ({ mine: 0, norm: 0, min: 0 }));
   let n = 0;
   for (const m of ms) {
     if (!m.parsed || !m.position || m.startDateTime < from || m.startDateTime >= to) continue;
-    const nm = norms[`${m.heroId}-${m.position}`];
+    const nm = norms[`${m.heroId}-${m.position}`]?.deaths;
     if (!nm) continue;
     n++;
     const dur = m.durationSeconds / 60;
@@ -374,7 +375,7 @@ function deathRates(ms: AccMatch[], norms: Record<string, number[]>, from: numbe
   return { n, w: acc.map((x) => (x.min >= 30 ? { me: (x.mine / x.min) * 10, norm: (x.norm / x.min) * 10 } : null)) };
 }
 
-function DeathTrend({ rows, norms, period, busy, error }: { rows: AccMatch[]; norms: Record<string, number[]>; period: number; busy: boolean; error: string | null }) {
+function DeathTrend({ rows, norms, period, busy, error }: { rows: AccMatch[]; norms: Record<string, MatchNorm>; period: number; busy: boolean; error: string | null }) {
   const now = Math.floor(Date.now() / 1000);
   const cur = deathRates(rows, norms, period ? now - period * 86400 : 0, now + 1);
   const prev = period ? deathRates(rows, norms, now - 2 * period * 86400, now - period * 86400) : null;
@@ -407,6 +408,71 @@ function DeathTrend({ rows, norms, period, busy, error }: { rows: AccMatch[]; no
           </div>
           <div className="mt-2 text-xs text-muted">Смертей на 10 минут игры · {cur.n} {plural(cur.n, "матч", "матча", "матчей")} за {period ? `${period} дней` : "всё время"}{error ? ` · ${error}` : ""}</div>
         </>}
+    </Card>
+  );
+}
+
+/** Показатели за период против нормы: сумма твоего за матчи к сумме нормы героя на позиции, пересчитанной на длину каждого матча. */
+const METRICS: { key: string; label: string; hint: string; lowerBetter?: boolean; mine: (m: AccMatch) => number | null; norm: (n: MatchNorm, minutes: number) => number | null }[] = [
+  { key: "dmg", label: "Дамаг по героям", hint: "Урон по героям за матч", mine: (m) => m.heroDamage, norm: (n, min) => (n.heroDamage / n.dur) * min },
+  { key: "ka", label: "Участие в драках", hint: "Киллы и ассисты за матч", mine: (m) => m.kills + m.assists, norm: (n, min) => (n.ka / n.dur) * min },
+  { key: "lane", label: "Фарм на линии", hint: "Добито к 10-й минуте", mine: (m) => m.lh10, norm: (n) => n.cs10 },
+  { key: "nw", label: "Фарм за игру", hint: "Нетворс к концу матча", mine: (m) => m.networth, norm: (n, min) => (n.networth / n.dur) * min },
+  { key: "push", label: "Пуш", hint: "Урон по строениям за матч", mine: (m) => m.towerDamage, norm: (n, min) => (n.towerDamage / n.dur) * min },
+  { key: "deaths", label: "Смерти", hint: "Смерти за матч, здесь меньше — лучше", lowerBetter: true, mine: (m) => m.deaths, norm: (n, min) => (n.d / n.dur) * min },
+];
+
+function vsNorm(ms: AccMatch[], norms: Record<string, MatchNorm>, from: number, to: number) {
+  let n = 0;
+  const sums = METRICS.map(() => ({ mine: 0, norm: 0, k: 0 }));
+  for (const m of ms) {
+    if (!m.parsed || !m.position || m.startDateTime < from || m.startDateTime >= to) continue;
+    const nm = norms[`${m.heroId}-${m.position}`];
+    if (!nm || !nm.dur) continue;
+    n++;
+    METRICS.forEach((x, i) => { const a = x.mine(m), b = x.norm(nm, m.durationSeconds / 60); if (a != null && b != null && b > 0) { sums[i].mine += a; sums[i].norm += b; sums[i].k++; } });
+  }
+  // отношение к норме; для смертей переворачиваем, чтобы «больше 100%» везде значило «лучше»
+  return { n, rows: METRICS.map((x, i) => { const s = sums[i]; if (s.k < 3 || !s.norm) return null; const ratio = s.mine / s.norm; return { ...x, ratio, better: x.lowerBetter ? 2 - ratio : ratio, avg: s.mine / s.k, avgNorm: s.norm / s.k }; }) };
+}
+
+function PlayVsNorm({ rows, norms, period, busy }: { rows: AccMatch[]; norms: Record<string, MatchNorm>; period: number; busy: boolean }) {
+  const now = Math.floor(Date.now() / 1000);
+  const cur = vsNorm(rows, norms, period ? now - period * 86400 : 0, now + 1);
+  const prev = period ? vsNorm(rows, norms, now - 2 * period * 86400, now - period * 86400) : null;
+  const list = cur.rows.filter((r): r is NonNullable<typeof r> => !!r);
+  if (busy && cur.n === 0) return null; // загрузку уже показывает карточка смертей
+  if (cur.n === 0 || list.length === 0) return null;
+  const pct = (r: number) => Math.round((r - 1) * 100);
+  const sorted = [...list].sort((a, b) => b.better - a.better);
+  const strong = sorted.filter((r) => r.better >= 1.05).slice(0, 2);
+  const weak = [...sorted].reverse().filter((r) => r.better <= 0.95).slice(0, 1);
+  const fmtN = (v: number) => (v >= 1000 ? `${(Math.round(v / 100) / 10).toLocaleString("ru-RU")}к` : String(Math.round(v * 10) / 10));
+  const head = strong.length
+    ? `Сильные стороны: ${strong.map((r) => r.label.toLowerCase()).join(" и ")}${weak.length ? `. Над чем работать: ${weak[0].label.toLowerCase()}` : ""}.`
+    : `Ближе всего к норме: ${sorted[0].label.toLowerCase()}${weak.length ? `. Над чем работать: ${weak[0].label.toLowerCase()}` : ""}.`;
+  return (
+    <Card>
+      <CardTitle hint="Твои средние за матчи периода против средних Divine/Immortal на тех же героях и позициях, с поправкой на длину каждого матча. Полоса вправо от середины — лучше нормы, влево — хуже. Считаются рейтинговые матчи, которые Stratz разобрал подробно.">Твоя игра против нормы</CardTitle>
+      <p className="mb-4 text-sm">{head}</p>
+      <div className="grid grid-cols-[150px_minmax(0,1fr)_64px_150px] items-center gap-x-4 gap-y-3 text-sm">
+        {list.map((r) => {
+          const d = r.better - 1, w = Math.min(Math.abs(d), 0.5) / 0.5 * 50;
+          const good = d >= 0.05, bad = d <= -0.05;
+          const p = prev?.rows.find((x) => x?.key === r.key);
+          const word = r.lowerBetter ? (r.ratio > 1 ? "больше" : "меньше") : (r.ratio >= 1 ? "выше" : "ниже");
+          return [
+            <span key={`${r.key}l`} className="text-muted">{r.label}</span>,
+            <div key={`${r.key}b`} className="relative h-2.5 rounded-full bg-panel-2" title={`${r.hint}: у тебя в среднем ${fmtN(r.avg)}, норма ${fmtN(r.avgNorm)}`}>
+              <span className="absolute left-1/2 top-[-3px] h-4 w-px -translate-x-1/2 bg-border" />
+              <span className={`absolute top-0 h-2.5 ${d >= 0 ? "left-1/2 rounded-r-full" : "right-1/2 rounded-l-full"} ${good ? "bg-good" : bad ? "bg-bad" : "bg-muted"}`} style={{ width: `${Math.max(w, 1)}%` }} />
+            </div>,
+            <span key={`${r.key}v`} className={`text-right tabular-nums font-semibold ${good ? "text-good" : bad ? "text-bad" : ""}`} title={`${Math.abs(pct(r.ratio))}% ${word} нормы`}>{pct(r.ratio) > 0 ? "+" : ""}{pct(r.ratio)}%</span>,
+            <span key={`${r.key}p`} className="text-xs text-muted tabular-nums">{p ? `прошлые ${period} дней: ${pct(p.ratio) > 0 ? "+" : ""}${pct(p.ratio)}%` : ""}</span>,
+          ];
+        })}
+      </div>
+      <div className="mt-3 text-xs text-muted">Процент — насколько твоё среднее отличается от нормы героя · {cur.n} {plural(cur.n, "матч", "матча", "матчей")} за {period ? `${period} дней` : "всё время"}</div>
     </Card>
   );
 }

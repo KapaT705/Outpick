@@ -11,10 +11,12 @@ export type AccMatch = {
   id: number; startDateTime: number; durationSeconds: number;
   heroId: number; position: number | null; won: boolean; kills: number; deaths: number; assists: number;
   parsed: boolean; deathTimes: number[]; // секунды; только у разобранных Stratz матчей
+  lh10: number | null;                    // добито к 10-й минуте (у разобранных матчей длиной от 10 минут)
+  networth: number; heroDamage: number; towerDamage: number;
 };
 type Store = { at: number; full: boolean; items: AccMatch[]; v?: number };
 
-const V = 1;
+const V = 2;
 const FRESH = 10 * 60;
 const DEPTH = 100 * 86400;
 const file = (acc: number) => path.join(accountDir(acc), "matches.json");
@@ -24,10 +26,10 @@ function read(acc: number): Store | null {
 }
 
 type SD = { time: number; timeDead: number | null };
-type SM = { id: number; startDateTime: number; durationSeconds: number; players: { heroId: number; position: string | null; isVictory: boolean; kills: number; deaths: number; assists: number; stats?: { deathEvents?: SD[] | null } | null }[] };
+type SM = { id: number; startDateTime: number; durationSeconds: number; players: { heroId: number; position: string | null; isVictory: boolean; kills: number; deaths: number; assists: number; networth: number | null; heroDamage: number | null; towerDamage: number | null; stats?: { deathEvents?: SD[] | null; lastHitsPerMinute?: number[] | null } | null }[] };
 
 async function page(token: string, acc: number, skip: number): Promise<AccMatch[] | null> {
-  const q = `{ player(steamAccountId: ${acc}) { matches(request: {take: 50, skip: ${skip}, lobbyTypeIds: [7]}) { id startDateTime durationSeconds players(steamAccountId: ${acc}) { heroId position isVictory kills deaths assists stats { deathEvents { time timeDead } } } } } }`;
+  const q = `{ player(steamAccountId: ${acc}) { matches(request: {take: 50, skip: ${skip}, lobbyTypeIds: [7]}) { id startDateTime durationSeconds players(steamAccountId: ${acc}) { heroId position isVictory kills deaths assists networth heroDamage towerDamage stats { lastHitsPerMinute deathEvents { time timeDead } } } } } }`;
   try {
     const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: q }) });
     const j = await r.json();
@@ -40,7 +42,9 @@ async function page(token: string, acc: number, skip: number): Promise<AccMatch[
       const times: number[] = [];
       let until = -Infinity;
       for (const d of [...(ev ?? [])].filter((d) => (d.timeDead ?? 0) > 0).sort((a, b) => a.time - b.time)) if (d.time >= until) { times.push(d.time); until = d.time + (d.timeDead ?? 0); }
-      return { id: m.id, startDateTime: m.startDateTime, durationSeconds: m.durationSeconds, heroId: p.heroId, position: p.position ? Number(p.position.replace("POSITION_", "")) || null : null, won: p.isVictory, kills: p.kills, deaths: p.deaths, assists: p.assists, parsed: Array.isArray(ev), deathTimes: times };
+      return { id: m.id, startDateTime: m.startDateTime, durationSeconds: m.durationSeconds, heroId: p.heroId, position: p.position ? Number(p.position.replace("POSITION_", "")) || null : null, won: p.isVictory, kills: p.kills, deaths: p.deaths, assists: p.assists, parsed: Array.isArray(ev), deathTimes: times,
+        lh10: (p.stats?.lastHitsPerMinute?.length ?? 0) >= 10 ? p.stats!.lastHitsPerMinute!.slice(0, 10).reduce((a, b) => a + (b ?? 0), 0) : null,
+        networth: p.networth ?? 0, heroDamage: p.heroDamage ?? 0, towerDamage: p.towerDamage ?? 0 };
     });
   } catch { return null; }
 }
@@ -70,17 +74,21 @@ export async function accountMatches(acc: number, force = false): Promise<{ item
   return { items, at: next.at, error };
 }
 
-/** Нормы смертей для сводки: «герой-позиция» → смерти к минуте t (элемент t, накопительно), средние Divine/Immortal. */
-export async function deathNorms(items: AccMatch[]): Promise<Record<string, number[]>> {
+/** Норма героя на позиции для сводок: смерти к минуте t (элемент t, накопительно), добито к 10-й минуте и средние за матч. */
+export type MatchNorm = { deaths: number[]; cs10: number | null; dur: number; networth: number; heroDamage: number; towerDamage: number; ka: number; d: number };
+
+/** Нормы для сводок по «герой-позиция», средние Divine/Immortal. */
+export async function matchNorms(items: AccMatch[]): Promise<Record<string, MatchNorm>> {
   const byPos = new Map<number, Set<number>>();
   for (const m of items) if (m.parsed && m.position) byPos.set(m.position, (byPos.get(m.position) ?? new Set()).add(m.heroId));
-  const out: Record<string, number[]> = {};
+  const out: Record<string, MatchNorm> = {};
   for (const [pos, heroes] of byPos) {
     const benches = await fetchBenches(pos, [...heroes]);
     for (const [heroId, b] of benches) {
       const arr = [0];
       for (let t = 1; t <= 60; t++) arr[t] = b.byTime?.filter((r) => r.t <= t).at(-1)?.deaths ?? arr[t - 1];
-      out[`${heroId}-${pos}`] = arr.map((x) => Math.round(x * 100) / 100);
+      const o = b.overall, t10 = b.byTime?.find((r) => r.t === 10);
+      out[`${heroId}-${pos}`] = { deaths: arr.map((x) => Math.round(x * 100) / 100), cs10: t10 ? t10.cs : null, dur: b.avgDuration, networth: o.networth, heroDamage: o.heroDamage, towerDamage: o.towerDamage, ka: o.kills + o.assists, d: o.deaths };
     }
   }
   return out;
