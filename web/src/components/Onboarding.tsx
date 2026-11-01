@@ -92,7 +92,7 @@ export default function Onboarding() {
 
         {step === 1 && (
           <div className="flex flex-col gap-3">
-            <p className="text-sm">Stratz — сайт со статистикой Доты. Токен от него открывает в программе больше, но и без него пикер работает.</p>
+            <p className="text-sm">Stratz - сайт со статистикой Доты. Токен от него открывает в программе больше, но и без него пикер работает.</p>
             <div className="grid gap-2 sm:grid-cols-2 text-sm">
               <div className="rounded-xl border border-good/40 bg-good/5 p-3 flex flex-col gap-1">
                 <div className="font-semibold text-good">С токеном</div>
@@ -166,7 +166,7 @@ export default function Onboarding() {
                 <input value={dotaDir} onChange={(e) => setDotaDir(e.target.value)} placeholder="например D:\Games\Steam\steamapps\common\dota 2 beta\game\dota" className="w-full rounded-lg border border-border bg-panel-2 px-3 py-2 text-sm outline-none focus:border-accent placeholder:text-muted/60" />
               </div>
             )}
-            {/* одна главная кнопка на шаге: пока конфиг не стоит, главная — установить, а «открыть пикер» второстепенная */}
+            {/* одна главная кнопка на шаге: пока конфиг не стоит, главная - установить, а «открыть пикер» второстепенная */}
             {gsi.installed ? <Button variant="primary" onClick={finish} className="self-start">Готово, открыть пикер</Button> : <Button onClick={finish} className="self-start">Пропустить и открыть пикер</Button>}
           </div>
         )}

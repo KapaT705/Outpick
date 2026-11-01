@@ -151,7 +151,7 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     let note: string | null = null;
     const once = (key: string, text: string) => { if (!notes.has(key)) { notes.add(key); note = text; } };
     if (plan.style === "farm" && d.t < plan.onlineAt * 60 && !traded) once("farm", `${heroName} до ${plan.onlineAt}-й минуты фармит, и смерть без размена отодвигает выход.`);
-    else if (plan.style === "tempo" && d.t >= plan.fightFrom * 60 && traded) once("tempo", `${heroName} с ${plan.fightFrom}-й минуты дерётся, так что смерть с разменом — нормальная цена.`);
+    else if (plan.style === "tempo" && d.t >= plan.fightFrom * 60 && traded) once("tempo", `${heroName} с ${plan.fightFrom}-й минуты дерётся, так что смерть с разменом - нормальная цена.`);
     else if (plan.style === "initiator" && d.t < plan.fightFrom * 60 && !traded) once("init", `${heroName} до ${plan.fightFrom}-й минуты копит на ключевой предмет, а смерть без размена его откладывает.`);
     return { t: d.t, killer, helpers, enemies: enemiesN, where: where.text, enemyHalf: where.enemyHalf, zone: where.zone, ownLosses, enemyLosses, goldLost: d.goldLost, timeDead: d.timeDead, traded, text: `${who}${fight}${loss}`, note };
   });
@@ -244,7 +244,7 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     if (laneDeaths.length >= 2) {
       const d = laneDeaths[1]; used.add(d.t);
       const o = H(opp.heroId), killed = `${o.name} ${v(o, "убил", "убила")} тебя на линии уже второй раз.`;
-      tips.push({ t: d.t, text: plan.style === "farm" ? `${killed} Дальше играй от вышки и забирай опыт: ${heroName} — герой на фарм, уровни важнее размена.`
+      tips.push({ t: d.t, text: plan.style === "farm" ? `${killed} Дальше играй от вышки и забирай опыт: ${heroName} - герой на фарм, уровни важнее размена.`
         : plan.style === "tempo" && d.t < (plan.fightFrom + 1) * 60 ? `${killed} Не лезь в размен до 6 уровня: после ульты ${heroName} сильнее, а ранние смерти отдают сопернику темп.`
         : `${killed} Дальше играй осторожнее: от вышки и с вардом на реке.` });
     }

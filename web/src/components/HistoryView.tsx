@@ -61,7 +61,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
     setBusy(true); setMsg(null);
     const r = await fetch("/api/log/sync", { method: "POST" }).then((x) => x.json()).catch(() => null);
     if (r?.ok) {
-      setMsg(r.updated > 0 ? `Готово: результат найден у ${r.updated} ${r.updated === 1 ? "записи" : "записей"}${r.pending ? `, ещё ${r.pending} без результата` : ""}` : r.pending > 0 ? `Пока без результата: ${r.pending}. Stratz получает матч через 5–15 минут после игры, попробуй позже.` : "Нечего обновлять: все записи уже с результатом или история пуста.");
+      setMsg(r.updated > 0 ? `Готово: результат найден у ${r.updated} ${r.updated === 1 ? "записи" : "записей"}${r.pending ? `, ещё ${r.pending} без результата` : ""}` : r.pending > 0 ? `Пока без результата: ${r.pending}. Stratz получает матч через 5-15 минут после игры, попробуй позже.` : "Нечего обновлять: все записи уже с результатом или история пуста.");
       const fresh = await fetch("/api/log").then((x) => x.json()).catch(() => null);
       if (fresh?.items) setItems(fresh.items);
       // по подтянутым матчам программа доучивает портреты (персоны, арканы) с кадров стадии пиков
@@ -98,7 +98,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
   // калибровка: предсказанный % против реального
   const buckets = [[0, 48], [48, 52], [52, 56], [56, 100]].map(([lo, hi]) => {
     const s = done.filter((x) => x.chosen && x.chosen.finalScore >= lo && x.chosen.finalScore < hi);
-    return { label: hi === 100 ? `${lo}%+` : `${lo}–${hi}%`, n: s.length, wr: s.length ? Math.round((s.filter((x) => x.won).length / s.length) * 100) : null, avg: s.length ? Math.round(s.reduce((a, x) => a + x.chosen!.finalScore, 0) / s.length) : null };
+    return { label: hi === 100 ? `${lo}%+` : `${lo}-${hi}%`, n: s.length, wr: s.length ? Math.round((s.filter((x) => x.won).length / s.length) * 100) : null, avg: s.length ? Math.round(s.reduce((a, x) => a + x.chosen!.finalScore, 0) / s.length) : null };
   });
   const periodLabel = period ? `${period} дней` : "всё время";
   // проверка пикера имеет смысл от 15 матчей с результатом: раньше это шум, и новому игроку она только мешает
@@ -199,7 +199,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
           <CardTitle hint={`Герои, на которых ты играл за ${periodLabel}: счёт и винрейт. Зелёные 55% и выше, красные 45% и ниже.`}>Твои герои</CardTitle>
           <div className="flex flex-wrap gap-2 text-xs">
             {heroRows.map((r) => { const h = byId.get(r.id); return (
-              <span key={r.id} className={`flex items-center gap-1.5 rounded-md bg-panel-2 px-2 py-1 ${r.wr >= 55 ? "text-good" : r.wr <= 45 ? "text-bad" : "text-foreground"}`}>{h && <img src={icon(h.short)} alt="" className="h-5 w-5 rounded" />}{h?.name} <span className="text-muted">{r.w}–{r.n - r.w}</span> {r.wr}%</span>
+              <span key={r.id} className={`flex items-center gap-1.5 rounded-md bg-panel-2 px-2 py-1 ${r.wr >= 55 ? "text-good" : r.wr <= 45 ? "text-bad" : "text-foreground"}`}>{h && <img src={icon(h.short)} alt="" className="h-5 w-5 rounded" />}{h?.name} <span className="text-muted">{r.w}-{r.n - r.w}</span> {r.wr}%</span>
             ); })}
           </div>
         </Card>
@@ -292,7 +292,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
             {buckets.map((b) => (
               <div key={b.label} className="rounded-lg bg-panel-2 p-2.5">
                 <div className="text-muted text-xs">прогноз {b.label}</div>
-                <div className={`text-xl font-semibold tabular-nums ${b.wr === null ? "text-muted" : ""}`}>{b.wr === null ? "—" : `${b.wr}% побед`}</div>
+                <div className={`text-xl font-semibold tabular-nums ${b.wr === null ? "text-muted" : ""}`}>{b.wr === null ? "-" : `${b.wr}% побед`}</div>
                 <div className="text-xs text-muted">{b.n} {plural(b.n, "игра", "игры", "игр")}{b.avg !== null ? ` · средний прогноз ${b.avg}%` : ""}</div>
               </div>
             ))}
@@ -336,7 +336,7 @@ function MatchStats({ d, b, byId }: { d: MatchDetails; b: Bench | null; byId: Ma
   if (d.lh10 != null) cells.push({ label: "Добито к 10 мин", value: String(d.lh10), cls: tone(d.lh10, b?.at10?.cs), norm: b?.at10 ? String(fmtN(b.at10.cs)) : null });
   if (d.nw10 != null) cells.push({ label: "Золото к 10 мин", value: String(d.nw10), cls: tone(d.nw10, b?.at10?.networth), norm: b?.at10 ? String(fmtN(b.at10.networth)) : null });
   if (d.deaths10 != null) cells.push({ label: "Смертей к 10 мин", value: String(d.deaths10), cls: tone(d.deaths10, b?.at10?.deaths, true), norm: b?.at10 ? String(fmtN(b.at10.deaths, 1)) : null });
-  if (oppName) cells.push({ label: `Линия против ${oppName}`, value: laneDiff != null ? `${laneDiff > 0 ? "+" : ""}${laneDiff}` : "—", cls: laneDiff == null ? "text-foreground" : laneDiff >= 300 ? "text-good" : laneDiff <= -300 ? "text-bad" : "text-foreground", norm: laneDiff != null ? "к 10 мин" : null, normLabel: "золота" });
+  if (oppName) cells.push({ label: `Линия против ${oppName}`, value: laneDiff != null ? `${laneDiff > 0 ? "+" : ""}${laneDiff}` : "-", cls: laneDiff == null ? "text-foreground" : laneDiff >= 300 ? "text-good" : laneDiff <= -300 ? "text-bad" : "text-foreground", norm: laneDiff != null ? "к 10 мин" : null, normLabel: "золота" });
   return (
     <div className="flex flex-wrap gap-1.5" title={b ? `Норма: средние Divine/Immortal на этом герое и позиции за матч (${b.matchCount} матчей). Зелёное лучше нормы на 10% и больше, красное хуже.` : "Нормы нет: Stratz не ответил"}>
       {cells.map((c) => (
@@ -355,7 +355,7 @@ function Stat({ title, hint, hintAlign, s }: { title: string; hint?: string; hin
   return (
     <Card className="p-3">
       <div className="text-xs text-muted flex items-center gap-1.5">{title}{hint && <Hint text={hint} align={hintAlign} />}</div>
-      <div className={`text-2xl font-semibold tabular-nums ${s.wr === null ? "text-muted" : s.wr >= 55 ? "text-good" : s.wr <= 45 ? "text-bad" : ""}`}>{s.wr === null ? "—" : `${s.wr}%`}</div>
+      <div className={`text-2xl font-semibold tabular-nums ${s.wr === null ? "text-muted" : s.wr >= 55 ? "text-good" : s.wr <= 45 ? "text-bad" : ""}`}>{s.wr === null ? "-" : `${s.wr}%`}</div>
       <div className="text-xs text-muted">{s.n ? `побед ${s.w} из ${s.n}` : "игр нет"}</div>
     </Card>
   );
@@ -382,7 +382,7 @@ function deathRates(ms: AccMatch[], norms: Record<string, MatchNorm>, from: numb
       acc[i].norm += at(e) - at(a);
     });
   }
-  // меньше получаса игры на отрезке — это шум
+  // меньше получаса игры на отрезке - это шум
   return { n, w: acc.map((x) => (x.min >= 30 ? { me: (x.mine / x.min) * 10, norm: (x.norm / x.min) * 10 } : null)) };
 }
 
@@ -392,7 +392,7 @@ function DeathTrend({ rows, norms, period, busy, error }: { rows: AccMatch[]; no
   const f = (n: number) => n.toFixed(1);
   return (
     <Card>
-      <CardTitle hint="Сколько раз ты умираешь за 10 минут игры на каждом отрезке матча. Норма — средние Divine/Immortal на тех же героях и позициях, что играл ты. Считаются рейтинговые матчи, которые Stratz разобрал подробно.">Смерти по отрезкам игры</CardTitle>
+      <CardTitle hint="Сколько раз ты умираешь за 10 минут игры на каждом отрезке матча. Норма - средние Divine/Immortal на тех же героях и позициях, что играл ты. Считаются рейтинговые матчи, которые Stratz разобрал подробно.">Смерти по отрезкам игры</CardTitle>
       <p className="-mt-1 mb-3 text-sm text-muted">Сколько раз ты умираешь за каждые 10 минут игры.</p>
       {busy && cur.n === 0 ? <Crystals size={14} label="Загружаю матчи из Stratz, в первый раз это до 20 секунд…" />
         : cur.n === 0 ? <p className="text-sm text-muted">{error ?? `За ${period ? `${period} дней` : "всё время"} нет рейтинговых матчей, разобранных Stratz.`}</p>
@@ -400,7 +400,7 @@ function DeathTrend({ rows, norms, period, busy, error }: { rows: AccMatch[]; no
           <div className="grid gap-3 sm:grid-cols-3">
             {WINDOWS.map(([, , label], i) => {
               const w = cur.w[i];
-              if (!w) return <div key={label} className="rounded-xl bg-panel-2 p-3"><div className="text-xs text-muted">{label}</div><div className="text-2xl font-semibold text-muted">—</div><div className="text-xs text-muted">мало игры на этом отрезке</div></div>;
+              if (!w) return <div key={label} className="rounded-xl bg-panel-2 p-3"><div className="text-xs text-muted">{label}</div><div className="text-2xl font-semibold text-muted">-</div><div className="text-xs text-muted">мало игры на этом отрезке</div></div>;
               const over = w.norm > 0 ? Math.round((w.me / w.norm - 1) * 100) : 0;
               const tone = over >= 25 ? "text-bad" : over <= 5 ? "text-good" : "";
               return (
@@ -427,7 +427,7 @@ const METRICS: { key: string; label: string; hint: string; lowerBetter?: boolean
   { key: "lane", label: "Фарм на линии", hint: "Добито к 10-й минуте", mine: (m) => m.lh10, norm: (n) => n.cs10 },
   { key: "nw", label: "Фарм за игру", hint: "Нетворс к концу матча", mine: (m) => m.networth, norm: (n, min) => (n.networth / n.dur) * min },
   { key: "push", label: "Пуш", hint: "Урон по строениям за матч", mine: (m) => m.towerDamage, norm: (n, min) => (n.towerDamage / n.dur) * min },
-  { key: "deaths", label: "Смерти", hint: "Смерти за матч, здесь меньше — лучше", lowerBetter: true, mine: (m) => m.deaths, norm: (n, min) => (n.d / n.dur) * min },
+  { key: "deaths", label: "Смерти", hint: "Смерти за матч, здесь меньше - лучше", lowerBetter: true, mine: (m) => m.deaths, norm: (n, min) => (n.d / n.dur) * min },
 ];
 
 /** Отличие от нормы словами: «на 20% выше», «на 35% больше» (для смертей), «как норма». */
@@ -466,7 +466,7 @@ function PlayVsNorm({ rows, norms, period, busy }: { rows: AccMatch[]; norms: Re
     : `Ближе всего к норме: ${sorted[0].label.toLowerCase()}${weak.length ? `. Над чем работать: ${weak[0].label.toLowerCase()}` : ""}.`;
   return (
     <Card>
-      <CardTitle hint="Твои средние за матчи периода против средних Divine/Immortal на тех же героях и позициях, с поправкой на длину каждого матча. Полоса вправо от середины — лучше нормы, влево — хуже. Считаются рейтинговые матчи, которые Stratz разобрал подробно.">Твоя игра против нормы</CardTitle>
+      <CardTitle hint="Твои средние за матчи периода против средних Divine/Immortal на тех же героях и позициях, с поправкой на длину каждого матча. Полоса вправо от середины - лучше нормы, влево - хуже. Считаются рейтинговые матчи, которые Stratz разобрал подробно.">Твоя игра против нормы</CardTitle>
       <p className="mb-4 text-sm">{head}</p>
       <div className="grid grid-cols-[150px_minmax(0,1fr)_120px] items-center gap-x-5 gap-y-3 text-sm">
         {/* шапка: ось полос */}

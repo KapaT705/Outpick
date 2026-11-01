@@ -18,7 +18,7 @@ export type MPlayer = {
   nw: number[];                             // золото героя по минутам (элемент t-1 = к минуте t)
   dmg: number[];                            // урон по героям, прирост за каждую минуту
   stacks: number[];                         // стаки лагерей, накопительно (элемент t-1 = к минуте t)
-  lvlAt: number[];                          // секунды, когда герой брал каждый уровень (первый элемент — первый уровень)
+  lvlAt: number[];                          // секунды, когда герой брал каждый уровень (первый элемент - первый уровень)
   deathsAt: MDeath[]; killsAt: number[]; assistsAt: number[]; // секунды
   kills2: MKill[];                          // настоящие убийства с подробностями (соло, смок, где)
   heroDamage: number; towerDamage: number; heroHealing: number;

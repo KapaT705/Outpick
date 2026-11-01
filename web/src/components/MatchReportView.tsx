@@ -137,7 +137,7 @@ function Deaths({ r }: { r: MatchReport }) {
   const list = all ? r.deathList : r.deathList.slice(0, 6);
   return (
     <Card>
-      <CardTitle hint="Линия — шанс твоей команды на победу по оценке Stratz. Зелёные точки — полезные моменты, красные — смерти без размена, серые — смерти в драке, где враги тоже кого-то потеряли. Наведи на точку, чтобы прочитать, что было. Норма смертей — средние Divine/Immortal на этом герое и позиции.">Ход игры</CardTitle>
+      <CardTitle hint="Линия - шанс твоей команды на победу по оценке Stratz. Зелёные точки - полезные моменты, красные - смерти без размена, серые - смерти в драке, где враги тоже кого-то потеряли. Наведи на точку, чтобы прочитать, что было. Норма смертей - средние Divine/Immortal на этом герое и позиции.">Ход игры</CardTitle>
       <GameCurve r={r} />
       <div className="mt-5 mb-3 text-sm font-semibold">Смерти · {r.deathList.length}</div>
       {r.windows.length > 0 && (
@@ -277,7 +277,7 @@ function LaneCard({ r, byId }: { r: MatchReport; byId: Map<number, Hero> }) {
           </div>
         ))}
       </div>
-      <div className="mt-5 text-xs text-muted">Норма — средние Divine/Immortal на этом герое{r.position ? ` (${ROLE_NAME[r.position]})` : ""} к той же минуте.</div>
+      <div className="mt-5 text-xs text-muted">Норма - средние Divine/Immortal на этом герое{r.position ? ` (${ROLE_NAME[r.position]})` : ""} к той же минуте.</div>
     </Card>
   );
 }
@@ -318,7 +318,7 @@ function SupLaneCard({ r, byId }: { r: MatchReport; byId: Map<number, Hero> }) {
           </div>
         ))}
       </div>
-      <div className="mt-5 text-xs text-muted">{duel ? "Золото и убийства — всех героев на вашей линии. " : ""}Норма — средние Divine/Immortal на этом герое{r.position ? ` (${ROLE_NAME[r.position]})` : ""} к той же минуте.</div>
+      <div className="mt-5 text-xs text-muted">{duel ? "Золото и убийства - всех героев на вашей линии. " : ""}Норма - средние Divine/Immortal на этом герое{r.position ? ` (${ROLE_NAME[r.position]})` : ""} к той же минуте.</div>
     </Card>
   );
 }
@@ -337,7 +337,7 @@ function NormRow({ label, c, judge, big }: { label: string; c: NormCell; judge: 
   );
 }
 
-/** Ты против соперника по одному показателю: полоса делится по долям, у кого больше — тот дальше «перетянул». */
+/** Ты против соперника по одному показателю: полоса делится по долям, у кого больше - тот дальше «перетянул». */
 function Duel({ label, c, names, gold }: { label: string; c: LaneCell; names: [string, string]; gold?: boolean }) {
   const f = (n: number) => (gold ? Math.round(n).toLocaleString("ru-RU") : String(Math.round(n)));
   const head = <div className="mb-1.5 flex items-baseline gap-2 text-xs"><span>{label}</span>{c.norm != null && <span className="text-muted">норма {f(c.norm)}</span>}</div>;
