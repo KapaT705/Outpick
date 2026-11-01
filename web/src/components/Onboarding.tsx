@@ -26,7 +26,9 @@ export default function Onboarding() {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [tokenSkipped, setTokenSkipped] = useState(false); // токен можно отложить: пикер работает и без него
   const [dotaDir, setDotaDir] = useState(""); // путь к папке Доты вручную, если не нашлась сама (хуки до условного return)
+  const [manualAcc, setManualAcc] = useState(false); // «нет, другой аккаунт»: ввести Steam ID руками
 
   const reload = () => Promise.all([
     fetch("/api/settings").then((r) => r.json()).then(setS).catch(() => {}),
@@ -36,7 +38,7 @@ export default function Onboarding() {
   useEffect(() => {
     if (!s) return;
     // открываемся на первом незавершённом шаге
-    if (!s.hasToken) setStep(1); else if (!s.accounts?.length || !s.current?.known) setStep(2); else setStep(3);
+    if (!s.hasToken) setStep(tokenSkipped ? 3 : 1); else if (!s.accounts?.length || !s.current?.known) setStep(2); else setStep(3);
   }, [s?.hasToken, s?.accounts?.length, s?.current?.known]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!s || !gsi || hidden || s.onboardingDone) return null;
@@ -80,7 +82,7 @@ export default function Onboarding() {
       <div className="w-full max-w-xl rounded-2xl border border-border bg-panel p-6 flex flex-col gap-5">
         <div>
           <h1 className="text-2xl font-semibold">Добро пожаловать</h1>
-          <p className="text-sm text-muted mt-1">Три шага, и пикер будет советовать героев под твой пул и твоих врагов. Это делается один раз.</p>
+          <p className="text-sm text-muted mt-1">Три коротких шага, делается один раз. Любой можно пропустить и вернуться к нему в настройках.</p>
         </div>
         <div className="flex flex-wrap gap-5">
           <Step n={1} label="Токен Stratz" done={s.hasToken} step={step} onPick={setStep} />
@@ -90,32 +92,65 @@ export default function Onboarding() {
 
         {step === 1 && (
           <div className="flex flex-col gap-3">
-            <p className="text-sm">Stratz — это сайт со статистикой Доты. По токену программа берёт контрпики, мету и твои матчи. <Hint text="Токен хранится только на этом компьютере и никуда больше не отправляется." /></p>
-            <ol className="text-sm text-muted list-decimal pl-5 flex flex-col gap-1">
-              <li>Открой <a href="https://stratz.com/api" target="_blank" rel="noreferrer" className="text-accent underline">stratz.com/api</a> и войди через Steam.</li>
-              <li>Нажми «Create token» и скопируй длинную строку.</li>
-              <li>Вставь её сюда.</li>
-            </ol>
-            <input value={token} onChange={(e) => setToken(e.target.value)} type="password" placeholder="токен из stratz.com/api" className="rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent" />
-            <div className="flex items-center gap-3"><Button variant="primary" onClick={saveToken} disabled={busy || !token.trim()}>{busy ? "проверяю…" : "Сохранить и дальше"}</Button>{msg && <span className="text-xs text-bad">{msg}</span>}</div>
+            <p className="text-sm">Stratz — сайт со статистикой Доты. Токен от него открывает в программе больше, но и без него пикер работает.</p>
+            <div className="grid gap-2 sm:grid-cols-2 text-sm">
+              <div className="rounded-xl border border-good/40 bg-good/5 p-3 flex flex-col gap-1">
+                <div className="font-semibold text-good">С токеном</div>
+                <ul className="text-muted flex flex-col gap-0.5">
+                  <li>· твой пул героев и личные винрейты в советах</li>
+                  <li>· результаты матчей подтягиваются сами</li>
+                  <li>· разбор каждого матча: смерти, линия, советы</li>
+                  <li>· свежая мета и контрпики после патчей</li>
+                </ul>
+              </div>
+              <div className="rounded-xl border border-border bg-panel-2/60 p-3 flex flex-col gap-1">
+                <div className="font-semibold">Без токена</div>
+                <ul className="text-muted flex flex-col gap-0.5">
+                  <li>· пикер по мете и контрпикам из сборки</li>
+                  <li>· драфт с экрана и твой герой из Доты</li>
+                  <li>· история и разбор матчей недоступны</li>
+                </ul>
+              </div>
+            </div>
+            <p className="text-xs text-muted">Получить токен: открой <a href="https://stratz.com/api" target="_blank" rel="noreferrer" className="text-accent underline">stratz.com/api</a>, войди через Steam, нажми «Create token» и скопируй длинную строку. <Hint text="Токен хранится только на этом компьютере и никуда больше не отправляется. Его можно ввести позже в настройках." /></p>
+            <input value={token} onChange={(e) => setToken(e.target.value)} type="password" placeholder="вставь токен сюда" className="rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent" />
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="primary" onClick={saveToken} disabled={busy || !token.trim()}>{busy ? "проверяю…" : "Сохранить и дальше"}</Button>
+              <Button onClick={() => { setTokenSkipped(true); setMsg(null); setStep(3); }} disabled={busy}>Пропустить, пользоваться пикером</Button>
+              {msg && <span className="text-xs text-bad">{msg}</span>}
+            </div>
           </div>
         )}
 
         {step === 2 && (
           <div className="flex flex-col gap-3">
-            {detected ? (
+            {!s.hasToken ? (
               <>
-                <p className="text-sm">{detected.source === "gsi" ? "Дота сообщила" : "Steam запущен под"} аккаунт{detected.source === "gsi" ? "" : "ом"} <b>{detected.name ?? detected.id}</b>. Загрузим его историю: пул героев и личные винрейты появятся в пикере.</p>
-                <div className="flex items-center gap-3"><Button variant="primary" onClick={() => loadAccount(detected.id!)} disabled={busy}>{busy ? "загружаю…" : "Загрузить историю"}</Button>{busy ? <Crystals size={12} label={msg ?? undefined} /> : msg && <span className="text-xs text-muted">{msg}</span>}</div>
+                <p className="text-sm">Чтобы загрузить твой пул и историю, нужен токен Stratz. Без него пикер работает в общем режиме: мета и контрпики, без твоего пула.</p>
+                <div className="flex flex-wrap items-center gap-3"><Button variant="primary" onClick={() => setStep(1)}>Ввести токен</Button><Button onClick={() => setStep(3)}>Дальше без пула</Button></div>
+              </>
+            ) : detected && !manualAcc ? (
+              <>
+                <p className="text-sm">{detected.source === "gsi" ? "Дота запущена" : "Steam запущен"} под аккаунтом <b>{detected.name ?? detected.id}</b>. Это ты?</p>
+                <p className="text-xs text-muted">Загружу его пул героев и личные винрейты: пикер будет советовать с учётом того, на ком ты реально играешь.</p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button variant="primary" onClick={() => loadAccount(detected.id!)} disabled={busy}>{busy ? "загружаю…" : "Да, загрузить мою историю"}</Button>
+                  <Button onClick={() => setManualAcc(true)} disabled={busy}>Нет, другой аккаунт</Button>
+                  {busy ? <Crystals size={12} label={msg ?? undefined} /> : msg && <span className="text-xs text-muted">{msg}</span>}
+                </div>
               </>
             ) : (
               <>
-                <p className="text-sm">Нужен твой Steam ID: число из ссылки на профиль на Dotabuff или Stratz. <Hint text="Например, stratz.com/players/123456789 → 123456789. Можно и 64-битный id из Steam." /> Когда Дота на связи, аккаунт определяется сам, и этот шаг не нужен.</p>
+                <p className="text-sm">Нужен твой Steam ID: число из ссылки на твой профиль на Dotabuff или Stratz. <Hint text="Например, stratz.com/players/123456789 → 123456789. Подойдёт и 64-битный id из Steam. Когда Дота на связи, аккаунт определяется сам." /></p>
                 <input value={steamId} onChange={(e) => setSteamId(e.target.value)} placeholder="например 123456789" className="rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent" />
-                <div className="flex items-center gap-3"><Button variant="primary" onClick={() => loadAccount(steamId.trim())} disabled={busy || !steamId.trim()}>{busy ? "загружаю…" : "Добавить и загрузить историю"}</Button>{busy ? <Crystals size={12} label={msg ?? undefined} /> : msg && <span className="text-xs text-muted">{msg}</span>}</div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button variant="primary" onClick={() => loadAccount(steamId.trim())} disabled={busy || !steamId.trim()}>{busy ? "загружаю…" : "Добавить и загрузить историю"}</Button>
+                  {detected && <Button onClick={() => setManualAcc(false)} disabled={busy}>Назад</Button>}
+                  {busy ? <Crystals size={12} label={msg ?? undefined} /> : msg && <span className="text-xs text-muted">{msg}</span>}
+                </div>
               </>
             )}
-            <button onClick={() => setStep(3)} className="self-start text-xs text-muted hover:text-foreground underline">Пока без аккаунта: советы по мете, без моего пула</button>
+            {s.hasToken && <button onClick={() => setStep(3)} className="self-start text-xs text-muted hover:text-foreground underline">Пока без аккаунта: советы по мете, без моего пула</button>}
           </div>
         )}
 
@@ -131,11 +166,12 @@ export default function Onboarding() {
                 <input value={dotaDir} onChange={(e) => setDotaDir(e.target.value)} placeholder="например D:\Games\Steam\steamapps\common\dota 2 beta\game\dota" className="w-full rounded-lg border border-border bg-panel-2 px-3 py-2 text-sm outline-none focus:border-accent placeholder:text-muted/60" />
               </div>
             )}
-            <Button variant="primary" onClick={finish} className="self-start">Готово, открыть пикер</Button>
+            {/* одна главная кнопка на шаге: пока конфиг не стоит, главная — установить, а «открыть пикер» второстепенная */}
+            {gsi.installed ? <Button variant="primary" onClick={finish} className="self-start">Готово, открыть пикер</Button> : <Button onClick={finish} className="self-start">Пропустить и открыть пикер</Button>}
           </div>
         )}
 
-        <button onClick={finish} className="self-end text-xs text-muted hover:text-foreground">Пропустить настройку</button>
+        {step !== 3 && <button onClick={finish} className="self-end text-xs text-muted hover:text-foreground">Пропустить настройку</button>}
       </div>
     </div>
   );

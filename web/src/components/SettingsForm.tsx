@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { DebugCapture, LearnedInfo } from "@/components/AppShell";
-import { Card, Chip } from "@/components/ui";
+import { Card, Chip, Hint } from "@/components/ui";
 import Crystals from "@/components/Crystals";
 
 // доля выполнения обновления по сообщению шага (lib/refresh.ts): у шага свой отрезок, счётчик «50/127» двигает внутри него
@@ -19,7 +19,7 @@ function stepProgress(m: string | undefined): number | null {
 /** Состояние пункта настроек: зелёный чип, когда настроено. */
 const Check = ({ ok, label }: { ok: boolean; label: string }) => <Chip tone={ok ? "good" : "muted"}>{ok ? "✓" : "○"} {label}</Chip>;
 /** Заголовок карточки настроек с чипом состояния справа от названия. */
-const Title = ({ children }: { children: React.ReactNode }) => <div className="text-base font-semibold flex items-center gap-2 flex-wrap">{children}</div>;
+const Title = ({ children, hint }: { children: React.ReactNode; hint?: string }) => <div className="text-base font-semibold flex items-center gap-2 flex-wrap">{children}{hint && <Hint text={hint} />}</div>;
 const INPUT = "rounded-lg border border-border bg-panel-2 px-3 py-2 outline-none focus:border-accent placeholder:text-muted/60";
 
 export default function SettingsForm() {
@@ -107,8 +107,8 @@ export default function SettingsForm() {
       {tab === "accounts" && (
       <Card className="flex flex-col gap-3 text-sm">
         <div className="flex flex-col gap-2">
-          <Title>Аккаунты Steam <Check ok={!!info?.accounts?.length} label={info?.accounts?.length ? `${info.accounts.length}` : "нет"} /></Title>
-          <span className="text-xs text-muted">Программа видит, под каким аккаунтом запущен Steam, а в матче Дота сообщает это сама, и берёт его пул и историю. Незнакомый аккаунт работает в общем режиме (мета и контрпики без пула), пока не загрузишь его историю. Аккаунт по умолчанию используется, когда Дота не на связи.</span>
+          <Title hint="Программа видит, под каким аккаунтом запущен Steam, а в матче Дота сообщает это сама, и берёт его пул и историю. Незнакомый аккаунт работает в общем режиме (мета и контрпики без пула), пока не загрузишь его историю. Аккаунт по умолчанию используется, когда Дота не на связи.">Аккаунты Steam <Check ok={!!info?.accounts?.length} label={info?.accounts?.length ? `${info.accounts.length}` : "нет"} /></Title>
+          <span className="text-xs text-muted">Чьи пул и история используются в пикере. Аккаунт из Доты подхватывается сам.</span>
           {info?.current?.id && <div className="text-xs text-muted">Сейчас: <span className="text-foreground">{info.current.name ?? info.current.id}</span>{info.current.source === "gsi" ? " (сообщила Дота)" : info.current.source === "steam" ? " (под ним запущен Steam)" : " (по умолчанию)"}{info.current.known ? "" : " · пул не загружен, общий режим"}</div>}
           {!!info?.accounts?.length && (
             <div className="flex flex-col gap-1">
@@ -132,14 +132,14 @@ export default function SettingsForm() {
               className={`flex-1 min-w-56 ${INPUT}`} />
             <button onClick={() => { if (steamId.trim()) accountAction("add", steamId.trim()); }} disabled={!steamId.trim() || !!ref?.running || !info?.hasToken} title={info?.hasToken ? "" : "Сначала сохрани токен Stratz"} className="rounded-lg border border-border px-3.5 py-2 text-sm hover:border-accent/60 hover:bg-panel-2 disabled:opacity-50 disabled:cursor-not-allowed transition">Добавить и загрузить историю</button>
           </div>
-          <span className="text-xs text-muted">Число из ссылки Dotabuff или Stratz, можно и 64-битный. Добавлять заранее не обязательно: когда зайдёшь в Доту с нового аккаунта, пикер сам предложит загрузить его историю.</span>
+          <span className="text-xs text-muted flex items-center gap-1.5">Число из ссылки на профиль Dotabuff или Stratz. <Hint text="Например, stratz.com/players/123456789 → 123456789. Подойдёт и 64-битный id из Steam. Добавлять заранее не обязательно: когда зайдёшь в Доту с нового аккаунта, пикер сам предложит загрузить его историю." /></span>
           {accMsg && (ref?.running ? <Crystals size={12} progress={stepProgress(accMsg)} label={accMsg} /> : <span className="text-xs text-muted">{accMsg}</span>)}
         </div>
         <label className="flex flex-col gap-1">
-          <Title>Токен Stratz API <Check ok={!!info?.hasToken} label={info?.hasToken ? `сохранён${info.tokenTail ? ` …${info.tokenTail}` : ""}` : "не задан"} /></Title>
+          <Title hint="С токеном программа загружает твой пул, подтягивает результаты матчей, строит разбор и обновляет мету. Без него работает только пикер на данных из сборки. Токен хранится только на этом компьютере.">Токен Stratz API <Check ok={!!info?.hasToken} label={info?.hasToken ? `сохранён${info.tokenTail ? ` …${info.tokenTail}` : ""}` : "не задан"} /></Title>
           <input value={token} onChange={(e) => setToken(e.target.value)} type="password" placeholder="вставь токен со страницы stratz.com/api"
             className={INPUT} />
-          <span className="text-xs text-muted">Токен нужен для подтягивания результатов матчей и обновления меты. Получить: stratz.com/api, вход через Steam. Хранится только на этом компьютере.</span>
+          <span className="text-xs text-muted">Открой <a href="https://stratz.com/api" target="_blank" rel="noreferrer" className="text-accent underline">stratz.com/api</a>, войди через Steam, нажми «Create token» и вставь строку сюда.</span>
         </label>
         <div className="flex items-center gap-3">
           <button onClick={save} disabled={busy} className="rounded-lg bg-accent px-3.5 py-2 text-sm font-semibold text-black hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition">{busy ? "проверяю…" : "Сохранить"}</button>
@@ -150,8 +150,8 @@ export default function SettingsForm() {
 
       {tab === "screen" && (
       <Card className="flex flex-col gap-3 text-sm">
-        <Title>Чтение экрана пиков <Check ok={info?.screenCapture !== false} label={info?.screenCapture !== false ? "включено" : "выключено"} /></Title>
-        <p className="text-xs text-muted">Пока Дота закрыта, программа экран не трогает и почти не нагружает компьютер. Когда Дота запущена, на стадии пиков программа снимает горизонтальный экран (вертикальные мониторы не читаются, при нескольких горизонтальных запоминает тот, где была стадия пиков) и распознаёт портреты в верхней панели: враги и союзники появляются в пикере сами. Кадры стадии пиков хранятся только на этом компьютере и никуда не отправляются. Когда результат матча подтягивается из Stratz, программа сверяет кадры с реальным составом и доучивает портреты, которых не знала (персоны, арканы): с каждым матчем узнаёт больше.</p>
+        <Title hint="Пока Дота закрыта, программа экран не трогает и почти не нагружает компьютер. Когда Дота запущена, на стадии пиков программа снимает горизонтальный экран (вертикальные мониторы не читаются, при нескольких горизонтальных запоминает тот, где была стадия пиков) и распознаёт портреты в верхней панели. Кадры стадии пиков хранятся только на этом компьютере и никуда не отправляются. Когда результат матча подтягивается из Stratz, программа сверяет кадры с реальным составом и доучивает портреты, которых не знала (персоны, арканы).">Чтение экрана пиков <Check ok={info?.screenCapture !== false} label={info?.screenCapture !== false ? "включено" : "выключено"} /></Title>
+        <p className="text-xs text-muted">На стадии пиков программа сама читает портреты героев с экрана: враги и союзники появляются в пикере без ввода руками.</p>
         {learned && <div className="text-xs text-muted">Выучено дополнительных портретов: <span className="text-foreground">{learned.total}</span>{learned.heroes.length ? ` (героев: ${learned.heroes.length})` : ""}</div>}
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={info?.screenCapture !== false} onChange={async (e) => { const v = e.target.checked; setInfo((i) => (i ? { ...i, screenCapture: v } : i)); await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ screenCapture: v }) }).catch(() => {}); }} className="accent-[var(--accent)]" />
@@ -193,8 +193,8 @@ export default function SettingsForm() {
 
       {tab === "diag" && (
       <Card className="flex flex-col gap-2 text-sm">
-        <Title>Диагностика</Title>
-        <p className="text-xs text-muted">Одна кнопка собирает всё, что нужно для разбора проблем, в zip-файл в папке «Загрузки»: версия и система, логи, данные GSI, конфиг, журнал драфтов, снимок экрана с результатом распознавания и кадры со стадии пиков двух последних драфтов (они хранятся на диске и не теряются при перезапуске). Токены в файл не попадают. Файл можно переслать как есть.</p>
+        <Title hint="В zip попадают версия и система, логи, данные GSI, конфиг, журнал драфтов, снимок экрана с результатом распознавания и кадры со стадии пиков двух последних драфтов. Токены в файл не попадают.">Диагностика</Title>
+        <p className="text-xs text-muted">Если что-то не работает, собери zip-файл в папку «Загрузки» и перешли его как есть.</p>
         <div className="flex items-center gap-3">
           <button onClick={async () => { const d = (window as unknown as { desktop?: { saveDiagnostics?: () => Promise<{ ok: boolean; file?: string; frames?: number; error?: string }> } }).desktop; if (!d?.saveDiagnostics) { setDiag("Работает только в приложении"); return; } setDiag("собираю…"); const r = await d.saveDiagnostics(); setDiag(r.ok ? `Сохранил: ${r.file} (кадров со стадии пиков: ${r.frames})` : `Ошибка: ${r.error}`); }}
             className="shrink-0 whitespace-nowrap rounded-lg bg-accent px-3.5 py-2 text-sm font-semibold text-black hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition">Сохранить диагностику</button>
@@ -222,8 +222,8 @@ export default function SettingsForm() {
 
       {tab === "dota" && (
       <Card className="flex flex-col gap-2 text-sm">
-        <Title>Связь с Дотой (GSI) <Check ok={!!gsi?.installed} label={gsi?.installed ? "конфиг установлен" : "конфиг не найден"} /></Title>
-        <p className="text-xs text-muted">Дота умеет отправлять программе состояние матча: это официальная функция Valve, в игру она не вмешивается. Важно: обычному игроку Дота отдаёт только твоего выбранного героя и номер матча, состав драфта она показывает только зрителям. Поэтому врагов ты вводишь сам, а программа в режиме «Авто» дописывает твоего героя и сама сохраняет драфт в историю. Для этого в папку игры кладётся один файл конфига, после установки перезапусти Доту.</p>
+        <Title hint="Это официальная функция Valve (game state integration), в игру она не вмешивается: в папку игры кладётся один файл конфига. Обычному игроку Дота отдаёт только твоего выбранного героя и номер матча, состав драфта она показывает только зрителям, поэтому врагов читает экран пиков. После установки конфига перезапусти Доту.">Связь с Дотой <Check ok={!!gsi?.installed} label={gsi?.installed ? "конфиг установлен" : "конфиг не найден"} /></Title>
+        <p className="text-xs text-muted">Дота сама сообщает программе, какого героя ты взял и какой идёт матч: драфт записывается в историю без нажатий.</p>
         {gsi && gsi.dotaDirs.length > 0 && <div className="text-xs text-muted">Нашёл Доту: {gsi.dotaDirs[0]}{gsi.installedUri ? ` · конфиг шлёт на ${gsi.installedUri}` : ""}</div>}
         {gsi?.rewritten && <div className="rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-xs">Конфиг GSI указывал на старый адрес, я переписал его на текущий. Перезапусти Доту, чтобы она начала слать данные сюда.</div>}
         <div className="flex flex-wrap items-center gap-2">
@@ -245,8 +245,8 @@ export default function SettingsForm() {
 
       {tab === "data" && (
       <Card className="flex flex-col gap-2 text-sm">
-        <Title>Данные меты <Check ok={!!ref?.updatedAt} label={ref?.updatedAt ? `обновлены ${new Date(ref.updatedAt * 1000).toLocaleDateString("ru-RU")}` : "из сборки"} /></Title>
-        <p className="text-xs text-muted">Винрейты и популярность героев по ролям за последние 4 недели у Immortal (5420+ MMR), матчапы и синергии по Divine+Immortal (Stratz не делит их тоньше), плюс пул и личная история текущего аккаунта за год. Обновляется само раз в {ref?.autoEveryDays ?? 7} дней, когда Дота не на стадии пиков; после патча можно нажать вручную. Занимает около минуты.</p>
+        <Title hint={`Винрейты и популярность героев по ролям за последние 4 недели у Immortal (5420+ MMR), матчапы и синергии по Divine+Immortal (Stratz не делит их тоньше), плюс пул и личная история текущего аккаунта за год. Обновляется само раз в ${ref?.autoEveryDays ?? 7} дней, когда Дота не на стадии пиков. Занимает около минуты.`}>Данные меты <Check ok={!!ref?.updatedAt} label={ref?.updatedAt ? `обновлены ${new Date(ref.updatedAt * 1000).toLocaleDateString("ru-RU")}` : "из сборки"} /></Title>
+        <p className="text-xs text-muted">Винрейты, контрпики и твой пул из Stratz. Обновляются сами раз в {ref?.autoEveryDays ?? 7} дней; после патча можно нажать вручную.</p>
         <div className="flex items-center gap-3">
           <button onClick={startRefresh} disabled={!!ref?.running} className="rounded-lg border border-border px-3.5 py-2 text-sm hover:border-accent/60 hover:bg-panel-2 disabled:opacity-50 disabled:cursor-not-allowed transition">{ref?.running ? "обновляю…" : "Обновить мету"}</button>
           {ref?.running ? <Crystals size={12} progress={stepProgress(ref.message)} label={ref.message} /> : <span className="text-xs text-muted">

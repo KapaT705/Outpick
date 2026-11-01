@@ -578,9 +578,9 @@ function why(c: Candidate, lane?: LaneOpponent | null): string {
   const parts: string[] = [];
   const rest = c.reasons.filter((r) => !(lane && c.vsLane && r.kind === "vs" && r.heroId === lane.heroId)).slice(0, 2);
   if (rest.length) parts.push(rest.map((r) => `${signed(r.value)} ${r.kind === "vs" ? "против" : "с"} ${r.name}`).join(", "));
-  parts.push(`${c.base}% винрейт на роли у Immortal`);
+  parts.push(`винрейт на роли у Immortal ${Math.round(c.base)}%`);
   if (c.needsAdj > 0) parts.push("закрывает нехватку команды");
-  if (c.poolStatus === "pool" && c.midGames > 0) parts.push(`${c.midGames} игр за год`);
+  if (c.poolStatus === "pool" && c.midGames > 0) parts.push(`${c.midGames} ${c.midGames % 10 === 1 && c.midGames % 100 !== 11 ? "игра" : c.midGames % 10 >= 2 && c.midGames % 10 <= 4 && (c.midGames % 100 < 10 || c.midGames % 100 >= 20) ? "игры" : "игр"} за год`);
   return parts.join(" · ");
 }
 
@@ -596,7 +596,8 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
   if (c.poolStatus === "familiar") chips.push(<Chip key="fam" tone="accent" className="opacity-80" title="3–9 игр на этой роли за год; на оценку твой счёт не влияет">знакомый</Chip>);
   if (lane && c.vsLane) chips.push(<Chip key="lane" tone={c.vsLane.value >= 1 ? "good" : c.vsLane.value <= -1 ? "bad" : "muted"} title={`Матчап против соперника по линии, ${lane.name} (${c.vsLane.games} игр в выборке)${c.vsLane.personal ? `. Твой счёт против него ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}`}>против {laneName} {signed(c.vsLane.value)}{c.vsLane.personal ? ` · ты ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}</Chip>);
   if (c.personalWinrate !== null) chips.push(<Chip key="me" tone={c.poolStatus !== "pool" ? "muted" : c.personalWinrate >= 50 ? "good" : "bad"} title={`Твой счёт на нём на этой роли за год: ${c.midWins} побед, ${c.midGames - c.midWins} поражений${c.poolStatus === "pool" ? ". Учтён в оценке" : ". На оценку не влияет: герой не в пуле"}`}>ты {c.midWins}–{c.midGames - c.midWins} · {c.personalWinrate}%</Chip>);
-  if (c.top) chips.push(<Chip key="top" title={`Популярность у Immortal на этой роли за 4 недели: ${c.top.rate}% всех пиков роли (${c.top.games} игр), винрейт ${c.top.winrate}%`}>берут {c.top.rate}%</Chip>);
+  // популярность в строке только когда больше нечего показать: четыре процента в одной строке не читаются, в раскрытии она есть всегда
+  if (c.top && chips.length === 0) chips.push(<Chip key="top" title={`Популярность у Immortal на этой роли за 4 недели: ${c.top.rate}% всех пиков роли (${c.top.games} игр), винрейт ${c.top.winrate}%`}>берут {c.top.rate}%</Chip>);
   const shown = chips.slice(0, 2);
   const top = c.reasons.slice(0, 3);
   return (

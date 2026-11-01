@@ -8,6 +8,7 @@ import type { AccMatch, MatchNorm } from "@/lib/accountMatches";
 import type { Hero } from "@/lib/types";
 import { Button, Card, CardTitle, Chip, Empty, Hint } from "@/components/ui";
 import Crystals from "@/components/Crystals";
+import { phaseLabel } from "@/lib/phases";
 
 // иконки с CDN Valve: у Stratz alchemist_icon.png оказался копией dragon_knight_icon.png
 const icon = (short: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${short}.png`;
@@ -76,6 +77,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
     setDetailsBusy(null);
   };
   const del = async (id: string) => {
+    if (!confirm("Удалить эту запись из истории? Матч в Stratz останется.")) return;
     await fetch("/api/log", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     setItems(all.filter((x) => x.id !== id));
   };
@@ -88,19 +90,20 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
   const byHero = new Map<number, { n: number; w: number }>();
   for (const x of done) { const s = byHero.get(x.chosenHeroId) ?? { n: 0, w: 0 }; s.n++; if (x.won) s.w++; byHero.set(x.chosenHeroId, s); }
   const heroRows = [...byHero].map(([id, s]) => ({ id, ...s, wr: Math.round((s.w / s.n) * 100) })).sort((a, b) => b.n - a.n || b.wr - a.wr).slice(0, 8);
-  const advised = (x: DraftLog) => (x.chosen?.rank ?? 99) <= 3;
   const stat = (f: (x: DraftLog) => boolean) => { const s = done.filter(f); const w = s.filter((x) => x.won).length; return { n: s.length, w, wr: s.length ? Math.round((w / s.length) * 100) : null }; };
   const top1 = stat((x) => x.chosen?.rank === 1);
   const top3 = stat((x) => (x.chosen?.rank ?? 99) <= 3);
   const below = stat((x) => (x.chosen?.rank ?? 99) > 3);
   const poolTop = stat((x) => x.topPool.length > 0 && x.chosenHeroId === x.topPool[0].heroId);
-  const byAdvice = stat(advised), offAdvice = stat((x) => !advised(x));
   // калибровка: предсказанный % против реального
   const buckets = [[0, 48], [48, 52], [52, 56], [56, 100]].map(([lo, hi]) => {
     const s = done.filter((x) => x.chosen && x.chosen.finalScore >= lo && x.chosen.finalScore < hi);
     return { label: hi === 100 ? `${lo}%+` : `${lo}–${hi}%`, n: s.length, wr: s.length ? Math.round((s.filter((x) => x.won).length / s.length) * 100) : null, avg: s.length ? Math.round(s.reduce((a, x) => a + x.chosen!.finalScore, 0) / s.length) : null };
   });
   const periodLabel = period ? `${period} дней` : "всё время";
+  // проверка пикера имеет смысл от 15 матчей с результатом: раньше это шум, и новому игроку она только мешает
+  const doneAll = all.filter((x) => x.won !== undefined).length;
+  const PICKER_MIN = 15;
 
   // матчи из Stratz, которых нет среди драфтов (пикер в них не записывал)
   const draftMatchIds = new Set(all.map((x) => x.matchId).filter((id): id is number => !!id));
@@ -119,7 +122,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-4">
           <h1 className="text-xl font-semibold">История</h1>
-          <span className="text-xs text-muted">{items.length} {plural(items.length, "драфт", "драфта", "драфтов")} · с результатом {items.filter((x) => x.won !== undefined).length}</span>
+          {items.length > 0 && <span className="text-xs text-muted">{items.length} {plural(items.length, "драфт записан", "драфта записано", "драфтов записано")}</span>}
           {accountIds.length > 1 && (
             <div className="flex rounded-lg border border-border overflow-hidden text-xs" title="Чья история. Открывается на аккаунте, под которым сейчас играешь.">
               {accountIds.map((id) => <button key={id} onClick={() => setAcc(id)} className={`px-3 py-1.5 ${acc === id ? "bg-panel-2 text-foreground font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>{accounts[id] ?? id}</button>)}
@@ -131,6 +134,13 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
       </header>
 
       {msg && <Card tone={msg.startsWith("Готово") ? "good" : "default"} className="py-2.5 text-sm">{msg}</Card>}
+
+      {all.length === 0 && remoteRows.length === 0 && !remoteBusy ? (
+        <Empty>
+          <span className="text-foreground">Здесь будут твои матчи и разбор каждого из них.</span>
+          <span className="block mt-1 max-w-md">Когда Дота на связи, драфт записывается сам после твоего пика; без связи нажми «Беру» на взятом герое в пикере. Рейтинговые матчи из Stratz подтянутся сюда сами, когда в настройках добавлен аккаунт.</span>
+        </Empty>
+      ) : <>
 
       {lastRemote && (() => { const { m, acc: a } = lastRemote; const h = byId.get(m.heroId); return (
         <Card tone={m.won ? "good" : "bad"} className="flex flex-wrap items-center gap-4">
@@ -177,23 +187,12 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
           {[7, 30, 90, 0].map((d) => <button key={d} onClick={() => setPeriod(d)} className={`px-3 py-1.5 ${period === d ? "bg-panel-2 text-foreground font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>{d ? `${d} дней` : "всё время"}</button>)}
         </div>
         {done.length > 0 ? (
-          <span className="flex flex-wrap items-center gap-2">
-            <Chip tone={wins / done.length >= 0.5 ? "good" : "bad"} title={`${wins} побед, ${done.length - wins} поражений`}>{done.length} {plural(done.length, "матч", "матча", "матчей")} · {Math.round((wins / done.length) * 100)}%</Chip>
-            {byAdvice.wr !== null && <Chip tone="muted" title="Винрейт матчей, где взят герой из топ-3 совета пикера">по совету {byAdvice.wr}% ({byAdvice.n})</Chip>}
-            {offAdvice.wr !== null && <Chip tone="muted" title="Винрейт матчей, где взят герой ниже топ-3 или не оценивался">не по совету {offAdvice.wr}% ({offAdvice.n})</Chip>}
-          </span>
-        ) : <span className="text-muted">за {periodLabel} матчей с результатом нет</span>}
+          <Chip tone={wins / done.length >= 0.5 ? "good" : "bad"} title="Матчи с драфтом пикера и известным результатом за выбранный период">побед {wins} из {done.length}</Chip>
+        ) : <span className="text-muted">за {periodLabel} матчей с драфтом и результатом нет</span>}
       </section>
 
       {wanted.length > 0 && <DeathTrend rows={remoteRows.map((r) => r.m)} norms={norms} period={period} busy={remoteBusy} error={wanted.map((id) => remote[id]?.error).find(Boolean) ?? null} />}
       {wanted.length > 0 && <PlayVsNorm rows={remoteRows.map((r) => r.m)} norms={norms} period={period} busy={remoteBusy} />}
-
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat title="Взял первого по совету" hint="Матчи, где ты взял героя, которого пикер ставил первым" s={top1} />
-        <Stat title="Взял из топ-3" hint="Матчи, где взятый герой был в первой тройке совета" s={top3} />
-        <Stat title="Взял ниже топ-3" hint="Матчи, где взятый герой стоял ниже третьего места или не оценивался" s={below} />
-        <Stat title="Взял лучшего из пула" hint="Матчи, где ты взял первого героя из списка «Из твоего пула»" hintAlign="right" s={poolTop} />
-      </section>
 
       {heroRows.length > 0 && (
         <Card>
@@ -206,19 +205,6 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
         </Card>
       )}
 
-      <Card>
-        <CardTitle hint="Матчи сгруппированы по шансу, который пикер давал взятому герою. Если реальный винрейт в столбце близок к прогнозу, оценки честные. Нужны десятки игр в каждом столбце, раньше это шум.">Насколько точен пикер</CardTitle>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
-          {buckets.map((b) => (
-            <div key={b.label} className="rounded-lg bg-panel-2 p-2.5">
-              <div className="text-muted text-xs">прогноз {b.label}</div>
-              <div className={`text-xl font-semibold tabular-nums ${b.wr === null ? "text-muted" : ""}`}>{b.wr === null ? "—" : `${b.wr}%`}</div>
-              <div className="text-xs text-muted">{b.n} {plural(b.n, "игра", "игры", "игр")}{b.avg !== null ? ` · средний прогноз ${b.avg}%` : ""}</div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
       <section className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-base font-semibold">Матчи</h2>
@@ -230,6 +216,7 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
         </div>
         {rows.length === 0 && !remoteBusy && <Empty>Пока пусто. Когда Дота на связи, драфт записывается сам после твоего пика. Без связи нажми «Беру» на взятом герое в пикере.</Empty>}
         {rows.slice(0, shown).map((row) => {
+          // одна форма строки для всех матчей: дата, герой, итог, роль, длительность и KDA, справа «Разбор»
           if (row.kind === "match") {
             const { m } = row; const h = byId.get(m.heroId);
             return (
@@ -241,7 +228,6 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
                   {m.position ? <Chip>{ROLE_NAME[m.position]}</Chip> : null}
                   {multiAccount && <Chip tone="muted" title="Аккаунт Steam, с которого играли">{accounts[row.acc] ?? row.acc}</Chip>}
                   <span className="text-xs text-muted tabular-nums">{Math.round(m.durationSeconds / 60)} мин · {m.kills}/{m.deaths}/{m.assists}</span>
-                  <span className="text-xs text-muted">без драфта</span>
                 </div>
                 <span className="text-xs text-accent" title={m.parsed ? undefined : "Stratz ещё не разобрал этот матч подробно: будут только итоговые цифры"}>{m.parsed ? "Разбор →" : "Итог →"}</span>
               </a>
@@ -249,42 +235,40 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
           }
           const x = row.x;
           const h = byId.get(x.chosenHeroId);
-          const open = openId === x.id;
           const res = x.won === undefined ? <Chip tone="muted">{x.noMatch ? "матч не найден" : "ждёт результата"}</Chip> : x.won ? <Chip tone="good">победа</Chip> : <Chip tone="bad">поражение</Chip>;
+          const kda = x.details ? `${x.details.kills}/${x.details.deaths}/${x.details.assists}` : "";
+          const meta = x.durationSeconds ? `${Math.round(x.durationSeconds / 60)} мин${kda ? ` · ${kda}` : ""}` : "";
+          const delBtn = <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); del(x.id); }} className="text-xs text-muted hover:text-bad" title="Удалить запись из истории">удалить</button>;
+          const body = <>
+            <span className="text-xs text-muted w-24 tabular-nums">{fmt(x.createdAt)}</span>
+            {h && <img src={icon(h.short)} alt="" className="h-9 w-9 rounded-md" />}
+            <div className="min-w-0 flex-1 flex flex-wrap items-center gap-2">
+              <b>{h?.name ?? x.chosenHeroId}</b>{res}
+              {x.role ? <Chip>{ROLE_NAME[x.role]}</Chip> : null}
+              {multiAccount && <Chip tone="muted" title="Аккаунт Steam, с которого играли">{accName(x)}</Chip>}
+              {meta && <span className="text-xs text-muted tabular-nums">{meta}</span>}
+              {/* пока результата нет, драфт узнаётся по врагам; с результатом они есть в разборе */}
+              {x.won === undefined && x.enemies.length > 0 && <span className="flex items-center gap-1 text-xs text-muted"><span className="text-enemy mr-0.5">против</span>{x.enemies.map((e) => <img key={e.id} src={icon(byId.get(e.id)?.short ?? "")} alt="" className="h-5 w-5 rounded" title={byId.get(e.id)?.name} />)}</span>}
+            </div>
+          </>;
+          if (canReport(x)) return (
+            <a key={x.id} href={reportHref(x.matchId, accOf(x), x.chosenHeroId)} className="rounded-xl border border-border bg-panel p-3 flex flex-wrap items-center gap-3 text-sm transition hover:border-accent/40">
+              {body}
+              <span className="text-xs text-accent">Разбор →</span>
+              {delBtn}
+            </a>
+          );
+          // у закрытого профиля разбора из Stratz нет: цифры матча из OpenDota раскрываются прямо в строке
+          const open = openId === x.id;
           return (
-            <div key={x.id} className={`rounded-xl border bg-panel p-3 flex flex-wrap items-center gap-3 text-sm cursor-pointer transition ${open ? "border-accent/40" : "border-border hover:border-border/70"}`} onClick={() => setOpenId(open ? null : x.id)} title={open ? undefined : "Нажми, чтобы раскрыть советы и разбор матча"}>
-              <span className="text-xs text-muted w-24 tabular-nums">{fmt(x.createdAt)}</span>
-              {h && <img src={icon(h.short)} alt="" className="h-9 w-9 rounded-md" />}
-              <div className="min-w-0 flex-1 flex flex-col gap-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <b>{h?.name ?? x.chosenHeroId}</b>{res}
-                  {multiAccount && <Chip tone="muted" title="Аккаунт Steam, с которого играли">{accName(x)}</Chip>}
-                  {x.durationSeconds ? <span className="text-xs text-muted tabular-nums">{Math.round(x.durationSeconds / 60)} мин{x.details ? ` · ${x.details.kills}/${x.details.deaths}/${x.details.assists}` : ""}</span> : null}
-                  <span className="text-xs text-muted">{x.chosen ? `шанс ${Math.round(x.chosen.finalScore)}% · место ${x.chosen.rank}` : "герой не оценивался"}{x.topPool[0] && x.topPool[0].heroId !== x.chosenHeroId ? ` · совет был ${x.topPool[0].name}` : ""}</span>
-                </div>
-                <div className="text-xs text-muted flex flex-wrap items-center gap-1">
-                  <span className="text-enemy mr-0.5">против</span>{x.enemies.map((e) => <img key={e.id} src={icon(byId.get(e.id)?.short ?? "")} alt="" className="h-5 w-5 rounded" title={byId.get(e.id)?.name} />)}
-                  {x.allies.length > 0 && <><span className="text-ally ml-2 mr-0.5">с</span>{x.allies.map((e) => <img key={e.id} src={icon(byId.get(e.id)?.short ?? "")} alt="" className="h-5 w-5 rounded" title={byId.get(e.id)?.name} />)}</>}
-                </div>
-              </div>
-              {x.matchId ? <a className="text-xs text-muted hover:text-foreground underline" href={`https://stratz.com/matches/${x.matchId}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Stratz</a> : null}
-              {canReport(x) ? <a className="text-xs text-accent hover:underline" href={reportHref(x.matchId, accOf(x), x.chosenHeroId)} onClick={(e) => e.stopPropagation()}>Разбор →</a> : null}
-              <button onClick={(e) => { e.stopPropagation(); del(x.id); }} className="text-xs text-muted hover:text-bad" title="Удалить запись">удалить</button>
+            <div key={x.id} className={`rounded-xl border bg-panel p-3 flex flex-wrap items-center gap-3 text-sm transition ${x.matchId ? "cursor-pointer" : ""} ${open ? "border-accent/40" : "border-border hover:border-border/70"}`} onClick={() => x.matchId && setOpenId(open ? null : x.id)} title={open || !x.matchId ? undefined : "Нажми, чтобы увидеть цифры матча"}>
+              {body}
+              {x.matchId ? <span className="text-xs text-accent">{open ? "Свернуть" : "Цифры →"}</span> : null}
+              {delBtn}
               {open && (
-                <div className="basis-full border-t border-border pt-3 text-xs text-muted grid gap-3 sm:grid-cols-2" onClick={(e) => e.stopPropagation()}>
-                  <div>
-                    <div className="text-foreground font-medium mb-1">Совет из пула</div>
-                    {x.topPool.length ? <ol className="grid gap-0.5">{x.topPool.map((r) => <li key={r.heroId} className={r.heroId === x.chosenHeroId ? "text-accent" : ""}>{r.rank}. {r.name} <span className="opacity-70">{Math.round(r.finalScore)}%</span>{r.heroId === x.chosenHeroId ? " · ты" : ""}</li>)}</ol> : <span>пул аккаунта не был загружен</span>}
-                  </div>
-                  <div>
-                    <div className="text-foreground font-medium mb-1">Лучшие вообще</div>
-                    <ol className="grid gap-0.5">{x.topAll.map((r) => <li key={r.heroId} className={r.heroId === x.chosenHeroId ? "text-accent" : ""}>{r.rank}. {r.name} <span className="opacity-70">{Math.round(r.finalScore)}%</span>{r.heroId === x.chosenHeroId ? " · ты" : ""}</li>)}</ol>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <div className="text-foreground font-medium mb-1 flex items-center gap-3">Цифры матча{canReport(x) ? <a className="font-normal text-accent hover:underline" href={reportHref(x.matchId, accOf(x), x.chosenHeroId)}>полный разбор →</a> : null}</div>
-                    {x.details ? <MatchStats d={x.details} b={x.bench ?? null} byId={byId} /> : x.matchId ? <Button size="sm" onClick={() => loadDetails(x.id)} disabled={detailsBusy === x.id}>{detailsBusy === x.id ? "загружаю…" : "Загрузить разбор"}</Button> : <span>Появится, когда подтянется результат.</span>}
-                  </div>
-                  {x.enemyRoles?.length > 0 && <div className="sm:col-span-2">Роли врагов: {x.enemyRoles.map((g) => `${byId.get(g.id)?.name ?? g.id} ${g.role}`).join(", ")}{x.role ? ` · твоя роль ${x.role}` : ""}</div>}
+                <div className="basis-full border-t border-border pt-3 text-xs text-muted flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+                  {x.details ? <MatchStats d={x.details} b={x.bench ?? null} byId={byId} /> : <Button size="sm" className="w-fit" onClick={() => loadDetails(x.id)} disabled={detailsBusy === x.id}>{detailsBusy === x.id ? "загружаю…" : "Загрузить цифры матча"}</Button>}
+                  {x.matchId ? <a className="w-fit text-muted hover:text-foreground underline" href={`https://stratz.com/matches/${x.matchId}`} target="_blank" rel="noreferrer">открыть на Stratz</a> : null}
                 </div>
               )}
             </div>
@@ -292,6 +276,32 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
         })}
         {rows.length > shown && <Button size="sm" className="self-center" onClick={() => setShown(shown + 40)}>Показать ещё ({rows.length - shown})</Button>}
       </section>
+
+      {/* проверка самого пикера: для тех, кому интересно, и только когда матчей уже достаточно */}
+      {doneAll >= PICKER_MIN ? (
+        <Card>
+          <CardTitle hint="Здесь проверяется сам пикер, а не ты: как часто ты берёшь его советы и сбывается ли его прогноз. Считаются матчи с драфтом за выбранный период.">Как работает пикер</CardTitle>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat title="Взял первого по совету" hint="Матчи, где ты взял героя, которого пикер ставил первым" s={top1} />
+            <Stat title="Взял из топ-3" hint="Матчи, где взятый герой был в первой тройке совета" s={top3} />
+            <Stat title="Взял ниже топ-3" hint="Матчи, где взятый герой стоял ниже третьего места или не оценивался" s={below} />
+            <Stat title="Взял лучшего из пула" hint="Матчи, где ты взял первого героя из списка «Из твоего пула»" hintAlign="right" s={poolTop} />
+          </div>
+          <div className="mt-4 mb-2 text-sm flex items-center gap-2">Прогноз против реального результата <Hint text="Матчи сгруппированы по шансу, который пикер давал взятому герою. Если реальный винрейт в столбце близок к прогнозу, оценки честные. Нужны десятки игр в каждом столбце, раньше это шум." /></div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+            {buckets.map((b) => (
+              <div key={b.label} className="rounded-lg bg-panel-2 p-2.5">
+                <div className="text-muted text-xs">прогноз {b.label}</div>
+                <div className={`text-xl font-semibold tabular-nums ${b.wr === null ? "text-muted" : ""}`}>{b.wr === null ? "—" : `${b.wr}% побед`}</div>
+                <div className="text-xs text-muted">{b.n} {plural(b.n, "игра", "игры", "игр")}{b.avg !== null ? ` · средний прогноз ${b.avg}%` : ""}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : all.length > 0 ? (
+        <p className="text-xs text-muted">Статистика по советам пикера появится, когда наберётся {PICKER_MIN} матчей с драфтом и результатом: сейчас {doneAll}.</p>
+      ) : null}
+      </>}
     </main>
   );
 }
@@ -315,7 +325,7 @@ function MatchStats({ d, b, byId }: { d: MatchDetails; b: Bench | null; byId: Ma
   const dur = b?.avgDuration ? b.avgDuration : null;
   const oppName = d.laneOpp ? byId.get(d.laneOpp.heroId)?.name ?? "враг" : null;
   const laneDiff = d.laneOpp && d.nw10 != null && d.laneOpp.nw10 != null ? d.nw10 - d.laneOpp.nw10 : null;
-  const cells: { label: string; value: string; cls: string; norm?: string | null }[] = [
+  const cells: { label: string; value: string; cls: string; norm?: string | null; normLabel?: string }[] = [
     { label: "Убийств", value: String(d.kills), cls: tone(d.kills, b?.overall.kills), norm: b ? String(Math.round(b.overall.kills)) : null },
     { label: "Смертей", value: String(d.deaths), cls: tone(d.deaths, b?.overall.deaths, true), norm: b ? String(Math.round(b.overall.deaths)) : null },
     { label: "Помощи", value: String(d.assists), cls: tone(d.assists, b?.overall.assists), norm: b ? String(Math.round(b.overall.assists)) : null },
@@ -326,13 +336,14 @@ function MatchStats({ d, b, byId }: { d: MatchDetails; b: Bench | null; byId: Ma
   if (d.lh10 != null) cells.push({ label: "Добито к 10 мин", value: String(d.lh10), cls: tone(d.lh10, b?.at10?.cs), norm: b?.at10 ? String(fmtN(b.at10.cs)) : null });
   if (d.nw10 != null) cells.push({ label: "Золото к 10 мин", value: String(d.nw10), cls: tone(d.nw10, b?.at10?.networth), norm: b?.at10 ? String(fmtN(b.at10.networth)) : null });
   if (d.deaths10 != null) cells.push({ label: "Смертей к 10 мин", value: String(d.deaths10), cls: tone(d.deaths10, b?.at10?.deaths, true), norm: b?.at10 ? String(fmtN(b.at10.deaths, 1)) : null });
-  if (oppName) cells.push({ label: `Линия против ${oppName}`, value: laneDiff != null ? `${laneDiff > 0 ? "+" : ""}${laneDiff}` : "—", cls: laneDiff == null ? "text-foreground" : laneDiff >= 300 ? "text-good" : laneDiff <= -300 ? "text-bad" : "text-foreground", norm: laneDiff != null ? "золота к 10 мин" : null });
+  if (oppName) cells.push({ label: `Линия против ${oppName}`, value: laneDiff != null ? `${laneDiff > 0 ? "+" : ""}${laneDiff}` : "—", cls: laneDiff == null ? "text-foreground" : laneDiff >= 300 ? "text-good" : laneDiff <= -300 ? "text-bad" : "text-foreground", norm: laneDiff != null ? "к 10 мин" : null, normLabel: "золота" });
   return (
-    <div className="flex flex-wrap gap-1.5" title={b ? `Норма: средние Divine/Immortal на этом герое и позиции, ${b.matchCount} матчей, винрейт ${Math.round(b.winrate * 100)}%. Зелёное лучше нормы на 10% и больше, красное хуже.` : "Нормы нет: Stratz не ответил"}>
+    <div className="flex flex-wrap gap-1.5" title={b ? `Норма: средние Divine/Immortal на этом герое и позиции за матч (${b.matchCount} матчей). Зелёное лучше нормы на 10% и больше, красное хуже.` : "Нормы нет: Stratz не ответил"}>
       {cells.map((c) => (
         <span key={c.label} className="rounded-md bg-panel-2 px-2 py-1 flex flex-col leading-tight min-w-14">
           <span className="text-[10px] text-muted">{c.label}</span>
-          <span className={`text-xs tabular-nums ${c.cls}`}><b>{c.value}</b>{c.norm ? <span className="text-muted font-normal"> / {c.norm}</span> : null}</span>
+          <span className={`text-sm tabular-nums ${c.cls}`}><b>{c.value}</b></span>
+          {c.norm ? <span className="text-[10px] text-muted tabular-nums">{c.normLabel ?? "норма"} {c.norm}</span> : null}
         </span>
       ))}
       <span className="self-end text-[10px] text-muted/70 pb-1">{d.source === "stratz" ? "Stratz" : "OpenDota"}</span>
@@ -345,12 +356,12 @@ function Stat({ title, hint, hintAlign, s }: { title: string; hint?: string; hin
     <Card className="p-3">
       <div className="text-xs text-muted flex items-center gap-1.5">{title}{hint && <Hint text={hint} align={hintAlign} />}</div>
       <div className={`text-2xl font-semibold tabular-nums ${s.wr === null ? "text-muted" : s.wr >= 55 ? "text-good" : s.wr <= 45 ? "text-bad" : ""}`}>{s.wr === null ? "—" : `${s.wr}%`}</div>
-      <div className="text-xs text-muted">{s.n ? `${s.w}–${s.n - s.w} · ${s.n} ${plural(s.n, "игра", "игры", "игр")}` : "игр нет"}</div>
+      <div className="text-xs text-muted">{s.n ? `побед ${s.w} из ${s.n}` : "игр нет"}</div>
     </Card>
   );
 }
 
-const WINDOWS: [number, number, string][] = [[0, 10, "0–10 минута · линия"], [10, 20, "10–20 минута · мидгейм"], [20, Infinity, "после 20-й · лейт"]];
+const WINDOWS: [number, number, string][] = [[0, 10, phaseLabel(0, 10)], [10, 20, phaseLabel(10, 20)], [20, Infinity, phaseLabel(20, null)]];
 
 /** Смерти на 10 минут игры по отрезкам матча за период: твои и норма Divine/Immortal на тех же героях и позициях. */
 function deathRates(ms: AccMatch[], norms: Record<string, MatchNorm>, from: number, to: number) {

@@ -7,6 +7,7 @@ import type { LaneCell, LaneOutcome, MatchReport, NormCell, ReportDeath, ReportW
 import { Button, Card, CardTitle, Chip, Hint } from "@/components/ui";
 import Crystals from "@/components/Crystals";
 import { heroName } from "@/lib/heroName";
+import { phaseLabel } from "@/lib/phases";
 
 // иконки с CDN Valve: у Stratz alchemist_icon.png оказался копией dragon_knight_icon.png
 const icon = (short: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${short}.png`;
@@ -17,7 +18,7 @@ const OUTCOME: Record<NonNullable<LaneOutcome>, { text: string; tone: "good" | "
   stomp: { text: "разгромная победа на линии", tone: "good" }, won: { text: "линия выиграна", tone: "good" }, even: { text: "линия вничью", tone: "muted" },
   lost: { text: "линия проиграна", tone: "bad" }, stomped: { text: "линия проиграна с разгромом", tone: "bad" },
 };
-const WINDOW_SHORT = (w: ReportWindow) => (w.to == null ? `${w.from}+ мин` : `${w.from}–${w.to} мин`);
+const WINDOW_SHORT = (w: ReportWindow) => phaseLabel(w.from, w.to);
 
 export default function MatchReportView({ matchId, me, hero, heroes, draft }: { matchId: number; me: number | null; hero: number | null; heroes: Hero[]; draft: DraftLog | null }) {
   const byId = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes]);
@@ -53,8 +54,8 @@ export default function MatchReportView({ matchId, me, hero, heroes, draft }: { 
             <Good r={r} />
             <Tips r={r} />
           </div>
-          <Deaths r={r} />
           <LaneCard r={r} byId={byId} />
+          <Deaths r={r} />
         </> : (() => { const recent = Date.now() / 1000 - (r.startDateTime + r.durationSeconds) < 12 * 3600; return (
           <Card className="flex flex-col gap-3">
             <CardTitle>{recent ? "Подробного разбора пока нет" : "Подробного разбора нет"}</CardTitle>
@@ -102,10 +103,24 @@ function Header({ r, byId, draft }: { r: MatchReport; byId: Map<number, Hero>; d
         <Hint align="right" text={r.plan.manual ? "По плану героя отчёт решает, какие смерти стоили дорого, а какие были ценой драки. План для этого героя на миде записан вручную." : "По плану героя отчёт решает, какие смерти стоили дорого, а какие были ценой драки. Для этого героя и позиции своей строки нет, план взят по позиции и типу героя."} />
       </div>}
       {draft && (
-        <div className="text-xs text-muted">
-          {draft.chosen ? `Пикер ставил его ${draft.chosen.rank}-м с шансом ${Math.round(draft.chosen.finalScore)}%` : "Пикер этого героя не оценивал"}
-          {adv && adv.heroId !== draft.chosenHeroId ? ` · совет из пула был ${adv.name} ${Math.round(adv.finalScore)}%` : adv ? " · ты взял лучшего из пула" : ""}
-        </div>
+        <details className="text-xs text-muted group">
+          <summary className="cursor-pointer list-none flex items-center gap-1.5 w-fit hover:text-foreground">
+            <span>{draft.chosen ? `Пикер ставил его ${draft.chosen.rank}-м с шансом ${Math.round(draft.chosen.finalScore)}%` : "Пикер этого героя не оценивал"}{adv && adv.heroId !== draft.chosenHeroId ? ` · совет из пула был ${adv.name} ${Math.round(adv.finalScore)}%` : adv ? " · ты взял лучшего из пула" : ""}</span>
+            {(draft.topPool.length > 0 || draft.topAll.length > 0) && <span className="text-accent group-open:hidden">показать советы</span>}
+          </summary>
+          {(draft.topPool.length > 0 || draft.topAll.length > 0) && (
+            <div className="mt-2 grid gap-3 sm:grid-cols-2 rounded-lg bg-panel-2/60 p-3">
+              <div>
+                <div className="text-foreground font-medium mb-1">Совет из пула</div>
+                {draft.topPool.length ? <ol className="grid gap-0.5">{draft.topPool.map((x) => <li key={x.heroId} className={x.heroId === draft.chosenHeroId ? "text-accent" : ""}>{x.rank}. {x.name} <span className="opacity-70">{Math.round(x.finalScore)}%</span>{x.heroId === draft.chosenHeroId ? " · ты" : ""}</li>)}</ol> : <span>пул аккаунта не был загружен</span>}
+              </div>
+              <div>
+                <div className="text-foreground font-medium mb-1">Лучшие вообще</div>
+                <ol className="grid gap-0.5">{draft.topAll.map((x) => <li key={x.heroId} className={x.heroId === draft.chosenHeroId ? "text-accent" : ""}>{x.rank}. {x.name} <span className="opacity-70">{Math.round(x.finalScore)}%</span>{x.heroId === draft.chosenHeroId ? " · ты" : ""}</li>)}</ol>
+              </div>
+            </div>
+          )}
+        </details>
       )}
     </Card>
   );

@@ -81,8 +81,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       <Onboarding />
+      {path === "/" && <ReportReady />}
       <div className="flex-1">{children}</div>
       <Tooltips />
+    </div>
+  );
+}
+
+/** Плашка в пикере, когда у последнего матча подтянулся результат: один клик, и открыт его разбор.
+ *  Показывается 6 часов после синхронизации, крестик прячет её до следующего матча. */
+function ReportReady() {
+  type Last = { id: string; matchId: number; heroId: number; heroName: string | null; won: boolean; accountId: number | null; syncedAt: number; canReport: boolean };
+  const [last, setLast] = useState<Last | null>(null);
+  const [hidden, setHidden] = useState<string | null>(null);
+  useEffect(() => {
+    try { setHidden(localStorage.getItem("reportReady.hidden")); } catch {}
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      if (document.visibilityState === "visible") { const j = await fetch("/api/log/last").then((r) => r.json()).catch(() => null); if (j?.ok) setLast(j.item); }
+      timer = setTimeout(poll, 60_000);
+    };
+    poll();
+    return () => clearTimeout(timer);
+  }, []);
+  if (!last || !last.canReport || hidden === last.id || Date.now() / 1000 - last.syncedAt > 6 * 3600) return null;
+  const href = `/history/${last.matchId}?${new URLSearchParams({ ...(last.accountId ? { me: String(last.accountId) } : {}), hero: String(last.heroId) })}`;
+  return (
+    <div className={`border-b ${last.won ? "border-good/40 bg-good/10" : "border-bad/40 bg-bad/10"}`}>
+      <div className="w-full px-5 py-2 flex flex-wrap items-center gap-3 text-sm">
+        <span>Разбор последнего матча готов{last.heroName ? <>: <b>{last.heroName}</b>, {last.won ? "победа" : "поражение"}</> : null}</span>
+        <a href={href} className="rounded-md bg-accent px-3 py-1 text-xs font-semibold text-black hover:brightness-110">Открыть разбор →</a>
+        <button onClick={() => { setHidden(last.id); try { localStorage.setItem("reportReady.hidden", last.id); } catch {} }} className="ml-auto text-xs text-muted hover:text-foreground">Скрыть</button>
+      </div>
     </div>
   );
 }
