@@ -123,7 +123,7 @@ async function createWindow() {
     title: "Outpick",
     autoHideMenuBar: true, // на Windows меню скрыто, Alt показывает
     icon: path.join(__dirname, "icon.png"),
-    // backgroundThrottling: false — во время пиков окно за Дотой, а видеопоток и таймеры страницы должны работать
+    // backgroundThrottling: false - во время пиков окно за Дотой, а видеопоток и таймеры страницы должны работать
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, backgroundThrottling: false },
   });
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: "deny" }; });
@@ -243,7 +243,7 @@ async function captureDotaFrame() {
   throw new Error(lastErr);
 }
 // Принудительная сборка мусора в главном процессе. Переключатель --expose-gc через app.commandLine действует только
-// на страницы, в главном процессе global.gc так и остаётся undefined (в 0.7.1–0.7.3 сборка не вызывалась, и снимки экрана
+// на страницы, в главном процессе global.gc так и остаётся undefined (в 0.7.1-0.7.3 сборка не вызывалась, и снимки экрана
 // копились до 5 ГБ: V8 не видит их размер и сам сборку не запускает). Поэтому функцию gc берём через v8/vm.
 let gcFn = null;
 try { require("node:v8").setFlagsFromString("--expose-gc"); gcFn = require("node:vm").runInNewContext("gc"); } catch (e) { console.warn("[mem] gc недоступен:", e.message); }
@@ -330,7 +330,7 @@ ipcMain.handle("diag:save", async (_e, f) => {
     zip.addFile("gsi-raw.json", Buffer.from(JSON.stringify(await serverJson("/api/gsi/raw"), null, 1)));
     const gsiCfg = await serverJson("/api/gsi/install");
     zip.addFile("gsi-config.json", Buffer.from(JSON.stringify(gsiCfg, null, 1)));
-    // файлы Доты, где при подключении к матчу могут быть Steam ID всех десяти игроков (server_log.txt) — хвост 256 КБ
+    // файлы Доты, где при подключении к матчу могут быть Steam ID всех десяти игроков (server_log.txt) - хвост 256 КБ
     for (const dir of gsiCfg?.dotaDirs ?? []) for (const name of ["server_log.txt", "console.log"]) {
       try {
         const p = path.join(dir, name); if (!fs.existsSync(p)) continue;
@@ -342,7 +342,7 @@ ipcMain.handle("diag:save", async (_e, f) => {
     zip.addFile("draft-log.json", Buffer.from(JSON.stringify(await serverJson("/api/log"), null, 1)));
     zip.addFile("refresh.json", Buffer.from(JSON.stringify(await serverJson("/api/refresh"), null, 1)));
     try { const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 0, height: 0 } }); zip.addFile("capture-sources.json", Buffer.from(JSON.stringify(sources.map((s) => ({ id: s.id, name: s.name })), null, 1))); } catch (e) { zip.addFile("capture-sources.json", Buffer.from(JSON.stringify({ error: String(e?.message ?? e) }))); }
-    // свежий кадр с распознаванием: из видеопотока окна, а если его нет (Дота закрыта и поток не поднялся) — снимок экрана
+    // свежий кадр с распознаванием: из видеопотока окна, а если его нет (Дота закрыта и поток не поднялся) - снимок экрана
     try {
       if (f && f.strip) {
         const frame = frameFromRenderer(f);

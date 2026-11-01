@@ -32,9 +32,9 @@ export function inferRoles(picks: Pick[], exclude: Role[] = [], priors: (Record<
     }
   };
   rec(0, 0);
-  if (!best) best = picks.map((p, i) => p.role ?? ROLES[i % 5]); // невозможная фиксация (две одинаковые роли) — отдаём как есть
+  if (!best) best = picks.map((p, i) => p.role ?? ROLES[i % 5]); // невозможная фиксация (две одинаковые роли) - отдаём как есть
   const assignment = best as Role[];
-  // вероятность "этот герой на этой роли" — доля суммарного веса раскладок, где так и вышло
+  // вероятность "этот герой на этой роли" - доля суммарного веса раскладок, где так и вышло
   const totals = picks.map(() => new Map<Role, number>());
   let grand = 0;
   const rec2 = (i: number, w: number) => {

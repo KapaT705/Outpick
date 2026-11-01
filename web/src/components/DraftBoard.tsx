@@ -308,7 +308,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
     saveOverride({ add, remove: rem });
   };
 
-  // «из пула» только пул; «знакомые» (3–9 игр) идут во второй список с пометкой, их счёт на оценку не влияет
+  // «из пула» только пул; «знакомые» (3-9 игр) идут во второй список с пометкой, их счёт на оценку не влияет
   const inPool = result.filter((c) => c.poolStatus === "pool");
   const outside = result.filter((c) => c.poolStatus !== "pool").slice(0, showAll ? 40 : 8);
   // порядок в окне пула: сначала по числу игр на роли за год, потом по алфавиту. От галочек порядок не зависит,
@@ -469,7 +469,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
           )}
           {laneOpp && <LaneCard lane={laneOpp} inPool={inPool} byId={byId} />}
           <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} hint="Герои, на которых ты играешь на этой роли (пул правится кнопкой «Мой пул»). Отсортированы по шансу победы в этом драфте." items={inPool} loading={loading} byId={byId} onTake={take} lane={laneOpp} featured canTake={!gsi?.connected} />
-          <ResultBlock title="Вне пула, но хороши в этот драфт" hint="Герои не из твоего пула на этой роли: оценка только по мете и драфту, твой счёт на них показывается, но не учитывается. «Знакомый» значит 3–9 игр за год." items={outside} loading={loading} byId={byId} onTake={take} canTake={!gsi?.connected}
+          <ResultBlock title="Вне пула, но хороши в этот драфт" hint="Герои не из твоего пула на этой роли: оценка только по мете и драфту, твой счёт на них показывается, но не учитывается. «Знакомый» значит 3-9 игр за год." items={outside} loading={loading} byId={byId} onTake={take} canTake={!gsi?.connected}
             footer={<button onClick={() => setShowAll(!showAll)} className="text-xs text-muted underline">{showAll ? "Показать меньше" : "Показать больше"}</button>} />
         </section>
       </div>
@@ -481,7 +481,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
           <div className="w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
           <Card className="w-full flex flex-col gap-3" tone="default">
             <div className="flex flex-col gap-3">
-              <CardTitle right={<Button size="sm" onClick={() => setPoolOpen(false)}>Закрыть</Button>} hint="Пул отдельный для каждой роли. Сам по себе в нём герои с 10 и больше играми на этой роли за год; «знакомые» с 3–9 играми идут отдельно. Отметь тех, на ком реально играешь: они попадут в список «Из твоего пула», их наигранность и винрейт учитываются в оценке. Правки хранятся в этом браузере.">
+              <CardTitle right={<Button size="sm" onClick={() => setPoolOpen(false)}>Закрыть</Button>} hint="Пул отдельный для каждой роли. Сам по себе в нём герои с 10 и больше играми на этой роли за год; «знакомые» с 3-9 играми идут отдельно. Отметь тех, на ком реально играешь: они попадут в список «Из твоего пула», их наигранность и винрейт учитываются в оценке. Правки хранятся в этом браузере.">
                 Мой пул · {ROLE_FULL[role]} · {poolSet.size} {poolSet.size % 10 === 1 && poolSet.size % 100 !== 11 ? "герой" : poolSet.size % 10 >= 2 && poolSet.size % 10 <= 4 && (poolSet.size % 100 < 10 || poolSet.size % 100 >= 20) ? "героя" : "героев"}
               </CardTitle>
               <div className="flex flex-wrap items-center gap-2">
@@ -505,7 +505,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
                       <img src={portrait(h.short)} alt={h.name} loading="lazy" className={`absolute inset-0 h-full w-full object-cover ${on || fam ? "" : "opacity-60 grayscale-[.4]"}`} />
                       <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-1.5 pb-1 pt-5 text-left leading-tight">
                         <span className="block truncate text-xs text-white/90">{h.name}</span>
-                        <span className={`block text-[11px] ${r ? (wr !== null && wr >= 50 ? "text-good" : "text-bad") : "text-white/50"}`}>{r ? `${r.wins}–${r.games - r.wins} · ${wr}% · ${r.games} ${r.games % 10 === 1 && r.games % 100 !== 11 ? "игра" : r.games % 10 >= 2 && r.games % 10 <= 4 && (r.games % 100 < 10 || r.games % 100 >= 20) ? "игры" : "игр"}` : "игр на роли нет"}</span>
+                        <span className={`block text-[11px] ${r ? (wr !== null && wr >= 50 ? "text-good" : "text-bad") : "text-white/50"}`}>{r ? `${r.wins}-${r.games - r.wins} · ${wr}% · ${r.games} ${r.games % 10 === 1 && r.games % 100 !== 11 ? "игра" : r.games % 10 >= 2 && r.games % 10 <= 4 && (r.games % 100 < 10 || r.games % 100 >= 20) ? "игры" : "игр"}` : "игр на роли нет"}</span>
                       </span>
                       {on && <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-black">✓</span>}
                     </div>
@@ -535,11 +535,11 @@ function LaneCard({ lane, inPool, byId }: { lane: LaneOpponent; inPool: Candidat
       {h && <img src={portrait(h.short)} alt="" className="h-12 w-[86px] rounded-md object-cover shrink-0" />}
       <div className="min-w-0 flex-1">
         <div className="text-sm"><span className="text-muted">Соперник по линии:</span> <b>{lane.name}</b> <span className="text-xs text-muted">· {ROLE_NAME[lane.role]}{lane.prob < 0.9 ? ` ${Math.round(lane.prob * 100)}%` : ""}</span>
-          {lane.player && <span className="text-xs text-muted"> · {lane.player.name ?? "игрок"}{lane.player.games > 0 ? <>: на нём <b className="text-foreground">{lane.player.wins}–{lane.player.games - lane.player.wins}</b> за месяц</> : lane.player.rolesKnown ? ": на нём за месяц не играл" : ": профиль закрыт"}</span>}
+          {lane.player && <span className="text-xs text-muted"> · {lane.player.name ?? "игрок"}{lane.player.games > 0 ? <>: на нём <b className="text-foreground">{lane.player.wins}-{lane.player.games - lane.player.wins}</b> за месяц</> : lane.player.rolesKnown ? ": на нём за месяц не играл" : ": профиль закрыт"}</span>}
         </div>
         <div className="text-xs text-muted mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
           {best.length === 0 && <span>в пуле пока нет оценённых против него героев</span>}
-          {best.map((c) => <span key={c.heroId}><span className="text-foreground">{c.name}</span> <span className={c.vsLane!.value > 0 ? "text-good" : c.vsLane!.value < 0 ? "text-bad" : ""}>{c.vsLane!.value > 0 ? "+" : ""}{c.vsLane!.value}</span>{c.vsLane!.personal ? <span className="text-accent"> · ты {c.vsLane!.personal.wins}–{c.vsLane!.personal.games - c.vsLane!.personal.wins}</span> : null}</span>)}
+          {best.map((c) => <span key={c.heroId}><span className="text-foreground">{c.name}</span> <span className={c.vsLane!.value > 0 ? "text-good" : c.vsLane!.value < 0 ? "text-bad" : ""}>{c.vsLane!.value > 0 ? "+" : ""}{c.vsLane!.value}</span>{c.vsLane!.personal ? <span className="text-accent"> · ты {c.vsLane!.personal.wins}-{c.vsLane!.personal.games - c.vsLane!.personal.wins}</span> : null}</span>)}
         </div>
       </div>
     </div>
@@ -593,7 +593,7 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
   const laneName = lane ? lane.name.split(" ")[0] : "";
   // в строке не больше двух чипов: статус пула и самое важное из (матчап по линии, твой счёт, популярность); остальное в раскрытии
   const chips: React.ReactNode[] = [];
-  if (c.poolStatus === "familiar") chips.push(<Chip key="fam" tone="accent" className="opacity-80" title="3–9 игр на этой роли за год; на оценку твой счёт не влияет">знакомый</Chip>);
+  if (c.poolStatus === "familiar") chips.push(<Chip key="fam" tone="accent" className="opacity-80" title="3-9 игр на этой роли за год; на оценку твой счёт не влияет">знакомый</Chip>);
   if (lane && c.vsLane) chips.push(<Chip key="lane" tone={c.vsLane.value >= 1 ? "good" : c.vsLane.value <= -1 ? "bad" : "muted"} title={`Матчап против соперника по линии, ${lane.name} (${c.vsLane.games} игр в выборке)${c.vsLane.personal ? `. Твой счёт против него ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}`}>против {laneName} {signed(c.vsLane.value)}{c.vsLane.personal ? ` · ты ${c.vsLane.personal.wins}–${c.vsLane.personal.games - c.vsLane.personal.wins}` : ""}</Chip>);
   if (c.personalWinrate !== null) chips.push(<Chip key="me" tone={c.poolStatus !== "pool" ? "muted" : c.personalWinrate >= 50 ? "good" : "bad"} title={`Твой счёт на нём на этой роли за год: ${c.midWins} побед, ${c.midGames - c.midWins} поражений${c.poolStatus === "pool" ? ". Учтён в оценке" : ". На оценку не влияет: герой не в пуле"}`}>ты {c.midWins}–{c.midGames - c.midWins} · {c.personalWinrate}%</Chip>);
   // популярность в строке только когда больше нечего показать: четыре процента в одной строке не читаются, в раскрытии она есть всегда
@@ -653,10 +653,10 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
             {c.poolStatus === "pool" ? (
               <>
                 <Part label="Наигранность" note={`${c.midGames} игр на роли за год`} value={c.experienceAdj} />
-                <Part label="Твой винрейт" note={c.midGames === 0 ? "игр на роли нет" : `${c.midWins}–${c.midGames - c.midWins}, ${c.personalWinrate}%${c.midGames < 3 ? ", меньше 3 игр, не учитывается" : c.personalAdj === 0 ? ", ровно 50%" : ""}`} value={c.personalAdj} />
+                <Part label="Твой винрейт" note={c.midGames === 0 ? "игр на роли нет" : `${c.midWins}-${c.midGames - c.midWins}, ${c.personalWinrate}%${c.midGames < 3 ? ", меньше 3 игр, не учитывается" : c.personalAdj === 0 ? ", ровно 50%" : ""}`} value={c.personalAdj} />
               </>
             ) : (
-              <div className="flex items-baseline justify-between gap-3"><span>Наигранность и твой винрейт<span className="opacity-60"> · {c.midGames > 0 ? `${c.midWins}–${c.midGames - c.midWins}, ` : ""}не в пуле, не учитываются</span></span><b className="text-muted">0</b></div>
+              <div className="flex items-baseline justify-between gap-3"><span>Наигранность и твой винрейт<span className="opacity-60"> · {c.midGames > 0 ? `${c.midWins}-${c.midGames - c.midWins}, ` : ""}не в пуле, не учитываются</span></span><b className="text-muted">0</b></div>
             )}
             <div className="flex items-baseline justify-between gap-3 border-t border-border pt-1 mt-0.5 text-foreground"><span>Итого: шанс победы</span><b className={`tabular-nums ${tone}`}>{score}%</b></div>
             <div className="opacity-60 mt-1">Его берут на эту роль в {Math.round(c.midRate * 100)}% игр героя у Immortal{c.top ? `, это ${c.top.rate}% всех пиков роли` : ""}. Матчапы и синергии Stratz даёт только по Divine+Immortal вместе.</div>
@@ -670,7 +670,7 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
                 <b className={`tabular-nums ${signTone(r.value)}`}>{signed(r.value, 1)}</b>
               </div>
             ))}
-            {c.personalNotes.map((n) => <div key={`${n.ally}-${n.heroId}`} className="text-accent">Ты {n.ally ? "вместе с" : "против"} {n.name}: {n.wins}–{n.games - n.wins}</div>)}
+            {c.personalNotes.map((n) => <div key={`${n.ally}-${n.heroId}`} className="text-accent">Ты {n.ally ? "вместе с" : "против"} {n.name}: {n.wins}-{n.games - n.wins}</div>)}
           </div>
         </div>
       )}

@@ -24,7 +24,7 @@ export type LaneOpponent = { heroId: number; name: string; short: string; role: 
 export type PredictedPicks = { role: Role; heroes: { heroId: number; name: string; short: string; share: number }[]; player?: string | null }; // player: имя игрока, если прогноз по его истории, иначе по мете
 /** Кандидат у Immortal: винрейт и доля пиков на этой роли за 4 недели. */
 export type TopStat = { winrate: number; rate: number; games: number };
-/** Стадия драфта по числу известных пиков врага: рано — врагам ещё отвечать контрпиком, поздно — контрпикуем мы. */
+/** Стадия драфта по числу известных пиков врага: рано - врагам ещё отвечать контрпиком, поздно - контрпикуем мы. */
 export type DraftStage = "early" | "mid" | "late";
 /** Чего не хватает команде по тегам героев (союзники без тебя). */
 export type TeamNeed = { key: HeroTag; label: string; have: number };
