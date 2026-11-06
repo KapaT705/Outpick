@@ -118,8 +118,15 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const rolesSeen = useRef<Record<number, { role: Role; n: number }>>({});
   const roleManual = useRef(false); // роль выбрана кликом после начала матча: экран её больше не меняет
   const [roleFromScreen, setRoleFromScreen] = useState(false);
+  // строки ролей на экране нет (фулпати, классический ранг, обычный режим): после ROLES_HIDDEN_AFTER чтений экрана
+  // пиков подряд без единого значка пикер говорит об этом и роли союзников остаются догадками или задаются вручную
+  const ROLES_HIDDEN_AFTER = 20;
+  const rolesMissing = useRef(0);
+  const [rolesHidden, setRolesHidden] = useState(false);
   const noteScreenRoles = (rr: RecognizedRoles, connected: boolean) => {
     if (!connected && rr.team) setSideSeen(rr.team);
+    if (rr.slots.some((sl) => sl.role)) { rolesMissing.current = 0; setRolesHidden(false); }
+    else if (++rolesMissing.current >= ROLES_HIDDEN_AFTER) setRolesHidden(true);
     const seen = rolesSeen.current;
     for (const sl of rr.slots) {
       if (!sl.role) continue;
@@ -132,7 +139,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
       return changed ? next : cur;
     });
   };
-  const forgetScreenRoles = () => { rolesSeen.current = {}; setScreenRoles({}); roleManual.current = false; setRoleFromScreen(false); };
+  const forgetScreenRoles = () => { rolesSeen.current = {}; setScreenRoles({}); roleManual.current = false; setRoleFromScreen(false); rolesMissing.current = 0; setRolesHidden(false); };
   const [gsiRewritten, setGsiRewritten] = useState(false);
   useEffect(() => {
     fetch("/api/settings").then((r) => r.json()).then((c) => { setCaptureOn(c.screenCapture !== false); }).catch(() => {});
@@ -294,7 +301,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             new Promise<RecognizeResult | null>((resolve) => setTimeout(() => resolve({ ok: false, error: "захват экрана не отвечает, пробую снова" }), 15000)),
           ]);
           if (!stop && res) {
-            if (res.ok && res.roles) noteScreenRoles(res.roles, !!r.connected);
+            if (res.ok && res.roles && res.onPickScreen) noteScreenRoles(res.roles, !!r.connected);
             if (!res.ok) setScreen({ status: res.idle ? "Дота не запущена, экран не читаю" : (res.error ?? "ошибка захвата"), found: 0 });
             else if (!res.onPickScreen) setScreen({ status: "экран пиков не виден", found: 0 });
             else {
@@ -439,7 +446,9 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             className={`rounded-2xl border-2 bg-panel p-3 cursor-pointer transition ${zone === z.key ? z.color : "border-border hover:border-border/80"}`}
             title={zone === z.key ? "Сюда попадают герои из сетки и текстового ввода" : "Нажми, чтобы добавлять героев сюда"}>
             <div className="flex items-center justify-between mb-2">
-              <span className={`text-sm font-semibold ${z.color.split(" ")[1]}`}>{z.label} <span className="text-muted font-normal">{picks[z.key].length + (z.key === "allies" && ownHero ? 1 : 0)}/{z.max}</span></span>
+              <span className={`text-sm font-semibold ${z.color.split(" ")[1]}`}>{z.label} <span className="text-muted font-normal">{picks[z.key].length + (z.key === "allies" && ownHero ? 1 : 0)}/{z.max}</span>
+                {z.key === "allies" && rolesHidden && <span className="ml-2 text-xs text-muted font-normal" title="Дота не показывает роли союзников на экране: фулпати или режим без выбора ролей. Задай роли у чипов сам, иначе угадаю по героям">роли на экране не видны</span>}
+              </span>
               {zone === z.key && <Chip tone="muted" className="text-foreground">добавляю сюда</Chip>}
             </div>
             <div className="flex flex-wrap gap-2 min-h-10 mb-2">
