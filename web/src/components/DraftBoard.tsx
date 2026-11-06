@@ -242,7 +242,11 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   useEffect(() => {
     if (!auto) return;
     let stop = false;
+    // цикл не должен умирать: любая ошибка внутри ловится, следующий шаг ставится всегда (в диагностике 4 ноября шесть
+    // матчей прошли без записи: опрос Доты остановился и не поднялся до перезапуска программы)
     const tick = async () => {
+      let delay = 3000;
+      try {
       const r = await fetch("/api/gsi/state").then((x) => x.json()).catch(() => null);
       if (stop) return;
       if (r) {
@@ -328,7 +332,12 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
       }
       // на стадии пиков опрашиваем экран раз в полсекунды: решение нужно за 30 секунд
       const picking = r?.connected && r.draft?.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION";
-      if (!stop) setTimeout(tick, picking ? 500 : r?.connected ? 1500 : 3000);
+      delay = picking ? 500 : r?.connected ? 1500 : 3000;
+      } catch (e) {
+        console.warn("[gsi] шаг опроса упал, продолжаю:", e);
+      } finally {
+        if (!stop) setTimeout(tick, delay);
+      }
     };
     tick();
     return () => { stop = true; };

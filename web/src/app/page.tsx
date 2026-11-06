@@ -1,11 +1,6 @@
-import { loadData } from "@/lib/data";
-import DraftBoard from "@/components/DraftBoard";
+export const dynamic = "force-dynamic";
 
-export const dynamic = "force-dynamic"; // данные читаются при каждом запросе, не при сборке
-
+/** Сам пикер рендерит оболочка (AppShell) на всех страницах и показывает его здесь: см. app/layout.tsx. */
 export default function Page() {
-  const { heroes, aliases } = loadData(null);
-  const sorted = [...heroes].sort((a, b) => a.name.localeCompare(b.name));
-  // пул аккаунта пикер берёт сам из /api/accounts: аккаунт меняется, когда Дота сообщает другой Steam ID
-  return <DraftBoard heroes={sorted} aliases={aliases} />;
+  return null;
 }

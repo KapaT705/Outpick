@@ -283,8 +283,8 @@ function applyOverlay() {
   if (overlayWanted()) {
     const w = createOverlay();
     w.setOpacity(overlaySettings().opacity);
-    if (!visible) w.showInactive(); // без фокуса: Дота не должна сворачиваться
-  } else if (visible) overlayWin.hide();
+    if (!visible) { w.showInactive(); console.log(`[overlay] показан (${overlayState.manual == null ? "авто" : "вручную"})`); } // без фокуса: Дота не должна сворачиваться
+  } else if (visible) { overlayWin.hide(); console.log("[overlay] скрыт"); }
   return !!(overlayWin && !overlayWin.isDestroyed() && overlayWin.isVisible());
 }
 ipcMain.on("overlay:push", (_e, data) => {

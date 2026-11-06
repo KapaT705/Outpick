@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import Onboarding from "@/components/Onboarding";
 import Crystals from "@/components/Crystals";
+import DraftBoard from "@/components/DraftBoard";
+import type { Hero } from "@/lib/types";
+import type { AliasMap } from "@/lib/aliases";
 import { usePathname } from "next/navigation";
 
 type UpdateEvent = { type: "checking" | "available" | "none" | "progress" | "downloaded" | "installing" | "error"; version?: string; current?: string; percent?: number; message?: string };
@@ -21,7 +24,7 @@ const NAV = [
   { href: "/settings", label: "Настройки" },
 ];
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({ children, heroes, aliases }: { children: React.ReactNode; heroes?: Hero[]; aliases?: AliasMap }) {
   const path = usePathname();
   const [version, setVersion] = useState<string | null>(null);
   const [upd, setUpd] = useState<UpdateEvent | null>(null);
@@ -85,7 +88,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <Onboarding />
       {path === "/" && <ReportReady />}
-      <div className="flex-1">{children}</div>
+      {heroes && aliases && <div className={path === "/" ? "flex-1" : "hidden"}><DraftBoard heroes={heroes} aliases={aliases} /></div>}
+      <div className={path === "/" ? "" : "flex-1"}>{children}</div>
       <Tooltips />
     </div>
   );

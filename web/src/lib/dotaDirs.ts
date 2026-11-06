@@ -52,6 +52,9 @@ function findDotaDirsNow(): string[] {
       for (const m of txt.matchAll(/"path"\s+"([^"]+)"/g)) libs.add(m[1].replace(/\\\\/g, "\\"));
     } catch {}
   }
-  return [...libs].map((l) => path.join(l, "steamapps", "common", "dota 2 beta", "game", "dota")).filter((p) => fs.existsSync(p));
+  const found = [...libs].map((l) => path.join(l, "steamapps", "common", "dota 2 beta", "game", "dota")).filter((p) => fs.existsSync(p));
+  // Windows не различает регистр: «d:\launcher» из реестра и «D:\Launcher» из libraryfolders.vdf - одна папка
+  const seen = new Set<string>();
+  return found.filter((p) => { const k = process.platform === "win32" ? p.toLowerCase() : p; if (seen.has(k)) return false; seen.add(k); return true; });
 }
 
