@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseHeroText, type AliasMap } from "@/lib/aliases";
 import type { Attr, Candidate, DraftStage, Hero, LaneOpponent, Pick, PoolOverride, PredictedPicks, Role, RoleGuess, TeamNeed } from "@/lib/types";
-import type { RecognizeResult } from "@/components/AppShell";
+import type { RecognizedRoles, RecognizeResult } from "@/components/AppShell";
 import { newTrackState, trackFrame } from "@/lib/draftTrack";
 import { Button, Card, CardTitle, Chip, Empty, Status } from "@/components/ui";
 import Crystals from "@/components/Crystals";
@@ -104,12 +104,35 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const [poolQuery, setPoolQuery] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
   const auto = true; // связь с Дотой работает всегда, когда программа открыта
-  const [gsi, setGsi] = useState<{ connected: boolean; phase: string; ownHeroId: number | null; matchId: string | null; team: "radiant" | "dire" | null; accountId: number | null } | null>(null);
+  const [gsi, setGsi] = useState<{ connected: boolean; phase: string; ownHeroId: number | null; matchId: string | null; team: "radiant" | "dire" | null; teamSlot: number | null; accountId: number | null } | null>(null);
   const [screen, setScreen] = useState<{ status: string; found: number } | null>(null);
   const [captureOn, setCaptureOn] = useState(true);
-  // своя сторона, когда Дота не на связи: переключатель убран (пользователь просил меньше кнопок), всегда Свет;
-  // при связи с Дотой сторону сообщает она сама. Старое сохранённое значение не читаем, иначе «Тьма» застревала навсегда
-  const side: "radiant" | "dire" = "radiant";
+  // своя сторона, когда Дота не на связи: переключатель убран (пользователь просил меньше кнопок), Свет, пока экран не
+  // показал строку ролей под другой командой; при связи с Дотой сторону сообщает она сама. Старое сохранённое значение
+  // не читаем, иначе «Тьма» застревала навсегда
+  const [sideSeen, setSideSeen] = useState<"radiant" | "dire" | null>(null);
+  const side: "radiant" | "dire" = sideSeen ?? "radiant";
+  // роли своей команды, прочитанные с экрана (значки под портретами в ранговом поиске по ролям), по номеру слота 0..4;
+  // принимаются после двух одинаковых чтений подряд и живут до нового матча или сброса драфта
+  const [screenRoles, setScreenRoles] = useState<Record<number, Role>>({});
+  const rolesSeen = useRef<Record<number, { role: Role; n: number }>>({});
+  const roleManual = useRef(false); // роль выбрана кликом после начала матча: экран её больше не меняет
+  const [roleFromScreen, setRoleFromScreen] = useState(false);
+  const noteScreenRoles = (rr: RecognizedRoles, connected: boolean) => {
+    if (!connected && rr.team) setSideSeen(rr.team);
+    const seen = rolesSeen.current;
+    for (const sl of rr.slots) {
+      if (!sl.role) continue;
+      const prev = seen[sl.idx];
+      seen[sl.idx] = prev && prev.role === sl.role ? { role: prev.role, n: prev.n + 1 } : { role: sl.role as Role, n: 1 };
+    }
+    setScreenRoles((cur) => {
+      const next = { ...cur }; let changed = false;
+      for (const [k, v] of Object.entries(seen)) if (v.n >= 2 && next[Number(k)] !== v.role) { next[Number(k)] = v.role; changed = true; }
+      return changed ? next : cur;
+    });
+  };
+  const forgetScreenRoles = () => { rolesSeen.current = {}; setScreenRoles({}); roleManual.current = false; setRoleFromScreen(false); };
   const [gsiRewritten, setGsiRewritten] = useState(false);
   useEffect(() => {
     fetch("/api/settings").then((r) => r.json()).then((c) => { setCaptureOn(c.screenCapture !== false); }).catch(() => {});
@@ -125,7 +148,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const lastKey = useRef<string>("");
 
   const take = async (heroId: number) => {
-    const body = { bans: picks.bans.map((p) => p.id), enemies: picks.enemies, allies: picks.allies, pool: override, role, chosenHeroId: heroId };
+    const body = { bans: picks.bans.map((p) => p.id), enemies: picks.enemies, allies, pool: override, role, chosenHeroId: heroId };
     const r = await fetch("/api/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((x) => x.json()).catch(() => null);
     if (r?.ok) { setSaved(byId.get(heroId)?.name ?? ""); setTimeout(() => setSaved(null), 4000); }
   };
@@ -143,6 +166,11 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   useEffect(() => { try { localStorage.setItem(PICKS_KEY, JSON.stringify({ at: Date.now(), picks })); } catch {} }, [picks]);
   const saveOverride = (o: PoolOverride) => { setOverride(o); storeOverride(role, o); };
   const setRole = (r: Role) => { setRoleState(r); setOverride(loadOverride(r)); try { localStorage.setItem(ROLE_KEY, String(r)); } catch {} };
+  // своя роль с экрана: значок под собственным портретом переключает роль пикера, пока она не выбрана кликом
+  const ownScreenRole = gsi?.connected && gsi.teamSlot != null ? screenRoles[gsi.teamSlot] ?? null : null;
+  useEffect(() => { if (ownScreenRole && ownScreenRole !== role && !roleManual.current) { setRole(ownScreenRole); setRoleFromScreen(true); } }, [ownScreenRole]); // eslint-disable-line react-hooks/exhaustive-deps
+  // союзники с ролями: заданная вручную, иначе прочитанная с экрана по номеру слота
+  const allies = useMemo(() => picks.allies.map((p) => (p.role || p.slot === undefined || !screenRoles[p.slot] ? p : { ...p, role: screenRoles[p.slot] })), [picks.allies, screenRoles]);
 
   const byId = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes]);
   // фокус в поиске без прокрутки: в узком окне поиск ниже полоски драфта, и autoFocus уводил страницу к нему
@@ -193,14 +221,14 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   useEffect(() => {
     const ctrl = new AbortController();
     setLoading(true);
-    const body = { bans: picks.bans.map((p) => p.id), enemies: picks.enemies, allies: picks.allies, pool: override, role, team: gsi?.connected ? (gsi.team ?? null) : side };
+    const body = { bans: picks.bans.map((p) => p.id), enemies: picks.enemies, allies, pool: override, role, team: gsi?.connected ? (gsi.team ?? null) : side };
     fetch("/api/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal })
       .then((r) => r.json())
       .then((d) => { setResult(d.candidates ?? []); setRoles({ enemies: d.enemyRoles ?? [], allies: d.allyRoles ?? [] }); setLaneOpp(d.laneOpponent ?? null); setPredicted(d.predicted ?? []); setStage(d.stage ?? "early"); setNeeds(d.needs ?? []); })
       .catch(() => {})
       .finally(() => { if (!ctrl.signal.aborted) setLoading(false); }); // отменённый запрос не гасит «считаю» у следующего
     return () => ctrl.abort();
-  }, [picks, override, role, acct?.current.id, gsi?.team, side]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [picks, screenRoles, override, role, acct?.current.id, gsi?.team, side]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addMany = (z: UserZone, ids: number[]) => {
     const max = ZONES.find((x) => x.key === z)!.max - (z === "allies" ? 1 : 0); // пятое место у союзников всегда твоё
@@ -226,7 +254,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const add = (id: number) => { const r = addMany(zone, [id]); noteSkipped(zone, [], r.dup, r.over); setQuery(""); };
   const remove = (z: UserZone, id: number) => setPicks({ ...picks, [z]: picks[z].filter((x) => x.id !== id) });
   const setPickRole = (z: UserZone, id: number, r: Role | null) => setPicks({ ...picks, [z]: picks[z].map((x) => (x.id === id ? { ...x, role: r } : x)) });
-  const reset = () => { setPicks({ bans: [], enemies: [], allies: [] }); setUnknown({ enemies: [], allies: [] }); };
+  const reset = () => { setPicks({ bans: [], enemies: [], allies: [] }); setUnknown({ enemies: [], allies: [] }); forgetScreenRoles(); };
 
   const submitQuick = (z: UserZone) => {
     const { ids, unknown: unk } = parseHeroText(quick[z], heroes, aliases);
@@ -235,8 +263,8 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
     setQuick({ ...quick, [z]: "" });
   };
 
-  const picksRef = useRef(picks);
-  useEffect(() => { picksRef.current = picks; }, [picks]);
+  const picksRef = useRef({ ...picks, allies });
+  useEffect(() => { picksRef.current = { ...picks, allies }; }, [picks, allies]);
   const lastMatch = useRef<string | null>(null);
 
   useEffect(() => {
@@ -251,7 +279,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
       if (stop) return;
       if (r) {
         const d = r.draft;
-        setGsi({ connected: r.connected, phase: d?.phase ?? "", ownHeroId: d?.ownHeroId ?? null, matchId: d?.matchId ?? null, team: d?.team ?? null, accountId: r.account?.id ?? null });
+        setGsi({ connected: r.connected, phase: d?.phase ?? "", ownHeroId: d?.ownHeroId ?? null, matchId: d?.matchId ?? null, team: d?.team ?? null, teamSlot: d?.teamSlot ?? null, accountId: r.account?.id ?? null });
         // Экран читаем только на стадии пиков и планирования, о которых сообщает Дота; в меню и в игре захвата нет.
         // Без связи с Дотой (GSI не приходит) читаем всегда, но реже.
         const CAPTURE_PHASES = ["DOTA_GAMERULES_STATE_HERO_SELECTION", "DOTA_GAMERULES_STATE_STRATEGY_TIME"];
@@ -266,6 +294,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             new Promise<RecognizeResult | null>((resolve) => setTimeout(() => resolve({ ok: false, error: "захват экрана не отвечает, пробую снова" }), 15000)),
           ]);
           if (!stop && res) {
+            if (res.ok && res.roles) noteScreenRoles(res.roles, !!r.connected);
             if (!res.ok) setScreen({ status: res.idle ? "Дота не запущена, экран не читаю" : (res.error ?? "ошибка захвата"), found: 0 });
             else if (!res.onPickScreen) setScreen({ status: "экран пиков не виден", found: 0 });
             else {
@@ -307,6 +336,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             lastKey.current = "";
             track.current = newTrackState();
             setPicks({ bans: [], enemies: [], allies: [] });
+            forgetScreenRoles();
           }
           // Дота отдаёт состав драфта только зрителям; если вдруг он есть, подхватываем
           if (d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" && d.enemies.length > 0) {
@@ -374,9 +404,10 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             <span className="hidden lg:inline text-xs text-muted">Моя роль</span>
             <div className="flex rounded-lg border border-border overflow-hidden text-xs" title="От роли зависят пул, базовые винрейты и вес матчапов по линии">
               {ROLES.map((r) => (
-                <button key={r} onClick={() => setRole(r)} title={ROLE_NAME[r]} className={`px-2.5 xl:px-3 py-1.5 ${role === r ? "bg-panel-2 text-foreground font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}><span className="xl:hidden">{ROLE_LABEL[r]}</span><span className="hidden xl:inline">{ROLE_FULL[r]}</span></button>
+                <button key={r} onClick={() => { roleManual.current = true; setRoleFromScreen(false); setRole(r); }} title={ROLE_NAME[r]} className={`px-2.5 xl:px-3 py-1.5 ${role === r ? "bg-panel-2 text-foreground font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}><span className="xl:hidden">{ROLE_LABEL[r]}</span><span className="hidden xl:inline">{ROLE_FULL[r]}</span></button>
               ))}
             </div>
+            {roleFromScreen && <span className="text-xs text-muted" title="Роль прочитана с экрана пиков: значок под твоим портретом. Нажми другую роль, если это не так">с экрана</span>}
           </div>
           <Button size="sm" onClick={() => setPoolOpen(true)} title={acct?.current.id ? `Аккаунт ${acct.current.name ?? acct.current.id}${acct.current.source === "gsi" ? " (сообщила Дота)" : acct.current.source === "steam" ? " (под ним запущен Steam)" : " (по умолчанию из настроек)"}${acct.current.known ? "" : ": пул не загружен, общий режим"}. Нажми, чтобы править пул.` : "Аккаунт не известен: общий режим без пула"}>
             Мой пул · {poolSet.size}{acct?.current.id ? <span className="text-muted"> · {acct.current.name ?? acct.current.id}</span> : null}
@@ -400,7 +431,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
 
       {gsiRewritten && <section className="rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm">Конфиг GSI в Доте указывал на старый порт, я переписал его. Перезапусти Доту, чтобы точка «Дота» загорелась.</section>}
 
-      <DraftBar byId={byId} allies={picks.allies} enemies={picks.enemies} ownHeroId={gsi?.ownHeroId ?? null} team={gsi?.connected ? (gsi.team ?? null) : side} role={role} guesses={roles} />
+      <DraftBar byId={byId} allies={allies} enemies={picks.enemies} ownHeroId={gsi?.ownHeroId ?? null} team={gsi?.connected ? (gsi.team ?? null) : side} role={role} guesses={roles} />
 
       <section className="grid gap-4 md:grid-cols-2">
         {ZONES.map((z) => (
@@ -417,16 +448,17 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
                   <img src={icon(ownHero.short)} alt="" className="h-6 w-6 rounded" />{ownHero.name}<Chip tone="accent">ты · {ROLE_LABEL[role]}</Chip>
                 </div>
               )}
-              {picks[z.key].map((p) => {
+              {(z.key === "allies" ? allies : picks[z.key]).map((p) => {
                 const h = byId.get(p.id)!;
                 const guess = roles[z.key].find((g) => g.id === p.id);
+                const fromScreen = z.key === "allies" && !!p.role && !picks.allies.find((x) => x.id === p.id)?.role;
                 return (
                   <div key={p.id} onClick={(e) => e.stopPropagation()} className={`flex h-8 items-center rounded-lg bg-panel-2 text-xs ${p.auto ? "outline outline-1 outline-dashed outline-ban/70" : ""}`}>
                     <button onClick={() => remove(z.key, p.id)} title={p.auto ? "Пропал из слота: его выбрали обе команды, и он забанен. Нажми, чтобы убрать, если это не так" : "Убрать"} className="flex h-8 items-center gap-1.5 rounded-l-lg pl-1 pr-2 hover:bg-border">
                       <img src={icon(h.short)} alt="" className="h-6 w-6 rounded" />{h.name}{p.auto && <span className="text-[10px] text-ban/80 ml-0.5">конфликт</span>}
                     </button>
                     {(
-                      <span className="relative h-8 border-l border-border rounded-r-lg bg-panel flex items-center" title={p.role ? `Роль задана тобой: ${ROLE_NAME[p.role]}` : guess ? `Предполагаю: ${ROLE_NAME[guess.role]} (${Math.round(guess.prob * 100)}%). Нажми, чтобы задать` : "Роль не известна: 1 керри, 2 мид, 3 офлейн, 4 и 5 саппорты. Нажми, чтобы задать"}>
+                      <span className="relative h-8 border-l border-border rounded-r-lg bg-panel flex items-center" title={p.role ? (fromScreen ? `Роль с экрана Доты: ${ROLE_NAME[p.role]}. Нажми, чтобы поправить` : `Роль задана тобой: ${ROLE_NAME[p.role]}`) : guess ? `Предполагаю: ${ROLE_NAME[guess.role]} (${Math.round(guess.prob * 100)}%). Нажми, чтобы задать` : "Роль не известна: 1 керри, 2 мид, 3 офлейн, 4 и 5 саппорты. Нажми, чтобы задать"}>
                         <select value={p.role ?? ""} onChange={(e) => setPickRole(z.key, p.id, e.target.value ? (Number(e.target.value) as Role) : null)}
                           className={`appearance-none h-8 w-11 bg-transparent pl-2 pr-4 outline-none cursor-pointer font-semibold ${p.role ? "text-foreground" : "text-muted"}`}>
                           <option value="">{guess ? `${ROLE_LABEL[guess.role]}?` : "?"}</option>

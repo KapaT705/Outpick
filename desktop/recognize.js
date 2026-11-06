@@ -111,30 +111,93 @@ function slotRects(W, H) {
 // Под слотами своей команды Дота пишет роль из очереди (иконка и текст, низ строки ≈ 140/U): полоса захвата
 // и сохранённые кадры включают её, чтобы по ним можно было собрать шаблоны иконок ролей и читать роли союзников.
 const ROLE_ROW_BOTTOM = 140 / U;
-// Иконка роли под слотом своей команды: строка «иконка + текст» начинается под левым краем слота. Геометрия
-// ориентировочная (по кадру 1280x720), уточняется по полному кадру 2560x1440; шаблоны пяти иконок:
-// desktop/assets/role-icons.json ({ "1": [...], ... }, нормализованные 12x12 RGB), без файла роли не читаются.
-const ROLE_ICON = { dx: 2 / U, y: 114 / U, w: 13 / U, h: 13 / U };
-const RW = 12, RH = 12, ROLE_MIN = 0.6, ROLE_MARGIN = 0.1;
+// Роли союзников: в ранговом поиске по ролям Дота пишет под слотами своей команды строку «иконка + подпись»
+// («Лёгкая», «Центр», «Сложная», «Поддержка», «Полная поддержка»). Строка центрируется под слотом, поэтому x иконки
+// зависит от длины подписи и языка: иконку ищем сдвигом окна по строке в пределах слота. У врагов строки нет.
+// Откалибровано по кадрам 2560x1440: иконка 14x15 px, y=143..157, левый край от -16 до +35 px от левого края слота.
+// Окно шаблона 15x17 с запасом в 1 px; шаблоны: desktop/assets/role-icons.json ({ "1": [[...]], ... }, нормализованные
+// 12x12 RGB, роли 1 керри (Лёгкая), 2 мид (Центр), 3 офлейн (Сложная), 4 саппорт (Поддержка), 5 (Полная поддержка)).
+// Геометрия в долях высоты кадра (как SLOT); from/to: полоса поиска в долях ширины слота от его левого края; dy: запас по вертикали в px.
+const ROLE_ICON = { y: 142 / 1440, w: 15 / 1440, h: 17 / 1440, from: -0.4, to: 0.5, dy: 1 };
+// Пороги: шаблоны одной роли из разных кадров совпадают на 0.93-1.0, разных ролей не выше 0.61 (4 и 5: похожие «руки»).
+const RW = 12, RH = 12, ROLE_MIN = 0.7, ROLE_MARGIN = 0.1;
 let roleTs = null; // { role: Float32Array[] }
-/** Прямоугольники иконок ролей под слотами команды. */
+/** Полосы поиска иконки роли под слотами команды: [{team, idx, x0, x1, y, w, h}]. */
 function roleRects(W, H, team) {
-  return slotRects(W, H).filter((r) => r.team === team).map((r) => ({ team: r.team, idx: r.idx, x: Math.round(r.x + ROLE_ICON.dx * H), y: Math.round(ROLE_ICON.y * H), w: Math.round(ROLE_ICON.w * H), h: Math.round(ROLE_ICON.h * H) }));
+  const cx = W / 2, sw = SLOT.w * H;
+  const mk = (off, idx) => { const left = cx + off * H; return { team, idx, x0: Math.round(left + ROLE_ICON.from * sw), x1: Math.round(left + ROLE_ICON.to * sw), y: Math.round(ROLE_ICON.y * H), w: Math.max(4, Math.round(ROLE_ICON.w * H)), h: Math.max(4, Math.round(ROLE_ICON.h * H)) }; };
+  const base = team === "dire" ? SLOT.dire0 : SLOT.radiant0;
+  return Array.from({ length: 5 }, (_, i) => mk(base + i * SLOT.pitch, i));
 }
 function loadRoleTemplates(file) {
   roleTs = null;
   try { const j = JSON.parse(fs.readFileSync(file, "utf8")); roleTs = {}; for (const [role, list] of Object.entries(j)) roleTs[role] = list.map((v) => Float32Array.from(v)); return Object.keys(roleTs).length; } catch { return 0; }
 }
-/** Роли союзников по иконкам под слотами: [{idx, role|null, score}]; пусто, если шаблонов нет. */
-function recognizeRoles(img, team) {
-  if (!roleTs) return [];
+/** Лучшие совпадения каждой роли в полосе слота: [{idx, scores: {role: s}, xs: {role: x}}]. */
+function scanRoleScores(img, team) {
   return roleRects(img.w, img.h, team).map((r) => {
-    const v = normalize(sample(img, r.x, r.y, r.w, r.h, RW, RH));
-    let best = null, second = null;
-    for (const [role, list] of Object.entries(roleTs)) { let s = -1; for (const t of list) s = Math.max(s, ncc(v, t)); if (!best || s > best.s) { second = best; best = { role: Number(role), s }; } else if (!second || s > second.s) second = { role: Number(role), s }; }
-    const ok = best && best.s >= ROLE_MIN && best.s - (second?.s ?? 0) >= ROLE_MARGIN;
-    return { idx: r.idx, role: ok ? best.role : null, score: +(best?.s ?? 0).toFixed(2) };
+    const scores = {}, xs = {};
+    for (let x = r.x0; x <= r.x1; x++) for (let dy = -ROLE_ICON.dy; dy <= ROLE_ICON.dy; dy++) {
+      if (x < 0 || x + r.w > img.w || r.y + dy < 0 || r.y + dy + r.h > img.h) continue;
+      const v = normalize(sample(img, x, r.y + dy, r.w, r.h, RW, RH));
+      for (const [role, list] of Object.entries(roleTs)) { let s = -1; for (const t of list) s = Math.max(s, ncc(v, t)); if (!(role in scores) || s > scores[role]) { scores[role] = s; xs[role] = x; } }
+    }
+    return { idx: r.idx, scores, xs };
   });
+}
+/**
+ * Роли по оценкам слотов: сначала слоты, где лучшая роль уверенно впереди второй; затем остальные, но только среди
+ * ещё не занятых ролей (в команде роли не повторяются); в конце оставшиеся слоты раскладываем по оставшимся ролям так,
+ * чтобы сумма оценок была наибольшей, если эта раскладка заметно лучше следующей (так различаются похожие 4 и 5).
+ */
+function resolveRoles(scanned) {
+  const out = scanned.map((s) => ({ idx: s.idx, role: null, score: 0, second: 0, x: null }));
+  const taken = new Set();
+  const ranked = (s, allowed) => Object.entries(s.scores).filter(([r]) => allowed(Number(r))).map(([r, v]) => ({ role: Number(r), s: v })).sort((a, b) => b.s - a.s);
+  const setRole = (i, role, score, second) => { out[i].role = role; out[i].score = +score.toFixed(2); out[i].second = +(second ?? 0).toFixed(2); out[i].x = scanned[i].xs[role] ?? null; taken.add(role); };
+  let changed = true;
+  while (changed) {
+    changed = false;
+    scanned.forEach((s, i) => {
+      if (out[i].role) return;
+      const r = ranked(s, (role) => !taken.has(role));
+      if (r[0] && r[0].s >= ROLE_MIN && r[0].s - (r[1]?.s ?? 0) >= ROLE_MARGIN) { setRole(i, r[0].role, r[0].s, r[1]?.s); changed = true; }
+    });
+  }
+  const left = scanned.map((s, i) => i).filter((i) => !out[i].role && Object.values(scanned[i].scores).some((v) => v >= ROLE_MIN));
+  const freeRoles = Object.keys(roleTs).map(Number).filter((r) => !taken.has(r));
+  if (left.length >= 2 && left.length <= freeRoles.length) {
+    // перебор раскладок оставшихся слотов по свободным ролям (не больше 5! = 120): лучшая и следующая за ней
+    let best = null, second = null;
+    const used = new Set(), cur = [];
+    const rec = (k, total) => {
+      if (k === left.length) { if (!best || total > best.total) { second = best; best = { total, roles: [...cur] }; } else if (!second || total > second.total) second = { total, roles: [...cur] }; return; }
+      for (const r of freeRoles) { if (used.has(r)) continue; const v = scanned[left[k]].scores[r] ?? -1; if (v < ROLE_MIN) continue; used.add(r); cur.push(r); rec(k + 1, total + v); cur.pop(); used.delete(r); }
+    };
+    rec(0, 0);
+    if (best && best.total - (second?.total ?? 0) >= ROLE_MARGIN) left.forEach((i, k) => setRole(i, best.roles[k], scanned[i].scores[best.roles[k]], second ? scanned[i].scores[second.roles[k]] : 0));
+  }
+  // для диагностики: у неразобранных слотов показываем лучшую и вторую оценку
+  scanned.forEach((s, i) => { if (!out[i].role) { const r = ranked(s, () => true); out[i].score = +(r[0]?.s ?? 0).toFixed(2); out[i].second = +(r[1]?.s ?? 0).toFixed(2); } });
+  return out;
+}
+/** Роли одной команды по иконкам под слотами: [{idx, role|null, score, second, x}]. */
+function scanRoles(img, team) { return resolveRoles(scanRoleScores(img, team)); }
+/**
+ * Роли союзников с экрана. team известна (GSI): читаем её строку; иначе проверяем обе команды и берём ту, где иконки
+ * нашлись (так без связи с Дотой узнаём и свою сторону). Возвращает { team, slots } или null, если шаблонов нет.
+ */
+function recognizeRoles(img, team) {
+  if (!roleTs) return null;
+  if (team === "radiant" || team === "dire") return { team, slots: scanRoles(img, team) };
+  const both = ["radiant", "dire"].map((t) => ({ team: t, slots: scanRoles(img, t) }));
+  const hits = (r) => r.slots.filter((s) => s.role).length;
+  both.sort((a, b) => hits(b) - hits(a));
+  if (hits(both[0]) === 0) return { team: null, slots: both[0].slots.map((s) => ({ ...s, role: null })) };
+  // одна и та же роль у двух игроков невозможна: если так вышло, стороне не верим
+  const roles = both[0].slots.map((s) => s.role).filter(Boolean);
+  if (new Set(roles).size !== roles.length || hits(both[1]) > 0) return { team: null, slots: both[0].slots.map((s) => ({ ...s, role: null })) };
+  return both[0];
 }
 /** Высота верхней полосы кадра: слоты и строка ролей под ними (в пикселях кадра). */
 function stripHeight(H) { return Math.round(ROLE_ROW_BOTTOM * H + 12); }
@@ -187,4 +250,4 @@ function recognize(img) {
   });
 }
 
-module.exports = { loadTemplates, loadLearned, addLearned, learnedCount, recognize, scoreVector, slotRects, stripHeight, sample, normalize, ncc, TW, TH, roleRects, loadRoleTemplates, recognizeRoles, RW, RH };
+module.exports = { loadTemplates, loadLearned, addLearned, learnedCount, recognize, scoreVector, slotRects, stripHeight, sample, normalize, ncc, TW, TH, roleRects, loadRoleTemplates, recognizeRoles, scanRoles, RW, RH };

@@ -202,6 +202,7 @@ export default function SettingsForm() {
                 <div key={team} className="rounded-lg bg-panel-2 p-2">
                   <div className={`font-semibold mb-1 ${team === "radiant" ? "text-good" : "text-bad"}`}>{team === "radiant" ? "Свет (слева)" : "Тьма (справа)"}</div>
                   {dbg.slots?.filter((x) => x.team === team).map((sl) => <div key={sl.idx} className={sl.heroId ? "text-foreground" : "text-muted"}>{sl.idx + 1}. {sl.heroId ? `${sl.name} · ${sl.score}` : sl.empty ? "пусто" : `не уверен${sl.score != null ? ` · ${sl.score}` : ""}`}</div>)}
+                  {dbg.roles?.team === team && <div className="mt-1 text-foreground" title="Роли по значкам под портретами своей команды (ранговый поиск по ролям): 1 керри, 2 мид, 3 офлейн, 4 и 5 саппорты">роли с экрана: {dbg.roles.slots.map((x) => x.role ?? "?").join(" · ")}</div>}
                 </div>
               ))}
             </div>

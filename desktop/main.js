@@ -313,7 +313,7 @@ function ensureTemplates() {
   const resources = isDev ? __dirname : process.resourcesPath;
   const dataDir = isDev ? path.join(__dirname, "..", "data") : path.join(resources, "data");
   const assets = isDev ? path.join(__dirname, "assets") : path.join(resources, "assets");
-  try { recog.loadTemplates(path.join(dataDir, "heroes.json"), path.join(assets, "heroes"), [path.join(assets, "empty-slot.json"), path.join(assets, "empty-slot-2.json")]); templatesLoaded = true; const n = frames.loadLearned(); if (n) console.log(`[recog] выученных портретов: ${n}`); } catch (e) { console.error("[recog] templates:", e.message); }
+  try { recog.loadTemplates(path.join(dataDir, "heroes.json"), path.join(assets, "heroes"), [path.join(assets, "empty-slot.json"), path.join(assets, "empty-slot-2.json")]); templatesLoaded = true; const n = frames.loadLearned(); if (n) console.log(`[recog] выученных портретов: ${n}`); const nr = recog.loadRoleTemplates(path.join(assets, "role-icons.json")); console.log(nr ? `[recog] шаблонов иконок ролей: ${nr}` : "[recog] шаблонов иконок ролей нет: роли союзников не читаются"); } catch (e) { console.error("[recog] templates:", e.message); }
   return templatesLoaded;
 }
 function frameIsBlack(bitmap, w, h) {
@@ -359,10 +359,10 @@ try { require("node:v8").setFlagsFromString("--expose-gc"); gcFn = require("node
 console.log(`[mem] gc: ${typeof gcFn === "function" ? "есть" : "нет"}`);
 const gcNow = () => { try { gcFn?.(); } catch {} };
 // сводка цикла чтения экрана раз в минуту (только когда были вызовы): по ней видно, работал ли цикл во время пиков
-const loop = { calls: 0, idle: 0, captured: 0, onPick: 0, saved: 0, errors: 0, lastErr: null, lastCtx: null, lastState: null };
+const loop = { calls: 0, idle: 0, captured: 0, onPick: 0, saved: 0, errors: 0, lastErr: null, lastCtx: null, lastState: null, lastRoles: null };
 setInterval(() => {
   if (!loop.calls) return;
-  console.log(`[loop] вызовов=${loop.calls} дота_закрыта=${loop.idle} кадров=${loop.captured} экран_пиков=${loop.onPick} сохранено=${loop.saved} ошибок=${loop.errors}${loop.lastErr ? ` последняя: ${loop.lastErr}` : ""} ctx=${JSON.stringify(loop.lastCtx)} слоты=${loop.lastState ?? "-"}`);
+  console.log(`[loop] вызовов=${loop.calls} дота_закрыта=${loop.idle} кадров=${loop.captured} экран_пиков=${loop.onPick} сохранено=${loop.saved} ошибок=${loop.errors}${loop.lastErr ? ` последняя: ${loop.lastErr}` : ""} ctx=${JSON.stringify(loop.lastCtx)} слоты=${loop.lastState ?? "-"} роли=${loop.lastRoles ?? "-"}`);
   Object.assign(loop, { calls: 0, idle: 0, captured: 0, onPick: 0, saved: 0, errors: 0, lastErr: null });
 }, 60_000);
 // --- кадры приходят из окна: страница держит видеопоток экрана и присылает верхнюю полосу RGBA ---
@@ -403,9 +403,13 @@ ipcMain.handle("draft:recognizeFrame", async (_e, ctx, f) => {
     // по ним потом видно, как выглядит экран, который программа не поняла
     const inPicks = c.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION";
     if (onPickScreen) { loop.onPick++; preferredScreen = frame.id; }
-    if (onPickScreen || inPicks) { if (frames.remember(frame, slots, c)) loop.saved++; }
+    // роли союзников по строке под слотами своей команды; сторона известна только при связи с Дотой (phase приходит от GSI),
+    // иначе проверяются обе команды и сторона определяется по тому, где нашлись иконки
+    const roles = onPickScreen || inPicks ? recog.recognizeRoles(frame, c.phase ? c.team : null) : null;
+    if (onPickScreen || inPicks) { if (frames.remember(frame, slots, c, roles)) loop.saved++; }
     loop.lastState = slots.map((x) => (x.empty ? "E" : x.heroId ?? (x.flat ? "F" : "U"))).join(",");
-    return { ok: true, source: frame.name, w: frame.w, h: frame.h, ms: Date.now() - t, onPickScreen, slots: slotsOut(slots) };
+    loop.lastRoles = roles ? `${roles.team ?? "?"}:${roles.slots.map((x) => x.role ?? "-").join("")}` : null;
+    return { ok: true, source: frame.name, w: frame.w, h: frame.h, ms: Date.now() - t, onPickScreen, slots: slotsOut(slots), roles };
   } catch (e) { loop.errors++; loop.lastErr = String(e?.message ?? e); return { ok: false, error: String(e?.message ?? e) }; }
 });
 function stripDataUrl(frame) {
@@ -419,9 +423,10 @@ ipcMain.handle("draft:debug", async (_e, f) => {
     const frame = frameFromRenderer(f);
     const slots = recog.recognize(frame);
     const onPickScreen = slots.filter((x) => x.empty || x.heroId).length >= 4;
-    if (onPickScreen) frames.remember(frame, slots, {});
+    const roles = recog.recognizeRoles(frame, null);
+    if (onPickScreen) frames.remember(frame, slots, {}, roles);
     const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 0, height: 0 } }).catch(() => []);
-    return { ok: true, source: frame.name, w: frame.w, h: frame.h, stripH: frame.stripH, scale: 1, image: stripDataUrl(frame), slots, onPickScreen, sources: sources.map((x) => x.name).slice(0, 12), dotaRunning: await dotaRunning() };
+    return { ok: true, source: frame.name, w: frame.w, h: frame.h, stripH: frame.stripH, scale: 1, image: stripDataUrl(frame), slots, roles, onPickScreen, sources: sources.map((x) => x.name).slice(0, 12), dotaRunning: await dotaRunning() };
   } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
 });
 async function serverJson(pathname) {

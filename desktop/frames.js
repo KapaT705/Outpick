@@ -49,8 +49,8 @@ function markMatch(matchId) {
   try { fs.rmSync(dir, { recursive: true, force: true }); fs.renameSync(session.dir, dir); session.dir = dir; session.key = id; session.matchId = id; return true; } catch { return false; }
 }
 
-/** frame: {name,w,h,image(NativeImage)}; slots: результат recognize; ctx: {matchId, team, slot}. */
-function remember(frame, slots, ctx = {}) {
+/** frame: {name,w,h,image(NativeImage)}; slots: результат recognize; ctx: {matchId, team, slot}; roles: результат recognizeRoles (пишутся в json кадра). */
+function remember(frame, slots, ctx = {}, roles = null) {
   if (!root) return false;
   const now = Date.now();
   if (!session || now - session.lastAt > SESSION_GAP_MS || (ctx.matchId && session.matchId && String(ctx.matchId) !== session.matchId)) startSession(ctx.matchId, now);
@@ -78,7 +78,7 @@ function remember(frame, slots, ctx = {}) {
     }
     fs.writeFileSync(path.join(session.dir, `frame-${n}-strip.png`), stripPng);
     if (jpg) fs.writeFileSync(path.join(session.dir, `frame-${n}.jpg`), jpg);
-    fs.writeFileSync(path.join(session.dir, `frame-${n}.json`), JSON.stringify({ at: new Date(now).toISOString(), source: frame.name, w: frame.w, h: frame.h, stripH, matchId: session.matchId, ctx, slots }, null, 1));
+    fs.writeFileSync(path.join(session.dir, `frame-${n}.json`), JSON.stringify({ at: new Date(now).toISOString(), source: frame.name, w: frame.w, h: frame.h, stripH, matchId: session.matchId, ctx, slots, roles }, null, 1));
     session.stateKey = key; session.lastSavedAt = now;
     if (n > MAX_FRAMES) for (const suf of ["-strip.png", ".jpg", ".json"]) fs.rmSync(path.join(session.dir, `frame-${n - MAX_FRAMES}${suf}`), { force: true });
     return true;
