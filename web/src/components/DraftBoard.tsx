@@ -7,6 +7,7 @@ import type { RecognizedRoles, RecognizeResult } from "@/components/AppShell";
 import { newTrackState, trackFrame } from "@/lib/draftTrack";
 import { Button, Card, CardTitle, Chip, Empty, Status } from "@/components/ui";
 import Crystals from "@/components/Crystals";
+import PreGame from "@/components/PreGame";
 
 // зона банов на экране не нужна: в ранговом All Pick баны заданы заранее списком и в драфте их не видно.
 // Список picks.bans живёт только внутри: туда попадают герои-конфликты (выбраны обеими командами, пропали из слота),
@@ -103,6 +104,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   }, [poolOpen]);
   const [poolQuery, setPoolQuery] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
+  const [chosenId, setChosenId] = useState<number | null>(null); // герой, взятый кнопкой «Беру» (без связи с Дотой): для прогноза на игру
   const auto = true; // связь с Дотой работает всегда, когда программа открыта
   const [gsi, setGsi] = useState<{ connected: boolean; phase: string; ownHeroId: number | null; matchId: string | null; team: "radiant" | "dire" | null; teamSlot: number | null; accountId: number | null } | null>(null);
   const [screen, setScreen] = useState<{ status: string; found: number } | null>(null);
@@ -157,8 +159,9 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const take = async (heroId: number) => {
     const body = { bans: picks.bans.map((p) => p.id), enemies: picks.enemies, allies, pool: override, role, chosenHeroId: heroId };
     const r = await fetch("/api/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((x) => x.json()).catch(() => null);
-    if (r?.ok) { setSaved(byId.get(heroId)?.name ?? ""); setTimeout(() => setSaved(null), 4000); }
+    if (r?.ok) { setSaved(byId.get(heroId)?.name ?? ""); setChosenId(heroId); setTimeout(() => setSaved(null), 4000); }
   };
+  useEffect(() => { if (picks.enemies.length === 0) setChosenId(null); }, [picks.enemies.length]); // новый драфт: прошлый пик забыт
 
   useEffect(() => {
     let r: Role = 2;
@@ -261,7 +264,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const add = (id: number) => { const r = addMany(zone, [id]); noteSkipped(zone, [], r.dup, r.over); setQuery(""); };
   const remove = (z: UserZone, id: number) => setPicks({ ...picks, [z]: picks[z].filter((x) => x.id !== id) });
   const setPickRole = (z: UserZone, id: number, r: Role | null) => setPicks({ ...picks, [z]: picks[z].map((x) => (x.id === id ? { ...x, role: r } : x)) });
-  const reset = () => { setPicks({ bans: [], enemies: [], allies: [] }); setUnknown({ enemies: [], allies: [] }); forgetScreenRoles(); };
+  const reset = () => { setPicks({ bans: [], enemies: [], allies: [] }); setUnknown({ enemies: [], allies: [] }); setChosenId(null); forgetScreenRoles(); };
 
   const submitQuick = (z: UserZone) => {
     const { ids, unknown: unk } = parseHeroText(quick[z], heroes, aliases);
@@ -533,6 +536,9 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
 
         {/* на узком окне (второй монитор) советы выше сетки героев: до них не нужно крутить */}
         <section className="flex flex-col gap-4 min-w-0 order-first lg:order-none">
+          {/* драфт полный и твой герой известен: прогноз на игру, команда и линия */}
+          {(() => { const myId = ownHero?.id ?? chosenId; const others = allies.filter((p) => p.id !== myId); return myId && picks.enemies.length === 5 && others.length >= 4
+            ? <PreGame heroId={myId} role={role} enemies={picks.enemies} allies={others} team={gsi?.team ?? null} byId={byId} /> : null; })()}
           {(picks.enemies.length > 0 || picks.allies.length > 0) && (
             <Card className="py-2.5 text-xs flex flex-wrap items-center gap-x-5 gap-y-2">
               <span className="inline-flex items-center gap-1.5" title={`Очередь пика по числу известных пиков врага. ${stage === "early" ? "Рано: враги ещё ответят контрпиком, пикер придерживает героев, которых легко законтрить." : stage === "mid" ? "Середина: риск контрпика учитывается наполовину." : "Поздно: контрпикуем мы, матчапы в полный вес."}`}>

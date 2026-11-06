@@ -102,6 +102,9 @@ function Header({ r, byId, draft }: { r: MatchReport; byId: Map<number, Hero>; d
         <span>План героя: {heroName(r.heroId, byId).name} {r.plan.text}.</span>
         <Hint align="right" text={r.plan.manual ? "По плану героя отчёт решает, какие смерти стоили дорого, а какие были ценой драки. План для этого героя на миде записан вручную." : "По плану героя отчёт решает, какие смерти стоили дорого, а какие были ценой драки. Для этого героя и позиции своей строки нет, план взят по позиции и типу героя."} />
       </div>}
+      {draft?.pregame && (draft.pregame.team || draft.pregame.lane) && (
+        <div className="text-xs text-muted">Прогноз до игры: {[draft.pregame.team ? `${draft.pregame.team.words} (команда ${draft.pregame.team.pct}%)` : "", draft.pregame.lane ? `${draft.pregame.lane.words} (${draft.pregame.lane.pct}%)` : ""].filter(Boolean).join(", ")}.</div>
+      )}
       {draft && (
         <details className="text-xs text-muted group">
           <summary className="cursor-pointer list-none flex items-center gap-1.5 w-fit hover:text-foreground">

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { evaluateDraft } from "@/lib/draft";
+import { buildPregame } from "@/lib/pregame";
 import { appendLog, readLog, writeLog, type DraftLog, type LogRec } from "@/lib/log";
 import type { DraftInput, Pick, PoolOverride, Role } from "@/lib/types";
 import { currentAccount } from "@/lib/accounts";
@@ -42,6 +43,8 @@ export async function POST(req: Request) {
     topPool: candidates.map((c, i) => ({ c, i })).filter((x) => x.c.poolStatus !== "outside").slice(0, 5).map((x) => rec(x.i)),
     topAll: candidates.slice(0, 5).map((_, i) => rec(i)),
   };
+  // прогноз на игру по полному драфту; Stratz может тормозить, дольше 4 секунд запись не ждёт
+  if (input.enemies.length === 5 && input.allies.length >= 4) item.pregame = await Promise.race([buildPregame(input, chosenHeroId, account.id).catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), 4000))]);
   // Один матч - одна запись. Автозапись (по номеру матча из Доты) и ручное «взять» в том же матче сливаются:
   // запись с тем же номером матча или свежая (до 20 минут) с тем же героем заменяется, причём состав берётся
   // более полный, а номер матча и время первой записи сохраняются.

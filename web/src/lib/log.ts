@@ -5,6 +5,7 @@ import { readJsonOrAside, writeJsonAtomic } from "./fsx";
 import type { Pick, Role } from "./types";
 import type { MatchDetails } from "./matchDetails";
 import type { Bench } from "./bench";
+import type { Pregame } from "./pregame";
 
 export type LogRec = {
   heroId: number;
@@ -33,6 +34,7 @@ export type DraftLog = {
   chosen: LogRec | null;          // как оценивался выбранный герой
   topPool: LogRec[];              // топ-5 из пула на момент выбора
   topAll: LogRec[];               // топ-5 общий
+  pregame?: Pregame | null;       // прогноз на игру по полному драфту (команда 5 на 5, линия)
   // заполняется синхронизацией со Stratz
   triedAt?: number;               // когда в последний раз искали матч (для автосинхронизации)
   matchId?: number;
