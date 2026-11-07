@@ -4,6 +4,7 @@
 // рядом с серединой и подаются словами: «драфт ровный», «линия тяжёлая».
 import { evaluateDraft } from "./draft";
 import { fetchLaneOutcomes, laneRate } from "./laneStats";
+import { LANE_ENEMIES, LANE_PARTNER as PARTNER } from "./lanes";
 import type { DraftInput, Pick, Role, RoleGuess } from "./types";
 
 export type Pregame = {
@@ -13,9 +14,6 @@ export type Pregame = {
   laneNote: string | null; // почему линии нет: роли не ясны, данных нет
 };
 
-/** Союзники по линии для роли: мид один, край парой. */
-const PARTNER: Record<Role, Role | null> = { 1: 5, 2: null, 3: 4, 4: 3, 5: 1 };
-const LANE_ENEMIES: Record<Role, Role[]> = { 1: [3, 4], 2: [2], 3: [1, 5], 4: [1, 5], 5: [3, 4] };
 
 export const teamWords = (pct: number) => (pct >= 55 ? "драфт за вас" : pct <= 45 ? "драфт против вас" : "драфт ровный");
 export const laneWords = (pct: number) => (pct >= 58 ? "линия должна зайти" : pct <= 42 ? "линия тяжёлая" : "линия ровная");
