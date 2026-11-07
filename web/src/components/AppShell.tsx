@@ -127,16 +127,28 @@ function ReportReady() {
 }
 
 /** Свои подсказки вместо системных title: в Electron на маке системные появляются с задержкой и рисуются в углу окна.
- *  При наведении title переносится в data-tip (системная больше не всплывает), текст показывается под элементом. */
+ *  При наведении title переносится в data-tip (системная больше не всплывает), текст показывается под элементом.
+ *  Переносится title и у всех предков элемента: иначе системная подсказка всплывала у родителя с title (строка
+ *  «Враги ещё возьмут» вокруг плашки), и две подсказки ложились друг на друга. Элемент с data-tip остаётся текущим,
+ *  пока курсор внутри него, поэтому переход на текст внутри плашки не переключает подсказку на родителя. */
 function Tooltips() {
   const [tip, setTip] = useState<{ text: string; x: number; y: number; above: boolean } | null>(null);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let cur: Element | null = null;   // элемент под курсором, у которого title снят на время наведения
+    let cur: Element | null = null;   // элемент под курсором, чья подсказка показывается
     let curText = "";                 // его текст подсказки
-    // title снимается только пока курсор на элементе (иначе всплывёт системная подсказка) и возвращается при уходе:
-    // постоянной копии нет, поэтому когда React убирает title (строка раскрыта), подсказка тоже исчезает
-    const restore = () => { if (cur && cur.isConnected && curText && !cur.hasAttribute("title")) cur.setAttribute("title", curText); };
+    let held: Element[] = [];         // он и предки, у которых title на время наведения перенесён в data-tip
+    // title возвращается при уходе курсора; если React за это время поставил новый title, он важнее
+    const hold = (el: Element) => {
+      for (let a: Element | null = el; a; a = a.parentElement) {
+        const t = a.getAttribute("title");
+        if (t != null) { a.setAttribute("data-tip", t); a.removeAttribute("title"); held.push(a); }
+      }
+    };
+    const restore = () => {
+      for (const a of held) if (a.isConnected && a.hasAttribute("data-tip")) { if (!a.hasAttribute("title")) a.setAttribute("title", a.getAttribute("data-tip") ?? ""); a.removeAttribute("data-tip"); }
+      held = [];
+    };
     const hide = () => { clearTimeout(timer); setTip(null); };
     const leave = () => { hide(); restore(); cur = null; curText = ""; };
     const show = () => {
@@ -146,13 +158,13 @@ function Tooltips() {
       setTip({ text: curText, x: Math.min(Math.max(r.left + r.width / 2, 170), window.innerWidth - 170), y: above ? r.top - 6 : r.bottom + 6, above });
     };
     const over = (e: MouseEvent) => {
-      const el = (e.target as Element | null)?.closest?.("[title]");
+      const el = (e.target as Element | null)?.closest?.("[title], [data-tip]");
       if (el === cur) return;
       if (cur) leave();
       if (!el) return;
-      const t = el.getAttribute("title") ?? "";
+      const t = el.getAttribute("title") ?? el.getAttribute("data-tip") ?? "";
       if (!t.trim()) return;
-      cur = el; curText = t; el.removeAttribute("title");
+      cur = el; curText = t; hold(el);
       timer = setTimeout(show, 350);
     };
     const out = (e: MouseEvent) => {
@@ -163,7 +175,7 @@ function Tooltips() {
     document.addEventListener("mouseout", out);
     document.addEventListener("mousedown", hide, true); // клик: подсказка прячется, title вернётся при уходе курсора
     document.addEventListener("scroll", hide, true);
-    return () => { document.removeEventListener("mouseover", over); document.removeEventListener("mouseout", out); document.removeEventListener("mousedown", hide, true); document.removeEventListener("scroll", hide, true); clearTimeout(timer); };
+    return () => { document.removeEventListener("mouseover", over); document.removeEventListener("mouseout", out); document.removeEventListener("mousedown", hide, true); document.removeEventListener("scroll", hide, true); clearTimeout(timer); restore(); };
   }, []);
   if (!tip) return null;
   return (

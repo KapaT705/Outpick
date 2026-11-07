@@ -13,19 +13,17 @@
 <body><div class="wrap">
   <img src="icon.png" alt="" width="96" height="96" style="border-radius:22px">
   <div class="name">Outpick</div>
-  <svg width="236" height="46" viewBox="0 0 236 46" id="c"></svg>
+  <svg width="236" height="34" viewBox="0 0 236 34" id="c"></svg>
   <div id="t">запускаю…</div>
 </div>
 <script>
-  // пять кристаллов на гнёздах, волна слева направо, пока поднимается сервер
-  const svg = document.getElementById("c"); const W = 34, G = 16.5, H = 46;
+  // пять ромбиков-кристаллов без подставок, волна слева направо, пока поднимается сервер (как Crystals.tsx)
+  const svg = document.getElementById("c"); const W = 34, G = 16.5, H = 34;
   for (let i = 0; i < 5; i++) {
-    const x = i * (W + G), cx = x + W / 2, top = H * .04, mid = H * .52, bottom = H * .74;
+    const x = i * (W + G), cx = x + W / 2, top = H * .02, side = H * .58, bottom = H * .98, face = H * .63;
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g"); g.style.animationDelay = (i * .18) + "s";
-    g.innerHTML = `<path d="M${x + W * .1} ${bottom} L${x + W * .9} ${bottom} L${x + W} ${H} L${x} ${H} Z" fill="#2e2a34"/>` +
-      `<path d="M${x + W * .22} ${bottom} L${cx} ${bottom - H * .1} L${x + W * .78} ${bottom}" fill="#221f26"/>` +
-      `<path class="body" style="animation-delay:${i * .18}s" d="M${cx} ${top} L${x + W * .92} ${mid - H * .06} L${cx} ${bottom + H * .02} L${x + W * .08} ${mid - H * .06} Z"/>` +
-      `<path class="face" style="animation-delay:${i * .18}s" d="M${cx} ${top} L${x + W * .92} ${mid - H * .06} L${cx} ${mid - H * .02} Z"/>`;
+    g.innerHTML = `<path class="body" style="animation-delay:${i * .18}s" d="M${cx} ${top} L${x + W * .92} ${side} L${cx} ${bottom} L${x + W * .08} ${side} Z"/>` +
+      `<path class="face" style="animation-delay:${i * .18}s" d="M${cx} ${top} L${x + W * .92} ${side} L${cx} ${face} Z"/>`;
     svg.appendChild(g);
   }
   const msgs = ["запускаю…", "поднимаю сервер…", "читаю данные…", "ещё секунду…"]; let k = 0;

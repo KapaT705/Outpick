@@ -52,13 +52,12 @@ export function Status({ ok, label, title, pending }: { ok: boolean; label: stri
 
 /** Погасший кристалл из знака Outpick: для пустых состояний. */
 export function CrystalMark({ size = 28, className = "" }: { size?: number; className?: string }) {
-  const w = size, h = size * 1.35;
+  // только ромбик, без подставки (как индикатор загрузки, Crystals.tsx)
+  const w = size, h = size;
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className={`shrink-0 ${className}`} aria-hidden="true">
-      <path d={`M${w * 0.1} ${h * 0.74} L${w * 0.9} ${h * 0.74} L${w} ${h} L0 ${h} Z`} fill="#2d2933" />
-      <path d={`M${w * 0.22} ${h * 0.74} L${w / 2} ${h * 0.64} L${w * 0.78} ${h * 0.74}`} fill="#211e25" />
-      <path d={`M${w / 2} ${h * 0.04} L${w * 0.92} ${h * 0.46} L${w / 2} ${h * 0.76} L${w * 0.08} ${h * 0.46} Z`} fill="#3a3540" />
-      <path d={`M${w / 2} ${h * 0.04} L${w * 0.92} ${h * 0.46} L${w / 2} ${h * 0.5} Z`} fill="#4a4452" />
+      <path d={`M${w / 2} ${h * 0.02} L${w * 0.92} ${h * 0.58} L${w / 2} ${h * 0.98} L${w * 0.08} ${h * 0.58} Z`} fill="#3a3540" />
+      <path d={`M${w / 2} ${h * 0.02} L${w * 0.92} ${h * 0.58} L${w / 2} ${h * 0.63} Z`} fill="#4a4452" />
     </svg>
   );
 }
