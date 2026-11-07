@@ -8,19 +8,20 @@ import type { DraftInput, Pick, Role, RoleGuess } from "./types";
 
 export type Pregame = {
   team: { pct: number; words: string } | null;
-  lane: { kind: "1v1" | "2v2"; me: { id: number; role: Role }[]; them: { id: number; role: Role }[]; pct: number; words: string; lanes: number } | null;
+  // guessed: кто на линии, хотя бы у одного героя угадано по героям, а не задано у чипа (игрок поправит, если не так)
+  lane: { kind: "1v1" | "2v2"; me: { id: number; role: Role }[]; them: { id: number; role: Role }[]; pct: number; words: string; lanes: number; guessed?: boolean } | null;
   laneNote: string | null; // почему линии нет: роли не ясны, данных нет
 };
 
 /** Союзники по линии для роли: мид один, край парой. */
 const PARTNER: Record<Role, Role | null> = { 1: 5, 2: null, 3: 4, 4: 3, 5: 1 };
 const LANE_ENEMIES: Record<Role, Role[]> = { 1: [3, 4], 2: [2], 3: [1, 5], 4: [1, 5], 5: [3, 4] };
-const SURE = 0.5; // роль считается понятной от такой вероятности
 
 export const teamWords = (pct: number) => (pct >= 55 ? "драфт за вас" : pct <= 45 ? "драфт против вас" : "драфт ровный");
 export const laneWords = (pct: number) => (pct >= 58 ? "линия должна зайти" : pct <= 42 ? "линия тяжёлая" : "линия ровная");
 
-const sure = (gs: RoleGuess[], role: Role): RoleGuess | null => { const g = gs.find((x) => x.role === role); return g && (g.locked || g.prob >= SURE) ? g : null; };
+// герой на роли по самой вероятной раскладке, даже неуверенной: линию показываем сразу, роли с «?» игрок поправит у чипа
+const at = (gs: RoleGuess[], role: Role): RoleGuess | null => gs.find((x) => x.role === role) ?? null;
 
 export async function buildPregame(input: DraftInput, chosenHeroId: number, accountId: number | null): Promise<Pregame> {
   const role = input.role ?? 2;
@@ -46,12 +47,12 @@ export async function buildPregame(input: DraftInput, chosenHeroId: number, acco
     }
   }
 
-  // линия: мид 1 на 1, края 2 на 2; только когда понятно, кто стоит на твоей линии с обеих сторон
+  // линия: мид 1 на 1, края 2 на 2; кто стоит на ней, берём из раскладки ролей (заданные у чипа роли в ней закреплены)
   let lane: Pregame["lane"] = null;
   let laneNote: string | null = null;
   const partnerRole = PARTNER[role];
-  const partner = partnerRole ? sure(ev.allyRoles, partnerRole) : null;
-  const them = LANE_ENEMIES[role].map((r) => sure(ev.enemyRoles, r)).filter((g): g is RoleGuess => !!g);
+  const partner = partnerRole ? at(ev.allyRoles, partnerRole) : null;
+  const them = LANE_ENEMIES[role].map((r) => at(ev.enemyRoles, r)).filter((g): g is RoleGuess => !!g);
   if (enemies.length < 5 || allies.length < 4) laneNote = "Линия покажется, когда будут видны все герои.";
   else if (them.length < LANE_ENEMIES[role].length) laneNote = "Не понятно, кто у врагов пойдёт на твою линию.";
   else if (partnerRole && !partner) laneNote = "Не понятно, кто из союзников пойдёт с тобой на линию.";
@@ -65,7 +66,8 @@ export async function buildPregame(input: DraftInput, chosenHeroId: number, acco
     if (rates.length === 0) laneNote = "По этим героям у Stratz нет данных о линиях.";
     else {
       const pct = Math.round(Math.max(25, Math.min(75, (rates.reduce((a, x) => a + x.rate, 0) / rates.length) * 100)));
-      lane = { kind: partnerRole ? "2v2" : "1v1", me, them: them.map((g) => ({ id: g.id, role: g.role })), pct, words: laneWords(pct), lanes: Math.min(...rates.map((x) => x.n)) };
+      const guessed = [...(partner ? [partner] : []), ...them].some((g) => !g.locked);
+      lane = { kind: partnerRole ? "2v2" : "1v1", me, them: them.map((g) => ({ id: g.id, role: g.role })), pct, words: laneWords(pct), lanes: Math.min(...rates.map((x) => x.n)), guessed };
     }
   }
   return { team, lane, laneNote };

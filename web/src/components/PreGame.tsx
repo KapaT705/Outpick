@@ -38,7 +38,8 @@ export default function PreGame({ heroId, role, enemies, allies, team, byId, not
             </> : <div className="text-muted">Посчитается, когда будут видны все герои.</div>}
           </div>
           <div className="rounded-xl bg-panel-2 p-3 flex flex-col gap-1">
-            <div className="text-xs text-muted flex items-center gap-1.5">Твоя линия{p.lane && <span>· {p.lane.kind === "1v1" ? "1 на 1" : "2 на 2"}</span>}</div>
+            <div className="text-xs text-muted flex flex-wrap items-center gap-x-1.5 gap-y-1"><span className="whitespace-nowrap">Твоя линия{p.lane && <> · {p.lane.kind === "1v1" ? "1 на 1" : "2 на 2"}</>}</span>
+              {p.lane?.guessed && <span className="whitespace-nowrap rounded bg-panel px-1.5 py-px" title="Кто стоит на твоей линии, угадано по героям (роли с «?» у чипов). Если не так, поправь роль у чипа, и линия пересчитается">роли угаданы</span>}</div>
             {p.lane ? <>
               <div className="flex items-center gap-2">
                 <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-ally" />{heroes(p.lane.me)}</span>
