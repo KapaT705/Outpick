@@ -135,6 +135,10 @@ async function createWindow() {
     // backgroundThrottling: false - во время пиков окно за Дотой, а видеопоток и таймеры страницы должны работать
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, backgroundThrottling: false },
   });
+  // закрытие главного окна = выход из программы (кроме macOS). Окно оверлея живёт скрытым, из-за него window-all-closed
+  // не срабатывал: процесс оставался в памяти без окон, а новый запуск упирался в замок одного экземпляра и молча выходил,
+  // пока процесс не снимали в диспетчере задач
+  win.on("closed", () => { win = null; if (process.platform !== "darwin") app.quit(); });
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: "deny" }; });
   win.webContents.on("will-navigate", (e, url) => { if (!url.startsWith("http://127.0.0.1")) { e.preventDefault(); shell.openExternal(url); } });
   try {
@@ -491,7 +495,8 @@ ipcMain.handle("draft:sources", async () => {
 
 // один экземпляр: второй запуск (двойной клик по ярлыку) показывает уже открытое окно, а не вторую копию на другом порту
 if (!app.requestSingleInstanceLock()) { app.quit(); } else {
-app.on("second-instance", () => { if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
+// если окна уже нет (процесс пережил его закрытие), повторный запуск открывает окно заново, а не выходит молча
+app.on("second-instance", () => { if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } else createWindow(); });
 migrateUserData();
 app.whenReady().then(() => {
   if (process.platform === "darwin") {
@@ -523,6 +528,6 @@ app.whenReady().then(() => {
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
-app.on("before-quit", () => { flushLog(); serverProc?.kill(); });
+app.on("before-quit", () => { flushLog(); try { if (overlayWin && !overlayWin.isDestroyed()) overlayWin.destroy(); } catch {} serverProc?.kill(); });
 app.on("will-quit", () => { try { globalShortcut.unregisterAll(); } catch {} });
 }
