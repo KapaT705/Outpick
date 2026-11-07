@@ -99,12 +99,24 @@ function laneOutcome(m: MatchData, p: MPlayer): LaneOutcome {
   return mine ? (stomp ? "stomp" : "won") : stomp ? "stomped" : "lost";
 }
 
+/** Позиция игрока: из Stratz, а без неё по линии и тегам героя (саппорт по тегу SUPPORT). Неизвестно: null. */
+export function guessPosition(me: MPlayer, hero: Hero | undefined): number | null {
+  if (me.position) return me.position;
+  const sup = (hero?.roles?.find((x) => x.r === "SUPPORT")?.l ?? 0) >= 2;
+  if (me.lane === "mid") return 2;
+  if (me.lane === "safe") return sup ? 5 : 1;
+  if (me.lane === "off") return sup ? 4 : 3;
+  return sup ? 5 : null;
+}
+
 export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, heroes: Map<number, Hero>): MatchReport {
   const H = (id: number | null | undefined) => nameOf(id, heroes);
   const list = (ids: number[]) => { const ns = ids.map((id) => H(id).name); return ns.length < 2 ? ns.join("") : `${ns.slice(0, -1).join(", ")} и ${ns[ns.length - 1]}`; };
   const hero = heroes.get(me.heroId);
   const heroName = H(me.heroId).name;
-  const plan = heroPlan(hero, me.position ?? (me.lane === "mid" ? 2 : null));
+  const pos = guessPosition(me, hero);
+  const plan = heroPlan(hero, pos);
+  const isSup = pos != null && pos >= 4;
   const allies = m.players.filter((p) => p.isRadiant === me.isRadiant && p !== me);
   const enemies = m.players.filter((p) => p.isRadiant !== me.isRadiant);
   const enemyIds = new Set(enemies.map((p) => p.heroId));
@@ -114,7 +126,7 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
 
   const base: MatchReport = {
     matchId: m.id, startDateTime: m.startDateTime, durationSeconds: dur, lobbyType: m.lobbyType,
-    won: me.isVictory, heroId: me.heroId, position: me.position, isRadiant: me.isRadiant,
+    won: me.isVictory, heroId: me.heroId, position: pos, isRadiant: me.isRadiant,
     kills: me.kills, deaths: me.deaths, assists: me.assists, lastHits: me.lastHits, denies: me.denies, gpm: me.gpm, xpm: me.xpm, networth: me.networth,
     allies: allies.map((p) => p.heroId), enemies: enemies.map((p) => p.heroId),
     plan, parsed: m.parsed, summary: [], winCurve, deathList: [], windows: [], lane: null, tips: [], moments: [], strengths: [], benchMatches: bench?.matchCount ?? null,
@@ -154,6 +166,8 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     const once = (key: string, text: string) => { if (!notes.has(key)) { notes.add(key); note = text; } };
     if (plan.style === "farm" && d.t < plan.onlineAt * 60 && !traded) once("farm", `${heroName} до ${plan.onlineAt}-й минуты фармит, и смерть без размена отодвигает выход.`);
     else if (plan.style === "tempo" && d.t >= plan.fightFrom * 60 && traded) once("tempo", `${heroName} с ${plan.fightFrom}-й минуты дерётся, так что смерть с разменом - нормальная цена.`);
+    else if (plan.style === "support" && traded && ownLosses === 1) once("sup", `Саппорту смерть с разменом или ради сейва кора - нормальная цена.`);
+    else if (plan.style === "support" && pickoff && where.enemyHalf) once("supsolo", `Саппорт один на чужой половине - лёгкая цель: туда только со смоком или когда свои рядом.`);
     else if (plan.style === "initiator" && d.t < plan.fightFrom * 60 && !traded) once("init", `${heroName} до ${plan.fightFrom}-й минуты копит на ключевой предмет, а смерть без размена его откладывает.`);
     return { t: d.t, killer, helpers, enemies: enemiesN, where: where.text, enemyHalf: where.enemyHalf, zone: where.zone, ownLosses, enemyLosses, goldLost: d.goldLost, timeDead: d.timeDead, traded, text: `${who}${fight}${loss}`, note };
   });
@@ -176,7 +190,6 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     return { minute: t, lh: { me: a.lh, opp: o?.lh ?? null, norm: nT ? r1(nT.cs) : null }, dn: { me: a.dn, opp: o?.dn ?? null, norm: nT ? r1(nT.dn) : null }, nw: { me: a.nw ?? 0, opp: o?.nw ?? null, norm: nT ? Math.round(nT.networth) : null } };
   });
   // саппорту добивания не главное: важно, кто выиграл линию парой, и что он сам сделал (харас, опыт, стаки)
-  const isSup = (me.position ?? 0) >= 4;
   const mirror = me.lane === "safe" ? "off" : me.lane === "off" ? "safe" : me.lane === "mid" ? "mid" : null;
   const pairUs = mirror ? [me, ...allies.filter((p) => p.lane === me.lane)] : [me];
   const pairThem = mirror ? enemies.filter((p) => p.lane === mirror) : [];
@@ -248,6 +261,7 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
       const o = H(opp.heroId), killed = `${o.name} ${v(o, "убил", "убила")} тебя на линии уже второй раз.`;
       tips.push({ t: d.t, text: plan.style === "farm" ? `${killed} Дальше играй от вышки и забирай опыт: ${heroName} - герой на фарм, уровни важнее размена.`
         : plan.style === "tempo" && d.t < (plan.fightFrom + 1) * 60 ? `${killed} Не лезь в размен до 6 уровня: после ульты ${heroName} сильнее, а ранние смерти отдают сопернику темп.`
+        : plan.style === "support" ? `${killed} Саппорту на линии умирать можно только за размен: харась из-за спины кора, а когда враг пропал из виду, отходи к вышке, а не стой в реке.`
         : `${killed} Дальше играй осторожнее: от вышки и с вардом на реке.` });
     }
   }
@@ -264,6 +278,23 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
       tips.push({ t: lost[0].t, text: `До ${plan.onlineAt}-й минуты ${heroName} ещё не на силе, а ты умер в ${inN(lost.length)} ${plural(lost.length, "проигранной драке", "проигранных драках", "проигранных драках")}. Заходи после тиммейтов, а в уже проигранную драку не лезь: сохранить фарм важнее.` });
     }
   }
+  if (plan.style === "support") {
+    // саппорт после линии живёт драками: участие в убийствах с 10-й по 25-ю минуту
+    const from = 600, to = Math.min(dur, 1500);
+    if (to - from >= 300) {
+      const teamKills = enemies.reduce((n, p) => n + p.deathsAt.filter((d) => d.t >= from && d.t < to).length, 0);
+      const part = new Set([...me.killsAt, ...me.assistsAt].filter((t) => t >= from && t < to)).size;
+      if (teamKills >= 6 && part / teamKills < 0.45) tips.push({ t: from, text: `С 10-й по 25-ю минуту ты был только в ${part} из ${teamKills} убийств команды. Саппорт должен быть в каждой драке: ходи с кором на ганги, а варды ставь по пути, а не вместо драк.` });
+    }
+    // стаки: к 15-й минуте ни одного при норме героя
+    const n15 = benchAt(bench, 15);
+    if (dur >= 900 && me.stacks.length >= 15 && (me.stacks[14] ?? 0) === 0 && n15 && n15.stacks >= 0.6) tips.push({ t: 300, text: `До 15-й минуты ни одного стака при норме ${r1(n15.stacks)}. На :53 каждой минуты стакай ближний лагерь: кору это лишние 300-500 золота, а тебе ничего не стоит.` });
+    // варды: меньше полутора на 10 минут игры
+    if (dur >= 1200 && me.wardsPlaced / (dur / 600) < 1.5) tips.push({ t: 0, text: `За ${Math.round(dur / 60)} минут ты поставил ${me.wardsPlaced} ${plural(me.wardsPlaced, "вард", "варда", "вардов")}: для саппорта это мало. Обзор на реке и у своих лагерей спасает кора от гангов и даёт команде заходить в драки первыми.` });
+    // один на чужой половине без размена, дважды и больше
+    const solo = deathList.filter((d) => !used.has(d.t) && d.enemyHalf && d.ownLosses === 1 && !d.traded);
+    if (solo.length >= 2) { used.add(solo[1].t); tips.push({ t: solo[1].t, text: `${timesN(solo.length)[0].toUpperCase() + timesN(solo.length).slice(1)} умер один на чужой половине без размена. Саппорт ходит туда только со смоком или сразу после выигранной драки, иначе это бесплатный килл врагу.` }); }
+  }
   if (plan.style === "tempo" || plan.style === "initiator") {
     const from = plan.fightFrom * 60, to = Math.min(dur, 1200);
     if (to - from >= 300) {
@@ -276,7 +307,7 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     const late = deathList.find((d) => !used.has(d.t) && d.t >= 1200 && !d.traded && d.timeDead >= 40);
     if (late) {
       const i = Math.floor(late.t / 60), j = Math.min(winCurve.length - 1, i + 2);
-      if (winCurve[i] != null && winCurve[i] - winCurve[j] >= 8) tips.push({ t: late.t, text: `Смерть без размена в лейте: за две минуты шанс на победу упал с ${winCurve[i]}% до ${winCurve[j]}%. ${late.enemyHalf ? "Без тиммейтов и варда на чужую половину не ходи." : "Фарми там, куда свои успеют быстрее врагов."}` });
+      if (winCurve[i] != null && winCurve[i] - winCurve[j] >= 8) tips.push({ t: late.t, text: `Смерть без размена в лейте: за две минуты шанс на победу упал с ${winCurve[i]}% до ${winCurve[j]}%. ${late.enemyHalf ? "Без тиммейтов и варда на чужую половину не ходи." : plan.style === "support" ? "Варды и ротации в лейте только со смоком или когда свои рядом: саппорт один на карте - это бесплатный килл и потерянный выкуп." : "Фарми там, куда свои успеют быстрее врагов."}` });
     }
   }
   tips.sort((a, b) => a.t - b.t);
@@ -353,11 +384,17 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     const tw = me.towerDamage / mins, twN = per(bench.overall.towerDamage);
     if (twN > 20 && tw / twN >= 1.3) strengths.push({ score: tw / twN * 0.9, label: "пуш", text: `Урон по строениям на ${Math.round((tw / twN - 1) * 100)}% выше нормы: хорошо пушил.` });
     const nw = me.networth / mins, nwN = per(bench.overall.networth);
-    if (nwN > 0 && nw / nwN >= 1.1) strengths.push({ score: nw / nwN, label: "фарм", text: `Нафармил больше нормы: ${r1(me.networth / 1000)}к нетворса, в среднем на этом герое за такую игру ${r1((nwN * mins) / 1000)}к.` });
+    if (!isSup && nwN > 0 && nw / nwN >= 1.1) strengths.push({ score: nw / nwN, label: "фарм", text: `Нафармил больше нормы: ${r1(me.networth / 1000)}к нетворса, в среднем на этом герое за такую игру ${r1((nwN * mins) / 1000)}к.` });
   }
   if (!isSup && r10?.lh.norm && r10.lh.me / r10.lh.norm >= 1.1) strengths.push({ score: r10.lh.me / r10.lh.norm, label: "фарм на линии", text: `Фарм на линии: ${r10.lh.me} добитых к 10-й минуте при норме ${Math.round(r10.lh.norm)}.` });
   for (const w of windows) if (w.norm != null && w.norm >= 1 && w.mine <= w.norm * 0.7) strengths.push({ score: 1.1 + (w.norm - w.mine) / w.norm / 2, label: `мало смертей ${w.label}`, text: `${w.label[0].toUpperCase() + w.label.slice(1)} ${w.mine === 0 ? "ни одной смерти" : `${w.mine} ${plural(w.mine, "смерть", "смерти", "смертей")}`} при норме ${w.norm}: играл аккуратно.` });
-  if (plan.style === "support" && me.wardsPlaced >= 12) strengths.push({ score: 1.2 + me.wardsPlaced / 100, label: "обзор", text: `Обзор: поставил ${me.wardsPlaced} ${plural(me.wardsPlaced, "вард", "варда", "вардов")}${me.wardsKilled ? ` и снёс ${me.wardsKilled} ${plural(me.wardsKilled, "вражеский", "вражеских", "вражеских")}` : ""}.` });
+  if (isSup && bench?.avgDuration) {
+    const st = me.stacks[me.stacks.length - 1] ?? 0, stN = (bench.overall.stacks ?? 0) / bench.avgDuration * mins;
+    if (stN > 0 && st >= 3 && st >= stN * 1.3) strengths.push({ score: 1.1 + st / 20, label: "стаки", text: `Стаки: ${st} ${plural(st, "лагерь", "лагеря", "лагерей")} за игру при норме ${r1(stN)}: кор тебе спасибо скажет.` });
+    const heal = me.heroHealing / mins, healN = (bench.overall.healing ?? 0) / bench.avgDuration;
+    if (healN > 100 && heal / healN >= 1.2) strengths.push({ score: heal / healN, label: "лечение", text: `Лечение союзников на ${Math.round((heal / healN - 1) * 100)}% выше нормы: держал своих живыми.` });
+  }
+  if (plan.style === "support" && (me.wardsPlaced >= 12 || me.wardsPlaced >= mins / 4)) strengths.push({ score: 1.2 + me.wardsPlaced / 100, label: "обзор", text: `Обзор: поставил ${me.wardsPlaced} ${plural(me.wardsPlaced, "вард", "варда", "вардов")}${me.wardsKilled ? ` и снёс ${me.wardsKilled} ${plural(me.wardsKilled, "вражеский", "вражеских", "вражеских")}` : ""}.` });
   const top3 = strengths.sort((a, b) => b.score - a.score).filter((x, i, a) => !(x.label === "фарм на линии" && a.some((y) => y.label === "фарм"))).slice(0, 3);
   const labels = top3.slice(0, 2).map((x) => x.label);
   if (labels.length) summary.splice(1, 0, `${labels.length > 1 ? "Сильные стороны матча" : "Сильная сторона матча"}: ${labels.join(" и ")}.`);

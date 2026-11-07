@@ -50,9 +50,10 @@ const MID: Record<number, Row> = {
 
 const tag = (h: Hero | undefined, r: string) => h?.roles?.find((x) => x.r === r)?.l ?? 0;
 
-/** План героя на позиции. Позиция неизвестна: считается мидом (так играет владелец). */
+/** План героя на позиции. Позиция неизвестна: по тегам героя (саппорт по тегу SUPPORT), а не мид по умолчанию:
+ *  иначе саппорт получал советы мидера про фарм. */
 export function heroPlan(hero: Hero | undefined, position: number | null | undefined): HeroPlan {
-  const pos = position ?? 2;
+  const pos = position ?? (tag(hero, "SUPPORT") >= 2 ? 5 : null);
   if (pos === 2 && hero && MID[hero.id]) { const [style, fightFrom, onlineAt, text] = MID[hero.id]; return { style, fightFrom, onlineAt, text, manual: true }; }
   if (pos === 4 || pos === 5) return { style: "support", fightFrom: 0, onlineAt: 0, text: "на позиции саппорта умирает чаще всех, важно, чтобы смерть что-то давала: обзор, время для своих или размен", manual: false };
   if (pos === 1) return { style: "farm", fightFrom: 15, onlineAt: 20, text: "на позиции керри фармит и выходит позже: до своих предметов в драки лучше входить последним", manual: false };

@@ -3,7 +3,7 @@ import { readConfig } from "@/lib/config";
 import { loadData } from "@/lib/data";
 import { fetchMatchData } from "@/lib/matchData";
 import { fetchBench } from "@/lib/bench";
-import { buildReport, findMe } from "@/lib/report";
+import { buildReport, findMe, guessPosition } from "@/lib/report";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +21,8 @@ export async function GET(req: Request) {
   const known = cfg.accounts.map((a) => a.id);
   const me = findMe(m, asked, Number(q.get("hero")) || null) ?? m.players.find((p) => p.steamAccountId && known.includes(p.steamAccountId)) ?? null;
   if (!me) return NextResponse.json({ ok: false, error: "В этом матче нет твоего аккаунта" });
-  const pos = me.position ?? (me.lane === "mid" ? 2 : null);
-  const bench = pos ? await fetchBench(me.heroId, pos) : null;
   const { heroById } = loadData(null);
+  const pos = guessPosition(me, heroById.get(me.heroId));
+  const bench = pos ? await fetchBench(me.heroId, pos) : null;
   return NextResponse.json({ ok: true, report: buildReport(m, me, bench, heroById) });
 }
