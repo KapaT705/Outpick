@@ -11,7 +11,7 @@ const icon = (short: string) => `https://cdn.cloudflare.steamstatic.com/apps/dot
 const ROLE_NAME: Record<number, string> = { 1: "керри", 2: "мид", 3: "офлейн", 4: "саппорт 4", 5: "саппорт 5" };
 const tone = (pct: number, hi: number, lo: number) => (pct >= hi ? "text-good" : pct <= lo ? "text-bad" : "text-foreground");
 
-export default function PreGame({ heroId, role, enemies, allies, team, byId }: { heroId: number; role: Role; enemies: Pick[]; allies: Pick[]; team: "radiant" | "dire" | null; byId: Map<number, Hero> }) {
+export default function PreGame({ heroId, role, enemies, allies, team, byId, note }: { heroId: number; role: Role; enemies: Pick[]; allies: Pick[]; team: "radiant" | "dire" | null; byId: Map<number, Hero>; note?: string }) {
   const [p, setP] = useState<Pregame | null>(null);
   const [busy, setBusy] = useState(false);
   const key = JSON.stringify({ heroId, role, team, e: enemies.map((x) => [x.id, x.role]), a: allies.map((x) => [x.id, x.role]) });
@@ -27,6 +27,7 @@ export default function PreGame({ heroId, role, enemies, allies, team, byId }: {
   return (
     <Card tone="accent">
       <CardTitle hint="Прогноз по драфту, до первого крипа. Команда: та же оценка, что у пикера, для каждого из пяти союзников, усреднённая. Линия: настоящие исходы линий этих героев на этих позициях у Divine/Immortal. Драфт решает меньше, чем игра, поэтому цифры всегда рядом с серединой: смотри на слова, а не на проценты.">Прогноз на игру</CardTitle>
+      {note && <p className="-mt-1 mb-3 text-xs text-muted">{note}</p>}
       {busy && !p ? <Crystals size={12} label="считаю…" /> : !p ? <p className="text-sm text-muted">Прогноз не посчитался: Stratz не ответил.</p> : (
         <div className="grid gap-3 sm:grid-cols-2 text-sm">
           <div className="rounded-xl bg-panel-2 p-3 flex flex-col gap-1">

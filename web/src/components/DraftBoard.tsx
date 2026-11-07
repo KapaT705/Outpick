@@ -91,6 +91,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const [quick, setQuick] = useState<Record<UserZone, string>>({ enemies: "", allies: "" });
   const [unknown, setUnknown] = useState<Record<UserZone, string[]>>({ enemies: [], allies: [] });
   const [result, setResult] = useState<Candidate[]>([]);
+  const [paperSelf, setPaperSelf] = useState<number | null>(null); // драфт на бумаге: кем из пятерых союзников играешь ты (решает сервер по роли)
   const [loading, setLoading] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [override, setOverride] = useState<PoolOverride>(EMPTY);
@@ -189,16 +190,20 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   useEffect(() => { if (!document.querySelector("[data-onboarding]")) searchRef.current?.focus({ preventScroll: true }); }, []);
   // свой герой: его сообщает Дота после пика; в зоне союзников он пятый, с пометкой «ты»
   const ownHero = gsi?.ownHeroId ? byId.get(gsi.ownHeroId) ?? null : null;
+  // драфт на бумаге (сухой пик): пятеро союзников введены, а своего героя ни Дота, ни кнопка «Беру» не дали.
+  // Ты = союзник на твоей роли из шапки: советы для твоего места, прогноз на игру сразу, смена роли показывает другую линию
+  const paper = !ownHero && !chosenId && picks.allies.length >= 5;
+  const meId = paper ? paperSelf : null;
   const taken = useMemo(() => new Set([...picks.bans, ...picks.enemies, ...picks.allies].map((p) => p.id).concat(ownHero ? [ownHero.id] : [])), [picks, ownHero]);
   // кем занят герой: подпись на погасшей плитке в сетке
   const takenBy = useMemo(() => {
     const m = new Map<number, string>();
     for (const p of picks.enemies) m.set(p.id, "враг");
-    for (const p of picks.allies) m.set(p.id, "союзник");
+    for (const p of picks.allies) m.set(p.id, p.id === meId ? "ты" : "союзник");
     for (const p of picks.bans) m.set(p.id, "забанен");
     if (ownHero) m.set(ownHero.id, "ты");
     return m;
-  }, [picks, ownHero]);
+  }, [picks, ownHero, meId]);
   const poolSet = useMemo(() => new Set([...poolIds, ...override.add].filter((id) => !override.remove.includes(id))), [poolIds, override]);
   const familiarSet = useMemo(() => new Set(familiarIds.filter((id) => !poolSet.has(id) && !override.remove.includes(id))), [familiarIds, poolSet, override]);
 
@@ -234,14 +239,15 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
     const body = { bans: picks.bans.map((p) => p.id), enemies: picks.enemies, allies, pool: override, role, team: gsi?.connected ? (gsi.team ?? null) : side };
     fetch("/api/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal })
       .then((r) => r.json())
-      .then((d) => { setResult(d.candidates ?? []); setRoles({ enemies: d.enemyRoles ?? [], allies: d.allyRoles ?? [] }); setLaneOpp(d.laneOpponent ?? null); setPredicted(d.predicted ?? []); setStage(d.stage ?? "early"); setNeeds(d.needs ?? []); })
+      .then((d) => { setResult(d.candidates ?? []); setPaperSelf(d.paperSelf ?? null); setRoles({ enemies: d.enemyRoles ?? [], allies: d.allyRoles ?? [] }); setLaneOpp(d.laneOpponent ?? null); setPredicted(d.predicted ?? []); setStage(d.stage ?? "early"); setNeeds(d.needs ?? []); })
       .catch(() => {})
       .finally(() => { if (!ctrl.signal.aborted) setLoading(false); }); // отменённый запрос не гасит «считаю» у следующего
     return () => ctrl.abort();
   }, [picks, screenRoles, override, role, acct?.current.id, gsi?.team, side]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addMany = (z: UserZone, ids: number[]) => {
-    const max = ZONES.find((x) => x.key === z)!.max - (z === "allies" ? 1 : 0); // пятое место у союзников всегда твоё
+    // пятое место у союзников твоё, когда твой герой известен (Дота или «Беру»); иначе можно ввести всех пятерых: драфт на бумаге
+    const max = ZONES.find((x) => x.key === z)!.max - (z === "allies" && (ownHero || chosenId) ? 1 : 0);
     const next = [...picks[z]];
     const dup: string[] = [], over: string[] = [];
     for (const id of ids) {
@@ -263,7 +269,8 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   };
   const add = (id: number) => { const r = addMany(zone, [id]); noteSkipped(zone, [], r.dup, r.over); setQuery(""); };
   const remove = (z: UserZone, id: number) => setPicks({ ...picks, [z]: picks[z].filter((x) => x.id !== id) });
-  const setPickRole = (z: UserZone, id: number, r: Role | null) => setPicks({ ...picks, [z]: picks[z].map((x) => (x.id === id ? { ...x, role: r } : x)) });
+  // роль в команде одна на игрока: заданная одному снимается с другого
+  const setPickRole = (z: UserZone, id: number, r: Role | null) => setPicks({ ...picks, [z]: picks[z].map((x) => (x.id === id ? { ...x, role: r } : r && x.role === r ? { ...x, role: null } : x)) });
   const reset = () => { setPicks({ bans: [], enemies: [], allies: [] }); setUnknown({ enemies: [], allies: [] }); setChosenId(null); forgetScreenRoles(); };
 
   const submitQuick = (z: UserZone) => {
@@ -441,15 +448,17 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
 
       {gsiRewritten && <section className="rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm">Конфиг GSI в Доте указывал на старый порт, я переписал его. Перезапусти Доту, чтобы точка «Дота» загорелась.</section>}
 
-      <DraftBar byId={byId} allies={allies} enemies={picks.enemies} ownHeroId={gsi?.ownHeroId ?? null} team={gsi?.connected ? (gsi.team ?? null) : side} role={role} guesses={roles} />
+      <DraftBar byId={byId} allies={allies} enemies={picks.enemies} ownHeroId={gsi?.ownHeroId ?? meId ?? null} team={gsi?.connected ? (gsi.team ?? null) : side} role={role} guesses={roles} />
 
       <section className="grid gap-4 md:grid-cols-2">
-        {ZONES.map((z) => (
+        {/* зона своей команды под своей стороной полоски драфта: за Свет союзники слева, за Тьму справа */}
+        {((gsi?.connected ? (gsi.team ?? null) : side) === "dire" ? ZONES : [...ZONES].reverse()).map((z) => (
           <div key={z.key} onClick={() => setZone(z.key)}
             className={`rounded-2xl border-2 bg-panel p-3 cursor-pointer transition ${zone === z.key ? z.color : "border-border hover:border-border/80"}`}
             title={zone === z.key ? "Сюда попадают герои из сетки и текстового ввода" : "Нажми, чтобы добавлять героев сюда"}>
             <div className="flex items-center justify-between mb-2">
               <span className={`text-sm font-semibold ${z.color.split(" ")[1]}`}>{z.label} <span className="text-muted font-normal">{picks[z.key].length + (z.key === "allies" && ownHero ? 1 : 0)}/{z.max}</span>
+                {z.key === "allies" && paper && <span className="ml-2 text-xs text-accent font-normal" title="Все пятеро союзников на месте: драфт на бумаге. Ты играешь героем на своей роли из шапки, советы и прогноз считаются за него. Смени роль в шапке, чтобы посмотреть другую линию">драфт на бумаге</span>}
                 {z.key === "allies" && rolesHidden && <span className="ml-2 text-xs text-muted font-normal" title="Дота не показывает роли союзников на экране: фулпати или режим без выбора ролей. Задай роли у чипов сам, иначе угадаю по героям">роли на экране не видны</span>}
               </span>
               {zone === z.key && <Chip tone="muted" className="text-foreground">добавляю сюда</Chip>}
@@ -464,6 +473,15 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
                 const h = byId.get(p.id)!;
                 const guess = roles[z.key].find((g) => g.id === p.id);
                 const fromScreen = z.key === "allies" && !!p.role && !picks.allies.find((x) => x.id === p.id)?.role;
+                if (z.key === "allies" && p.id === meId) return (
+                  <div key={p.id} onClick={(e) => e.stopPropagation()} className="flex h-8 items-center rounded-lg bg-panel-2 text-xs ring-1 ring-accent"
+                    title={`Драфт на бумаге: ты играешь этим героем, он на твоей роли (${ROLE_NAME[role]}). Чтобы играть другим, смени роль в шапке или поставь роль ${ROLE_LABEL[role]} другому союзнику`}>
+                    <button onClick={() => remove(z.key, p.id)} title="Убрать" className="flex h-8 items-center gap-1.5 rounded-l-lg pl-1 pr-2 hover:bg-border">
+                      <img src={icon(h.short)} alt="" className="h-6 w-6 rounded" />{h.name}
+                    </button>
+                    <span className="pr-2"><Chip tone="accent">ты · {ROLE_LABEL[role]}</Chip></span>
+                  </div>
+                );
                 return (
                   <div key={p.id} onClick={(e) => e.stopPropagation()} className={`flex h-8 items-center rounded-lg bg-panel-2 text-xs ${p.auto ? "outline outline-1 outline-dashed outline-ban/70" : ""}`}>
                     <button onClick={() => remove(z.key, p.id)} title={p.auto ? "Пропал из слота: его выбрали обе команды, и он забанен. Нажми, чтобы убрать, если это не так" : "Убрать"} className="flex h-8 items-center gap-1.5 rounded-l-lg pl-1 pr-2 hover:bg-border">
@@ -474,7 +492,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
                         <select value={p.role ?? ""} onChange={(e) => setPickRole(z.key, p.id, e.target.value ? (Number(e.target.value) as Role) : null)}
                           className={`appearance-none h-8 w-11 bg-transparent pl-2 pr-4 outline-none cursor-pointer font-semibold ${p.role ? "text-foreground" : "text-muted"}`}>
                           <option value="">{guess ? `${ROLE_LABEL[guess.role]}?` : "?"}</option>
-                          {ROLES.filter((r) => !(z.key === "allies" && r === role)).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                          {ROLES.filter((r) => !(z.key === "allies" && r === role && !paper)).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                         </select>
                         <svg className="pointer-events-none absolute right-1.5 h-3 w-3 text-muted" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 4.5l3 3 3-3" /></svg>
                       </span>
@@ -537,8 +555,9 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
         {/* на узком окне (второй монитор) советы выше сетки героев: до них не нужно крутить */}
         <section className="flex flex-col gap-4 min-w-0 order-first lg:order-none">
           {/* драфт полный и твой герой известен: прогноз на игру, команда и линия */}
-          {(() => { const myId = ownHero?.id ?? chosenId; const others = allies.filter((p) => p.id !== myId); return myId && picks.enemies.length === 5 && others.length >= 4
-            ? <PreGame heroId={myId} role={role} enemies={picks.enemies} allies={others} team={gsi?.team ?? null} byId={byId} /> : null; })()}
+          {(() => { const myId = ownHero?.id ?? chosenId ?? meId; const others = allies.filter((p) => p.id !== myId); return myId && picks.enemies.length === 5 && others.length >= 4
+            ? <PreGame heroId={myId} role={role} enemies={picks.enemies} allies={others} team={gsi?.team ?? null} byId={byId}
+                note={paper ? `Драфт на бумаге: ты на ${byId.get(myId)?.name ?? "своём герое"}, роль ${ROLE_NAME[role]}. Смени роль в шапке, чтобы посмотреть другую линию.` : undefined} /> : null; })()}
           {(picks.enemies.length > 0 || picks.allies.length > 0) && (
             <Card className="py-2.5 text-xs flex flex-wrap items-center gap-x-5 gap-y-2">
               <span className="inline-flex items-center gap-1.5" title={`Очередь пика по числу известных пиков врага. ${stage === "early" ? "Рано: враги ещё ответят контрпиком, пикер придерживает героев, которых легко законтрить." : stage === "mid" ? "Середина: риск контрпика учитывается наполовину." : "Поздно: контрпикуем мы, матчапы в полный вес."}`}>
@@ -560,8 +579,8 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             </Card>
           )}
           {laneOpp && <LaneCard lane={laneOpp} inPool={inPool} byId={byId} />}
-          <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} hint="Герои, на которых ты играешь на этой роли (пул правится кнопкой «Мой пул»). Отсортированы по шансу победы в этом драфте." items={inPool} loading={loading} byId={byId} onTake={take} lane={laneOpp} featured canTake={!gsi?.connected} />
-          <ResultBlock title="Вне пула, но хороши в этот драфт" hint="Герои не из твоего пула на этой роли: оценка только по мете и драфту, твой счёт на них показывается, но не учитывается. «Знакомый» значит 3-9 игр за год." items={outside} loading={loading} byId={byId} onTake={take} canTake={!gsi?.connected}
+          <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} hint="Герои, на которых ты играешь на этой роли (пул правится кнопкой «Мой пул»). Отсортированы по шансу победы в этом драфте." items={inPool} loading={loading} byId={byId} onTake={take} lane={laneOpp} featured canTake={!gsi?.connected && !paper} />
+          <ResultBlock title="Вне пула, но хороши в этот драфт" hint="Герои не из твоего пула на этой роли: оценка только по мете и драфту, твой счёт на них показывается, но не учитывается. «Знакомый» значит 3-9 игр за год." items={outside} loading={loading} byId={byId} onTake={take} canTake={!gsi?.connected && !paper}
             footer={outsideAll.length > 8 ? <button onClick={() => setShowAll(!showAll)} className="text-xs text-muted underline">{showAll ? "Показать меньше" : "Показать больше"}</button> : undefined} />
         </section>
       </div>
@@ -785,7 +804,7 @@ function DraftBar({ byId, allies, enemies, ownHeroId, team, role, guesses }: { b
   const freeTheirs = freeRoles(enemies, guesses.enemies, []);
   const Slot = ({ p, side, free }: { p?: Pick | { id: number; role: Role | null; own?: true }; side: "ours" | "theirs"; free?: Role }) => {
     const h = p ? byId.get(p.id) : undefined;
-    const own = !!(p && "own" in p && p.own);
+    const own = !!(p && (("own" in p && p.own) || p.id === ownHeroId));
     const r = p ? (p.role ?? (side === "ours" ? guesses.allies : guesses.enemies).find((x) => x.id === p.id)?.role) : undefined;
     return (
       <div className={`relative flex-1 min-w-10 max-w-28 aspect-[16/9] overflow-hidden rounded-lg border ${own ? "border-accent" : side === "ours" ? "border-ally/40" : "border-enemy/40"} bg-panel-2`}
