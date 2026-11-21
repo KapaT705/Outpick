@@ -72,6 +72,8 @@ function dotaRunning() {
 setInterval(() => { const m = process.memoryUsage(); console.log(`[mem] rss=${Math.round(m.rss / 1e6)}MB heap=${Math.round(m.heapUsed / 1e6)}MB ext=${Math.round(m.external / 1e6)}MB dota=${dotaCheck.running}`); }, Number(process.env.MEM_LOG_SEC || 300) * 1000);
 let serverProc = null;
 let win = null;
+let quitting = false; // программа закрывается: падение сервера в этот момент ожидаемо, перезапуск не нужен
+const serverRestarts = []; // времена перезапусков: не больше трёх за 10 минут, чтобы не крутиться в цикле
 
 const PREFERRED_PORT = 3781; // на этот порт указывает конфиг GSI в Доте
 function freePort(preferred = 0) {
@@ -117,13 +119,35 @@ async function startServer() {
   });
   serverProc.stdout?.on("data", (d) => { logLine("next", [String(d).trim()]); process.stdout.write(`[next] ${d}`); });
   serverProc.stderr?.on("data", (d) => { logLine("next-err", [String(d).trim()]); process.stderr.write(`[next] ${d}`); });
-  serverProc.once("exit", (code) => { console.error(`[app] сервер завершился (код ${code})`); serverProc = null; serverPort = 0; });
+  serverProc.once("exit", (code) => {
+    console.error(`[app] сервер завершился (код ${code})`); serverProc = null; serverPort = 0;
+    if (!quitting) restartServer();
+  });
   serverPort = port;
   const url = `http://127.0.0.1:${port}`;
   await waitFor(url);
   console.log(`[app] server ready at ${url}`);
   return url;
 }
+
+/** Сервер упал посреди работы: поднимаем заново и перезагружаем окна (раньше окно оставалось сломанным до перезапуска). */
+async function restartServer() {
+  const now = Date.now();
+  while (serverRestarts.length && now - serverRestarts[0] > 10 * 60_000) serverRestarts.shift();
+  if (serverRestarts.length >= 3) { console.error("[app] сервер падает раз за разом, больше не перезапускаю"); return; }
+  serverRestarts.push(now);
+  await new Promise((r) => setTimeout(r, 1000));
+  try {
+    const url = await startServer();
+    console.log("[app] сервер перезапущен");
+    if (win && !win.isDestroyed()) win.loadURL(url).catch(() => {});
+    if (overlayWin && !overlayWin.isDestroyed()) overlayWin.loadURL(`${url}/overlay`).catch(() => {});
+  } catch (e) { console.error("[app] перезапуск сервера не удался:", e?.message ?? e); }
+}
+/** Свой адрес сервера: http://127.0.0.1:<порт>. Проверка через startsWith пропускала и http://127.0.0.1.evil.com. */
+const isOwnUrl = (url) => { try { const u = new URL(url); return u.protocol === "http:" && u.hostname === "127.0.0.1" && Number(u.port) === serverPort; } catch { return false; } };
+/** Внешние ссылки открываем в браузере только http(s): другие схемы (file:, ms-settings: и т. п.) не трогаем. */
+const openExternalSafe = (url) => { try { const u = new URL(url); if (u.protocol === "http:" || u.protocol === "https:") shell.openExternal(url); } catch {} };
 
 async function createWindow() {
   win = new BrowserWindow({
@@ -139,12 +163,20 @@ async function createWindow() {
   // не срабатывал: процесс оставался в памяти без окон, а новый запуск упирался в замок одного экземпляра и молча выходил,
   // пока процесс не снимали в диспетчере задач
   win.on("closed", () => { win = null; if (process.platform !== "darwin") app.quit(); });
-  win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: "deny" }; });
-  win.webContents.on("will-navigate", (e, url) => { if (!url.startsWith("http://127.0.0.1")) { e.preventDefault(); shell.openExternal(url); } });
+  win.webContents.setWindowOpenHandler(({ url }) => { openExternalSafe(url); return { action: "deny" }; });
+  const guardNav = (e, url) => { if (!isOwnUrl(url)) { e.preventDefault(); openExternalSafe(url); } };
+  win.webContents.on("will-navigate", guardNav);
+  win.webContents.on("will-redirect", guardNav);
+  // страница упала (нехватка памяти, сбой GPU): перезагружаем, иначе чтение экрана и оверлей тихо останавливались
+  win.webContents.on("render-process-gone", (_e, d) => {
+    console.error(`[app] страница упала: ${d.reason}`);
+    if (d.reason !== "clean-exit" && !quitting) setTimeout(() => { if (win && !win.isDestroyed()) win.webContents.reload(); }, 1000);
+  });
   try {
     // пока поднимается сервер (несколько секунд), окно показывает экран запуска с кристаллами, а не пустоту
     await win.loadFile(path.join(__dirname, "splash.html")).catch(() => {});
     const url = await startServer();
+    if (!win || win.isDestroyed()) return; // окно закрыли, пока поднимался сервер
     await win.loadURL(url);
     // тихая проверка обновлений только когда страница уже слушает события: раньше результат уходил в экран запуска и терялся
     if (!isDev && !isPortable && configureFeed()) setTimeout(() => { updateStage = "quiet"; autoUpdater.checkForUpdates().catch(() => {}); }, 3000);
@@ -168,7 +200,10 @@ async function createWindow() {
     }
   } catch (err) {
     const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
-    await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<body style="font-family:sans-serif;background:#121014;color:#eee;padding:24px"><h2>Не удалось запустить сервер</h2><p>${esc(err.message)}</p><p style="color:#958e9e">Закрой программу и открой снова. Если повторится, сохрани диагностику из настроек.</p></body>`)}`);
+    if (!win || win.isDestroyed()) return;
+    // настройки с кнопкой диагностики живут на том же сервере, поэтому показываем, где лежит журнал
+    const logDir = app.getPath("userData");
+    await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<body style="font-family:sans-serif;background:#121014;color:#eee;padding:24px"><h2>Не удалось запустить сервер</h2><p>${esc(err.message)}</p><p style="color:#958e9e">Закрой программу и открой снова. Если повторится, пришли разработчику файл main-log.txt из папки ${esc(logDir)}.</p></body>`)}`).catch(() => {});
   }
 }
 
@@ -249,14 +284,24 @@ function overlaySettings() {
   return { enabled: c.enabled !== false, auto: c.auto !== false, opacity: Number.isFinite(op) ? Math.min(1, Math.max(0.4, op)) : 0.95, count: c.count === 5 ? 5 : 3 };
 }
 const overlayBoundsFile = () => path.join(app.getPath("userData"), "overlay.json");
+/** Окно хотя бы частью (80x40) на одном из подключённых мониторов: иначе сохранённое место устарело (монитор отключён,
+ *  сменилось разрешение), и окно открылось бы за краем экрана. */
+function onSomeDisplay(r) {
+  return screen.getAllDisplays().some((d) => { const a = d.workArea; const ix = Math.min(r.x + r.width, a.x + a.width) - Math.max(r.x, a.x); const iy = Math.min(r.y + r.height, a.y + a.height) - Math.max(r.y, a.y); return ix >= 80 && iy >= 40; });
+}
+function defaultOverlayBounds(width = 340, height = 420) {
+  const area = screen.getPrimaryDisplay().workArea;
+  return { width, height, x: area.x + area.width - width - 24, y: area.y + Math.round(area.height * 0.28) };
+}
 function createOverlay() {
   if (overlayWin && !overlayWin.isDestroyed()) return overlayWin;
+  if (!serverPort) return null; // сервер ещё не поднялся (горячая клавиша на экране запуска): окно осталось бы пустым
   let b = {}; try { b = JSON.parse(fs.readFileSync(overlayBoundsFile(), "utf8")); } catch {}
-  const area = screen.getPrimaryDisplay().workArea;
   const width = b.width ?? 340, height = b.height ?? 420;
+  if (b.x == null || b.y == null || !onSomeDisplay({ x: b.x, y: b.y, width, height })) b = defaultOverlayBounds(width, height);
   overlayWin = new BrowserWindow({
     width, height, minWidth: 240, minHeight: 160,
-    x: b.x ?? area.x + area.width - width - 24, y: b.y ?? area.y + Math.round(area.height * 0.28),
+    x: b.x, y: b.y,
     frame: false, alwaysOnTop: true, skipTaskbar: true, resizable: true, minimizable: false, maximizable: false, fullscreenable: false,
     show: false, backgroundColor: "#121014", title: "Outpick",
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, backgroundThrottling: false },
@@ -270,6 +315,8 @@ function createOverlay() {
   overlayWin.on("closed", () => { overlayWin = null; });
   overlayWin.webContents.on("did-finish-load", () => sendOverlayData());
   overlayWin.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  overlayWin.webContents.on("will-navigate", (e, url) => { if (!isOwnUrl(url)) e.preventDefault(); });
+  overlayWin.webContents.on("render-process-gone", (_e, d) => { console.error(`[overlay] окно упало: ${d.reason}`); if (d.reason !== "clean-exit" && !quitting) setTimeout(() => { if (overlayWin && !overlayWin.isDestroyed()) overlayWin.webContents.reload(); }, 1000); });
   return overlayWin;
 }
 function sendOverlayData() {
@@ -286,7 +333,9 @@ function applyOverlay() {
   const visible = overlayWin && !overlayWin.isDestroyed() && overlayWin.isVisible();
   if (overlayWanted()) {
     const w = createOverlay();
+    if (!w) return false;
     w.setOpacity(overlaySettings().opacity);
+    if (!visible && !onSomeDisplay(w.getBounds())) w.setBounds(defaultOverlayBounds(w.getBounds().width, w.getBounds().height));
     if (!visible) { w.showInactive(); console.log(`[overlay] показан (${overlayState.manual == null ? "авто" : "вручную"})`); } // без фокуса: Дота не должна сворачиваться
   } else if (visible) { overlayWin.hide(); console.log("[overlay] скрыт"); }
   return !!(overlayWin && !overlayWin.isDestroyed() && overlayWin.isVisible());
@@ -300,10 +349,28 @@ ipcMain.on("overlay:push", (_e, data) => {
   if (overlayState.draftActive !== was) overlayState.manual = null; // новый драфт или его конец снимают ручной режим
   applyOverlay();
   sendOverlayData();
+  if (!data.gsi && data.active) recheckOverlayDota();
 });
+// Без связи с Дотой флаг «Дота запущена» мог быть старым на минуты: после закрытия Доты оверлей всплывал поверх рабочего
+// стола и висел. Перепроверяем по свежему списку процессов сразу и раз в 15 секунд, пока оверлей виден без GSI.
+function recheckOverlayDota() {
+  dotaRunning().then((running) => {
+    const d = overlayState.data;
+    const active = !!d?.active && (!!d?.gsi || running);
+    if (active !== overlayState.draftActive) { overlayState.draftActive = active; overlayState.manual = null; applyOverlay(); }
+  }).catch(() => {});
+}
+setInterval(() => { if (overlayWin && !overlayWin.isDestroyed() && overlayWin.isVisible() && overlayState.data && !overlayState.data.gsi && overlayState.manual == null) recheckOverlayDota(); }, 15_000);
 ipcMain.handle("overlay:show", () => { overlayState.manual = true; return { ok: true, visible: applyOverlay() }; });
 ipcMain.handle("overlay:hide", () => { overlayState.manual = false; return { ok: true, visible: applyOverlay() }; });
-ipcMain.handle("overlay:apply", () => { const visible = applyOverlay(); sendOverlayData(); return { ok: true, visible }; });
+ipcMain.handle("overlay:apply", () => { syncHotkey(); const visible = applyOverlay(); sendOverlayData(); return { ok: true, visible }; });
+// Ctrl+Shift+O занимается во всей системе, поэтому держим его только пока оверлей включён в настройках
+let hotkeyOn = false;
+function syncHotkey() {
+  const want = overlaySettings().enabled;
+  if (want && !hotkeyOn) { hotkeyOn = globalShortcut.register(OVERLAY_HOTKEY, toggleOverlay); if (!hotkeyOn) console.warn(`[overlay] горячая клавиша ${OVERLAY_HOTKEY} занята другой программой`); }
+  else if (!want && hotkeyOn) { globalShortcut.unregister(OVERLAY_HOTKEY); hotkeyOn = false; }
+}
 function toggleOverlay() {
   const visible = overlayWin && !overlayWin.isDestroyed() && overlayWin.isVisible();
   overlayState.manual = !visible;
@@ -346,13 +413,19 @@ async function captureDotaFrame() {
   const ordered = screens.sort((a, b) => rank(a) - rank(b));
   let lastErr = "нет источников захвата";
   const tryWindow = async () => { const wins = await withTimeout(desktopCapturer.getSources({ types: ["window"], thumbnailSize: size, fetchWindowIcons: false }), 10_000, "захват окна"); return wins.filter((s) => /dota\s*2/i.test(s.name)); };
-  for (const src of [...ordered, ...(await tryWindow().catch(() => []))]) {
-    const img = src.thumbnail; const sz = img.getSize();
-    if (sz.width === 0 || sz.height === 0) { lastErr = "пустой кадр"; continue; }
-    const data = img.toBitmap();
-    if (frameIsBlack(data, sz.width, sz.height)) { lastErr = `чёрный кадр из «${src.name}»`; continue; }
-    return { id: src.id, name: src.name, w: sz.width, h: sz.height, data, bgra: true, image: img };
-  }
+  // окна запрашиваем, только если ни один экран не подошёл: снимки всех окон в полный размер стоят сотни мегабайт
+  const pick = (list) => {
+    for (const src of list) {
+      const img = src.thumbnail; const sz = img.getSize();
+      if (sz.width === 0 || sz.height === 0) { lastErr = "пустой кадр"; continue; }
+      const data = img.toBitmap();
+      if (frameIsBlack(data, sz.width, sz.height)) { lastErr = `чёрный кадр из «${src.name}»`; continue; }
+      return { id: src.id, name: src.name, w: sz.width, h: sz.height, data, bgra: true, image: img };
+    }
+    return null;
+  };
+  const got = pick(ordered) ?? pick(await tryWindow().catch(() => []));
+  if (got) return got;
   throw new Error(lastErr);
 }
 // Принудительная сборка мусора в главном процессе. Переключатель --expose-gc через app.commandLine действует только
@@ -448,15 +521,6 @@ ipcMain.handle("diag:save", async (_e, f) => {
     zip.addFile("gsi-raw.json", Buffer.from(JSON.stringify(await serverJson("/api/gsi/raw"), null, 1)));
     const gsiCfg = await serverJson("/api/gsi/install");
     zip.addFile("gsi-config.json", Buffer.from(JSON.stringify(gsiCfg, null, 1)));
-    // файлы Доты, где при подключении к матчу могут быть Steam ID всех десяти игроков (server_log.txt) - хвост 256 КБ
-    for (const dir of gsiCfg?.dotaDirs ?? []) for (const name of ["server_log.txt", "console.log"]) {
-      try {
-        const p = path.join(dir, name); if (!fs.existsSync(p)) continue;
-        const st = fs.statSync(p); const len = Math.min(st.size, 256 * 1024); const buf = Buffer.alloc(len);
-        const fd = fs.openSync(p, "r"); fs.readSync(fd, buf, 0, len, st.size - len); fs.closeSync(fd);
-        zip.addFile(`dota-${name}`, buf);
-      } catch {}
-    }
     zip.addFile("draft-log.json", Buffer.from(JSON.stringify(await serverJson("/api/log"), null, 1)));
     zip.addFile("refresh.json", Buffer.from(JSON.stringify(await serverJson("/api/refresh"), null, 1)));
     try { const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 0, height: 0 } }); zip.addFile("capture-sources.json", Buffer.from(JSON.stringify(sources.map((s) => ({ id: s.id, name: s.name })), null, 1))); } catch (e) { zip.addFile("capture-sources.json", Buffer.from(JSON.stringify({ error: String(e?.message ?? e) }))); }
@@ -509,7 +573,7 @@ app.whenReady().then(() => {
   }
   setupUpdater();
   createWindow();
-  if (!globalShortcut.register(OVERLAY_HOTKEY, toggleOverlay)) console.warn(`[overlay] горячая клавиша ${OVERLAY_HOTKEY} занята другой программой`);
+  syncHotkey();
   // доучиваем портреты по матчам, результаты которых подтянулись: при старте и каждые 5 минут, если разметка обновилась
   // (результаты сервер подтягивает сам по таймеру, см. web/src/lib/sync.ts)
   let labelsSeen = 0;
@@ -525,9 +589,10 @@ app.whenReady().then(() => {
   };
   setTimeout(() => learnIfNew("при старте"), 8000);
   setInterval(() => learnIfNew("по таймеру"), 5 * 60_000);
-  app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  // скрытое окно оверлея тоже считается окном, поэтому проверяем именно главное
+  app.on("activate", () => { if (!win || win.isDestroyed()) createWindow(); });
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
-app.on("before-quit", () => { flushLog(); try { if (overlayWin && !overlayWin.isDestroyed()) overlayWin.destroy(); } catch {} serverProc?.kill(); });
+app.on("before-quit", () => { quitting = true; flushLog(); try { if (overlayWin && !overlayWin.isDestroyed()) overlayWin.destroy(); } catch {} serverProc?.kill(); });
 app.on("will-quit", () => { try { globalShortcut.unregisterAll(); } catch {} });
 }

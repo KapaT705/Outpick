@@ -114,8 +114,11 @@ function diagFiles(limit = 2) {
 function learn() {
   if (!root) return { ok: false, error: "not initialised" };
   const labels = readJson(labelsFile, { matches: {} }).matches ?? {};
+  // битый файл выученных портретов не затираем, а откладываем рядом (его можно вернуть руками)
+  if (fs.existsSync(learnedFile) && readJson(learnedFile, null) === null) { try { fs.renameSync(learnedFile, `${learnedFile}.corrupt-${Date.now()}`); } catch {} }
   const learned = readJson(learnedFile, { version: 1, heroes: {}, done: [] });
   learned.heroes ??= {}; learned.done ??= [];
+  const doneBefore = learned.done.length;
   let added = 0, checked = 0; const notes = [];
   for (const [matchId, lab] of Object.entries(labels)) {
     if (learned.done.includes(matchId)) continue;
@@ -156,7 +159,11 @@ function learn() {
     }
   }
   if (learned.done.length > 200) learned.done = learned.done.slice(-200);
-  try { fs.writeFileSync(learnedFile, JSON.stringify(learned)); } catch (e) { return { ok: false, error: e.message }; }
+  // пишем только если что-то поменялось, и атомарно (временный файл + переименование): обрыв записи раньше оставлял
+  // битый файл, он читался как пустой, и следующая учёба затирала все выученные портреты
+  if (added || learned.done.length !== doneBefore) {
+    try { const tmp = `${learnedFile}.tmp`; fs.writeFileSync(tmp, JSON.stringify(learned)); fs.renameSync(tmp, learnedFile); } catch (e) { return { ok: false, error: e.message }; }
+  }
   return { ok: true, checked, added, total: recog.learnedCount(), notes };
 }
 function learnedInfo() {

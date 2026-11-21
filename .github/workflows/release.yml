@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write
 
+# два запуска одного релиза не должны грузить файлы в один черновик одновременно
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 # Релиз открывается только когда обе сборки загрузили файлы. Раньше electron-builder публиковал его
 # с первым же файлом, и Windows-клиенты, проверявшие обновление в эту минуту, получали 404 на latest.yml.
 # Порядок: черновик -> сборки грузят в черновик -> публикация.
@@ -32,6 +37,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
+          # опубликованный релиз не перевыкладываем: ручной запуск или перезапуск старого релиза прятали его в черновик
+          # и заменяли файлы новой сборкой под той же версией, а у тех, кто уже на ней, обновление не приходило
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null)" = "false" ]; then
+            echo "релиз $TAG уже опубликован: подними версию в desktop/package.json"; exit 1
+          fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             # релиз уже есть (например, заметки создали вручную): прячем в черновик, пока не загрузятся файлы
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=true

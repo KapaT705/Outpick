@@ -7,7 +7,11 @@ const { contextBridge, ipcRenderer } = require("electron");
 // Поток живёт только пока его просят (гаснет через 10 с без запросов), из кадра берём лишь верхнюю полосу.
 const U = 1125, ROLE_ROW_BOTTOM = 140; // низ строки ролей под слотами, как recognize.stripHeight
 const stripHeight = (H) => Math.round((ROLE_ROW_BOTTOM / U) * H + 12);
-const cap = { stream: null, video: null, source: null, sources: [], idx: 0, lastUse: 0, blackRuns: 0, starting: null, canvas: null, small: null, full: null };
+// wantId: экран, на котором в последний раз был виден экран пиков (по id, а не по номеру: порядок списка меняется);
+// missRuns: кадров подряд без экрана пиков на текущем экране (при нескольких экранах после MISS_SWITCH пробуем следующий)
+const cap = { stream: null, video: null, source: null, sources: [], idx: 0, wantId: null, lastUse: 0, blackRuns: 0, missRuns: 0, starting: null, canvas: null, small: null, full: null };
+const MISS_SWITCH = 8;
+const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`${what}: нет ответа ${ms / 1000} с`)), ms))]);
 
 function stopStream() {
   try { cap.stream?.getTracks().forEach((t) => t.stop()); } catch {}
@@ -24,20 +28,31 @@ async function ensureStream() {
     const list = await ipcRenderer.invoke("capture:sources");
     if (!Array.isArray(list) || list.length === 0) throw new Error("нет горизонтальных экранов для захвата");
     cap.sources = list;
-    if (cap.idx >= list.length) cap.idx = 0;
+    const want = cap.wantId ? list.findIndex((x) => x.id === cap.wantId) : -1;
+    if (want >= 0) cap.idx = want; else if (cap.idx >= list.length) cap.idx = 0;
     const src = list[cap.idx];
-    const stream = await navigator.mediaDevices.getUserMedia({
+    // захват может зависнуть: ждём ограниченно, а поток, пришедший после таймаута или при ошибке, сразу гасим
+    // (иначе каждый следующий шаг открывал ещё один поток, и память росла, как до исправления 0.7.1)
+    const req = navigator.mediaDevices.getUserMedia({
       audio: false,
       video: { mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: src.id, minWidth: src.w, maxWidth: src.w, minHeight: src.h, maxHeight: src.h, maxFrameRate: 4 } },
     });
+    let stream;
+    try { stream = await withTimeout(req, 8000, "захват экрана"); }
+    catch (e) { req.then((st) => st.getTracks().forEach((t) => t.stop())).catch(() => {}); throw e; }
     const video = document.createElement("video");
-    video.muted = true; video.playsInline = true; video.srcObject = stream;
-    await video.play();
-    await new Promise((resolve, reject) => {
-      const t0 = Date.now();
-      const tick = () => { if (video.videoWidth > 0 && video.videoHeight > 0) resolve(); else if (Date.now() - t0 > 6000) reject(new Error("поток экрана не дал кадр")); else setTimeout(tick, 50); };
-      tick();
-    });
+    try {
+      video.muted = true; video.playsInline = true; video.srcObject = stream;
+      await withTimeout(video.play(), 6000, "видеопоток экрана");
+      await new Promise((resolve, reject) => {
+        const t0 = Date.now();
+        const tick = () => { if (video.videoWidth > 0 && video.videoHeight > 0) resolve(); else if (Date.now() - t0 > 6000) reject(new Error("поток экрана не дал кадр")); else setTimeout(tick, 50); };
+        tick();
+      });
+    } catch (e) {
+      try { stream.getTracks().forEach((t) => t.stop()); video.pause(); video.srcObject = null; } catch {}
+      throw e;
+    }
     cap.stream = stream; cap.video = video; cap.source = src;
   })().finally(() => { cap.starting = null; });
   return cap.starting;
@@ -76,10 +91,16 @@ async function grab({ jpeg = true, png = false } = {}) {
   return out;
 }
 
-// чёрный кадр несколько раз подряд: пробуем следующий экран
-function noteBlack(res) {
-  if (res && res.ok && res.black) { cap.blackRuns++; if (cap.blackRuns >= 3 && cap.sources.length > 1) { stopStream(); cap.idx = (cap.idx + 1) % cap.sources.length; cap.blackRuns = 0; } }
-  else cap.blackRuns = 0;
+// Выбор экрана при нескольких мониторах: экран пиков найден - запоминаем этот экран; чёрный кадр 3 раза подряд или
+// MISS_SWITCH кадров без экрана пиков - пробуем следующий. Раньше переключение было только по чёрным кадрам: Дота на
+// втором мониторе при рабочем столе на основном не находилась никогда.
+function noteFrame(res) {
+  const next = () => { stopStream(); cap.wantId = null; cap.idx = (cap.idx + 1) % cap.sources.length; cap.blackRuns = 0; cap.missRuns = 0; };
+  if (!res || !res.ok) return;
+  if (res.onPickScreen) { cap.wantId = cap.source?.id ?? null; cap.blackRuns = 0; cap.missRuns = 0; return; }
+  if (res.black) { cap.blackRuns++; if (cap.blackRuns >= 3 && cap.sources.length > 1) next(); return; }
+  cap.blackRuns = 0;
+  if (cap.sources.length > 1 && ++cap.missRuns >= MISS_SWITCH) next();
 }
 
 async function recognizeDraft(ctx) {
@@ -89,7 +110,7 @@ async function recognizeDraft(ctx) {
   let frame;
   try { frame = await grab({ jpeg: true }); } catch (e) { return { ok: false, error: `захват экрана: ${e?.message ?? e}` }; }
   const res = await ipcRenderer.invoke("draft:recognizeFrame", ctx ?? {}, frame);
-  noteBlack(res);
+  noteFrame(res);
   return res;
 }
 
