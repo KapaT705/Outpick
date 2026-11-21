@@ -27,8 +27,8 @@ export type DraftLog = {
   role?: number;                  // роль игрока при оценке (1..5)
   gsiMatchId?: string;            // id матча из Доты, если был
   accountId?: number;             // аккаунт Steam, с которого играли (старые записи без него: аккаунт по умолчанию)
-  players?: { slot: number; accountId: number }[]; // игроки матча из server_log.txt на момент записи (для сверки порядка слотов)
-  playersVerified?: boolean;      // сверка с матчем: совпали ли Steam ID и порядок слотов
+  players?: { slot: number; accountId: number }[]; // только у старых записей (до 0.13.2): игроки из server_log.txt
+  playersVerified?: boolean;      // только у старых записей (до 0.13.2): сверка игроков из server_log.txt с матчем
   details?: MatchDetails | null;  // разбор матча (KDA, GPM, линия к 10 минуте), null = не удалось получить
   bench?: Bench | null;           // норма героя на позиции у Divine/Immortal на момент разбора
   chosen: LogRec | null;          // как оценивался выбранный герой

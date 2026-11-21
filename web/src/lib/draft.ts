@@ -1,6 +1,5 @@
 import { loadData } from "./data";
 import { inferRoles, roleProbability } from "./roles";
-import { cachedPlayerStats, currentLobby, type PlayerStats } from "./players";
 import type { Candidate, DraftInput, DraftStage, Hero, HeroTag, LaneOpponent, PersonalNote, PredictedPicks, Reason, Role, RoleGuess, TeamNeed } from "./types";
 
 // Tunables
@@ -52,16 +51,9 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
   const enemies = enemyPicks.map((p) => p.id);
   const allies = allyPicks.map((p) => p.id);
   const taken = new Set([...input.bans, ...enemies, ...allies]);
-  // игроки матча (server_log.txt + Stratz): роли врагов по их истории, статистика соперника по линии, прогноз пиков
-  const lobby = currentLobby();
-  const pstats = lobby ? cachedPlayerStats(lobby.players.map((p) => p.accountId)) : new Map<number, PlayerStats>();
-  const enemyTeam = input.team === "radiant" ? "dire" : input.team === "dire" ? "radiant" : null;
-  const playerAt = (team: "radiant" | "dire" | null, slot: number | undefined): PlayerStats | null => {
-    if (!lobby || !team || slot === undefined) return null;
-    const lp = lobby.players.find((p) => p.team === team && p.slot % 5 === slot);
-    return lp ? (pstats.get(lp.accountId) ?? null) : null;
-  };
-  const enemyRoles = inferRoles(enemyPicks, [], enemyPicks.map((p) => { const ps = playerAt(enemyTeam, p.slot); return ps?.rolesKnown ? ps.roles : null; }));
+  // роли врагов только по героям: игроков матча на стадии пиков узнать нельзя (Valve убрала Steam ID из server_log.txt
+  // в 2022 году и запрещает показывать их на пиках), поэтому код с историей игроков удалён
+  const enemyRoles = inferRoles(enemyPicks);
   // союзники: твоя роль занята тобой, поэтому её для них исключаем
   const allyRoles = inferRoles(allyPicks.map((p) => (p.role === role ? { ...p, role: null } : p)), [role]);
   // соперник по линии: враг с наибольшей вероятностью стоять против тебя (для мида - их мидер)
@@ -70,9 +62,7 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
     const prob = roleProbability(enemyRoles, e, laneRoles);
     if (prob >= 0.35 && (!laneOpponent || prob > laneOpponent.prob)) {
       const h = heroById.get(e)!; const g = enemyRoles.find((x) => x.id === e);
-      const ps = playerAt(enemyTeam, enemyPicks.find((p) => p.id === e)?.slot);
-      const hs = ps?.heroes[e];
-      laneOpponent = { heroId: e, name: h.name, short: h.short, role: g?.role ?? laneRoles[0], prob, player: ps ? { name: ps.name, games: hs?.games ?? 0, wins: hs?.wins ?? 0, rolesKnown: ps.rolesKnown } : null };
+      laneOpponent = { heroId: e, name: h.name, short: h.short, role: g?.role ?? laneRoles[0], prob };
     }
   }
 
@@ -80,22 +70,7 @@ export function evaluateDraft(input: DraftInput, accountId?: number | null): { c
   const takenRoles = new Set(enemyRoles.map((g) => g.role));
   const predicted: PredictedPicks[] = [];
   const freeRoles = ([1, 2, 3, 4, 5] as Role[]).filter((r) => !takenRoles.has(r));
-  // по игрокам: враги, чьи слоты ещё без героя, с известной историей - их вероятная роль и любимые герои
-  const usedSlots = new Set(enemyPicks.map((p) => p.slot).filter((s) => s !== undefined));
-  const rolesByPlayer = new Set<Role>();
-  if (lobby && enemyTeam) for (let slot = 0; slot < 5; slot++) {
-    if (usedSlots.has(slot) || enemies.length >= 5) continue;
-    const ps = playerAt(enemyTeam, slot);
-    if (!ps || !ps.rolesKnown || ps.topHeroes.length === 0) continue;
-    const role = freeRoles.filter((r) => !rolesByPlayer.has(r)).sort((a, b) => ps.roles[b] - ps.roles[a])[0];
-    if (!role) continue;
-    rolesByPlayer.add(role);
-    const list = ps.topHeroes.filter((h) => !taken.has(h.heroId) && heroById.has(h.heroId)).slice(0, PREDICT_N);
-    const sum = list.reduce((a, h) => a + h.games, 0) || 1;
-    predicted.push({ role, player: ps.name, heroes: list.map((h) => ({ heroId: h.heroId, name: heroById.get(h.heroId)!.name, short: heroById.get(h.heroId)!.short, share: h.games / sum })) });
-  }
   if (enemies.length < 5) for (const r of freeRoles) {
-    if (rolesByPlayer.has(r)) continue;
     const list = [...(roleMeta.get(r)?.values() ?? [])].filter((e) => !taken.has(e.heroId) && heroById.has(e.heroId)).sort((a, b) => b.games - a.games).slice(0, PREDICT_N);
     const sum = list.reduce((a, e) => a + e.games, 0) || 1;
     predicted.push({ role: r, heroes: list.map((e) => ({ heroId: e.heroId, name: heroById.get(e.heroId)!.name, short: heroById.get(e.heroId)!.short, share: e.games / sum })) });

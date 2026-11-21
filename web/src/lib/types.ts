@@ -19,9 +19,9 @@ export type DraftInput = { bans: number[]; enemies: Pick[]; allies: Pick[]; pool
 export type HeroPositions = { heroId: number; name: string; games: number; p: Record<"1" | "2" | "3" | "4" | "5", number> };
 export type RoleGuess = { id: number; role: Role; prob: number; locked: boolean };
 /** Соперник по линии: враг, который с наибольшей вероятностью стоит против тебя. */
-export type LaneOpponent = { heroId: number; name: string; short: string; role: Role; prob: number; player?: { name: string | null; games: number; wins: number; rolesKnown: boolean } | null };
+export type LaneOpponent = { heroId: number; name: string; short: string; role: Role; prob: number };
 /** Вероятные пики врага на ещё не занятую роль: самые популярные герои роли за 4 недели, не занятые в драфте. */
-export type PredictedPicks = { role: Role; heroes: { heroId: number; name: string; short: string; share: number }[]; player?: string | null }; // player: имя игрока, если прогноз по его истории, иначе по мете
+export type PredictedPicks = { role: Role; heroes: { heroId: number; name: string; short: string; share: number }[] }; // по популярности героев на роли у Immortal за 4 недели
 /** Кандидат у Immortal: винрейт и доля пиков на этой роли за 4 недели. */
 export type TopStat = { winrate: number; rate: number; games: number };
 /** Стадия драфта по числу известных пиков врага: рано - врагам ещё отвечать контрпиком, поздно - контрпикуем мы. */

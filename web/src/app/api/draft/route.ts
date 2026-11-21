@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { evaluateDraft } from "@/lib/draft";
 import { inferRoles } from "@/lib/roles";
 import type { DraftInput, Pick, PoolOverride, Role } from "@/lib/types";
-import { currentLobby, fetchPlayerStats } from "@/lib/players";
 
 const ids = (v: unknown): number[] =>
   Array.isArray(v) ? v.map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 60) : [];
@@ -21,10 +20,6 @@ export async function POST(req: Request) {
   const role = [1, 2, 3, 4, 5].includes(Number(body.role)) ? (Number(body.role) as Role) : 2;
   const team = body.team === "radiant" || body.team === "dire" ? body.team : null;
   const input: DraftInput = { bans: ids(body.bans), enemies: picks(body.enemies), allies: picks(body.allies), pool, role, team };
-  // статистика игроков матча нужна оценке синхронно: подгружаем заранее (кэш на 6 часов, один запрос на всех)
-  // ждём статистику не дольше 2.5 с: если Stratz тормозит, оценка идёт без неё, а запрос доходит в фоне и попадёт в кэш
-  const lobby = currentLobby();
-  if (lobby) await Promise.race([fetchPlayerStats(lobby.players.map((p) => p.accountId)).catch(() => {}), new Promise((r) => setTimeout(r, 2500))]);
   // драфт на бумаге: все пятеро союзников введены, твой герой среди них. «Ты» = союзник на твоей роли (заданной вручную,
   // иначе по раскладке ролей пятерых); советы считаются для твоего места, как будто его ещё выбирают
   let paperSelf: number | null = null;
