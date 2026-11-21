@@ -54,22 +54,29 @@ type SP = { steamAccountId: number | null; heroId: number; isRadiant: boolean; i
     killEvents?: { time: number; target: number | null; isSolo: boolean | null; isSmoke: boolean | null; positionX: number; positionY: number }[] | null; assistEvents?: { time: number; target: number | null }[] | null;
     wards?: { time: number }[] | null; wardDestruction?: { time: number; isWard: boolean | null }[] | null; runes?: { time: number; rune: string; action: string }[] | null } | null };
 
-function cached(id: number): MatchData | null {
+function cached(id: number, stale = false): MatchData | null {
   try {
     const m = JSON.parse(fs.readFileSync(path.join(DIR, `${id}.json`), "utf8")) as MatchData;
-    return m.v === V && (m.parsed || Date.now() / 1000 - m.at < UNPARSED_TTL) ? m : null;
+    return m.v === V && (stale || m.parsed || Date.now() / 1000 - m.at < UNPARSED_TTL) ? m : null;
   } catch { return null; }
 }
 
-export async function fetchMatchData(id: number, opts: { fresh?: boolean } = {}): Promise<MatchData | null> {
+/** Почему матча нет: Stratz занят (лимит запросов, ошибка), не ответил вовсе, или такого матча у него нет. */
+export type MatchMiss = { reason?: "busy" | "network" | "missing" | "token" };
+
+export async function fetchMatchData(id: number, opts: { fresh?: boolean; why?: MatchMiss } = {}): Promise<MatchData | null> {
   if (!opts.fresh) { const hit = cached(id); if (hit) return hit; }
   const { stratzToken } = readConfig();
-  if (!stratzToken) return null;
+  // Stratz недоступен: лучше показать сохранённый неразобранный матч, чем ничего
+  const miss = (reason: NonNullable<MatchMiss["reason"]>) => { if (opts.why) opts.why.reason = reason; return cached(id, true); };
+  if (!stratzToken) return miss("token");
   try {
     const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${stratzToken}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: Q(id) }), signal: AbortSignal.timeout(30_000) });
-    const j = await r.json();
+    const j = await r.json().catch(() => null);
+    // лимит запросов и сбои Stratz отдаёт кодом 429/5xx или списком errors без данных: это не «матча нет»
+    if (!r.ok || (!j?.data?.match && j?.errors?.length)) return miss("busy");
     const m = j?.data?.match;
-    if (!m || !Array.isArray(m.players) || !m.players.length) return null;
+    if (!m || !Array.isArray(m.players) || !m.players.length) return miss("missing");
     // Stratz пишет в смерти героя и смерти его юнитов (варды Веномансера: 294 «смерти» при 12 настоящих). Настоящая
     // смерть та, после которой герой лежит, и новая не раньше, чем он воскрес; убийство и помощь засчитываются, если
     // цель в ту же секунду по-настоящему умерла.
@@ -112,5 +119,5 @@ export async function fetchMatchData(id: number, opts: { fresh?: boolean } = {})
     fs.mkdirSync(DIR, { recursive: true });
     fs.writeFileSync(path.join(DIR, `${id}.json`), JSON.stringify(data));
     return data;
-  } catch { return null; }
+  } catch { return miss("network"); }
 }

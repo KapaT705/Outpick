@@ -187,10 +187,12 @@ export default function HistoryView({ items: initial, heroes, accounts = {}, str
           {[7, 30, 90, 0].map((d) => <button key={d} onClick={() => setPeriod(d)} className={`px-3 py-1.5 ${period === d ? "bg-panel-2 text-foreground font-semibold" : "text-muted hover:text-foreground hover:bg-panel-2"}`}>{d ? `${d} дней` : "всё время"}</button>)}
         </div>
         {done.length > 0 ? (
-          <Chip tone={wins / done.length >= 0.5 ? "good" : "bad"} title="Матчи с драфтом пикера и известным результатом за выбранный период">побед {wins} из {done.length}</Chip>
+          <Chip tone={wins / done.length >= 0.5 ? "good" : "bad"} title="Матчи, где пикер записал драфт, с известным результатом за выбранный период">с драфтом пикера: побед {wins} из {done.length}</Chip>
         ) : <span className="text-muted">за {periodLabel} матчей с драфтом и результатом нет</span>}
       </section>
 
+      {/* закрытый профиль: Stratz не видит матчи, поэтому сводок по смертям и норме нет, только записанные пикером драфты */}
+      {acc !== "all" && !stratzAccounts.includes(acc) && <p className="text-xs text-muted">Профиль {accounts[acc] ?? acc} закрыт в Доте («Expose Public Match Data» выключено), поэтому Stratz не видит его матчи: сводок по смертям и норме и полного разбора нет. Ниже только драфты, записанные пикером, с цифрами матча из OpenDota.</p>}
       {wanted.length > 0 && <DeathTrend rows={remoteRows.map((r) => r.m)} norms={norms} period={period} busy={remoteBusy} error={wanted.map((id) => remote[id]?.error).find(Boolean) ?? null} />}
       {wanted.length > 0 && <PlayVsNorm rows={remoteRows.map((r) => r.m)} norms={norms} period={period} busy={remoteBusy} />}
 
@@ -424,8 +426,9 @@ function DeathTrend({ rows, norms, period, busy, error }: { rows: AccMatch[]; no
 const METRICS: { key: string; label: string; hint: string; lowerBetter?: boolean; mine: (m: AccMatch) => number | null; norm: (n: MatchNorm, minutes: number) => number | null }[] = [
   { key: "dmg", label: "Дамаг по героям", hint: "Урон по героям за матч", mine: (m) => m.heroDamage, norm: (n, min) => (n.heroDamage / n.dur) * min },
   { key: "ka", label: "Участие в драках", hint: "Киллы и ассисты за матч", mine: (m) => m.kills + m.assists, norm: (n, min) => (n.ka / n.dur) * min },
-  { key: "lane", label: "Фарм на линии", hint: "Добито к 10-й минуте", mine: (m) => m.lh10, norm: (n) => n.cs10 },
-  { key: "nw", label: "Фарм за игру", hint: "Нетворс к концу матча", mine: (m) => m.networth, norm: (n, min) => (n.networth / n.dur) * min },
+  // фарм считается только по матчам на корах: у саппорта фарм не цель, его матчи в эти строки не идут
+  { key: "lane", label: "Фарм на линии", hint: "Добито к 10-й минуте, только матчи на корах", mine: (m) => ((m.position ?? 0) >= 4 ? null : m.lh10), norm: (n) => n.cs10 },
+  { key: "nw", label: "Фарм за игру", hint: "Нетворс к концу матча, только матчи на корах", mine: (m) => ((m.position ?? 0) >= 4 ? null : m.networth), norm: (n, min) => (n.networth / n.dur) * min },
   { key: "push", label: "Пуш", hint: "Урон по строениям за матч", mine: (m) => m.towerDamage, norm: (n, min) => (n.towerDamage / n.dur) * min },
   { key: "deaths", label: "Смерти", hint: "Смерти за матч, здесь меньше - лучше", lowerBetter: true, mine: (m) => m.deaths, norm: (n, min) => (n.d / n.dur) * min },
 ];

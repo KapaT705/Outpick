@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { readConfig } from "@/lib/config";
 import { loadData } from "@/lib/data";
-import { fetchMatchData } from "@/lib/matchData";
+import { fetchMatchData, type MatchMiss } from "@/lib/matchData";
 import { fetchBench } from "@/lib/bench";
 import { buildReport, findMe, guessPosition } from "@/lib/report";
 
@@ -14,8 +14,11 @@ export async function GET(req: Request) {
   if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ ok: false, error: "нет номера матча" }, { status: 400 });
   const cfg = readConfig();
   if (!cfg.stratzToken) return NextResponse.json({ ok: false, error: "Укажи токен Stratz в настройках" });
-  const m = await fetchMatchData(id, { fresh: q.get("fresh") === "1" });
-  if (!m) return NextResponse.json({ ok: false, error: "Stratz не знает этот матч: возможно, все игроки скрыли профили или он ещё не подтянулся" });
+  const why: MatchMiss = {};
+  const m = await fetchMatchData(id, { fresh: q.get("fresh") === "1", why });
+  if (!m) return NextResponse.json({ ok: false, error: why.reason === "busy" ? "Stratz сейчас перегружен или ограничил запросы. Попробуй через минуту."
+    : why.reason === "network" ? "Stratz не ответил: проверь интернет и попробуй ещё раз."
+    : "Stratz не знает этот матч: возможно, все игроки скрыли профили или он ещё не подтянулся" });
   // кто «я»: аккаунт из ссылки, иначе любой свой аккаунт из настроек, который был в матче
   const asked = Number(q.get("me")) || null;
   const known = cfg.accounts.map((a) => a.id);
