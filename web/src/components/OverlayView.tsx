@@ -52,7 +52,8 @@ export default function OverlayView() {
         {d && !d.own && d.lane && (
           <div className="flex items-center gap-2 rounded-md bg-panel-2 px-2 py-1.5 text-xs">
             <img src={icon(d.lane.short)} alt="" className="h-5 w-5 rounded" />
-            <span className="text-muted">против тебя</span><b className="truncate">{d.lane.name}</b><span className="text-muted ml-auto">{d.lane.prob}%</span>
+            {/* процент здесь не шанс победы, а уверенность, что это твой соперник по линии: показываем словом */}
+            <span className="text-muted">на линии</span><b className="truncate">{d.lane.name}</b>{d.lane.prob < 90 && <span className="text-muted ml-auto" title={`Скорее всего (${d.lane.prob}%) он стоит на твоей линии`}>вероятно</span>}
           </div>
         )}
         {d && !d.own && pool.length === 0 && outside.length === 0 && (

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { fetchLaneOutcomes, laneRate } from "@/lib/laneStats";
 import { loadData } from "@/lib/data";
+import { readConfig } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
-// Кто хорошо стоит на линии против соперников: по исходам линий Stratz у Divine/Immortal (lib/laneStats, кэш 14 дней).
+// Кто хорошо стоит на линии против соперников: по исходам линий Stratz у Divine/Immortal (lib/laneStats, кэш 7 дней).
 // Stratz отдаёт линии соперника на его позиции против каждого героя, с которым тот стоял на линии; позицию этого героя
 // данные не знают (поле position всегда POSITION_1, проверено 2026-11-07), поэтому на твою роль отбираем героев, которых
 // на ней играют не реже ROLE_SHARE (доля позиций за 4 недели, как в остальном пикере). Для каждого берётся доля линий,
@@ -20,6 +21,7 @@ export async function POST(req: Request) {
   const pos = role(b.pos);
   const vs = (Array.isArray(b.vs) ? b.vs : []).map((x) => ({ id: Number(x?.id), pos: role(x?.pos) })).filter((x) => Number.isInteger(x.id) && x.id > 0 && x.pos).slice(0, 2);
   if (!pos || vs.length === 0) return NextResponse.json({ ok: false, error: "нет соперников по линии" }, { status: 400 });
+  if (!readConfig().stratzToken) return NextResponse.json({ ok: false, error: "нужен токен Stratz (Настройки → Аккаунты)" });
   const tables = await Promise.all(vs.map((v) => fetchLaneOutcomes(v.id, v.pos)));
   if (tables.some((t) => t.length === 0)) return NextResponse.json({ ok: false, error: "Stratz не ответил" });
   const { positions } = loadData();

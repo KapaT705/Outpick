@@ -36,7 +36,9 @@ export type TrackResult = {
  * (арканы, персоны, значок уровня в своём слоте), поэтому авто-бан не считаем и память слотов не трогаем.
  * На реальных матчах без этого свой герой и союзник уходили в баны через 6 кадров стратегии.
  */
-export function trackFrame(st: TrackState, slots: SlotLike[], mine: "radiant" | "dire", mySlot: number | null, picking = true): TrackResult {
+/** unknownGone=false: нечитаемый слот не считается пропажей героя (без связи с Дотой стадию не знаем, а на стратегии
+ *  портреты меняются); пропажа тогда только по пустому слоту или другому герою. */
+export function trackFrame(st: TrackState, slots: SlotLike[], mine: "radiant" | "dire", mySlot: number | null, picking = true, unknownGone = true): TrackResult {
   const stable: SlotLike[] = [];
   const replaced: number[] = []; // прежние герои слотов, в которых стабильно встал другой герой
   for (const sl of slots) {
@@ -59,7 +61,7 @@ export function trackFrame(st: TrackState, slots: SlotLike[], mine: "radiant" | 
   for (const hero of replaced) if (!visible.has(hero)) gone.add(hero);
   if (picking) for (const [key, hero] of st.held) {
     const cur = st.seen.get(key);
-    if (!cur || cur.state === hero || cur.n < (cur.state === "U" ? GONE_UNKNOWN_FRAMES : GONE_FRAMES)) continue;
+    if (!cur || cur.state === hero || (cur.state === "U" && !unknownGone) || cur.n < (cur.state === "U" ? GONE_UNKNOWN_FRAMES : GONE_FRAMES)) continue;
     st.held.delete(key);
     if (!visible.has(hero)) gone.add(hero);
   }

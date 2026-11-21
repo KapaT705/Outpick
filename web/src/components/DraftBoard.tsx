@@ -111,8 +111,9 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   const [gsi, setGsi] = useState<{ connected: boolean; phase: string; ownHeroId: number | null; matchId: string | null; team: "radiant" | "dire" | null; teamSlot: number | null; accountId: number | null } | null>(null);
   const [screen, setScreen] = useState<{ status: string; found: number } | null>(null);
   const [captureOn, setCaptureOn] = useState(true);
-  // своя сторона, когда Дота не на связи: переключатель убран (пользователь просил меньше кнопок), Свет, пока экран не
-  // показал строку ролей под другой командой; при связи с Дотой сторону сообщает она сама. Старое сохранённое значение
+  // своя сторона, когда Дота не на связи: Свет, пока экран не показал строку ролей под другой командой; отдельной кнопки
+  // нет (владелец просил меньше кнопок), но надпись «ты за Свет» в полоске драфта переключает сторону кликом. С новым
+  // драфтом сторона снова определяется сама. При связи с Дотой сторону сообщает она. Старое сохранённое значение
   // не читаем, иначе «Тьма» застревала навсегда
   const [sideSeen, setSideSeen] = useState<"radiant" | "dire" | null>(null);
   const side: "radiant" | "dire" = sideSeen ?? "radiant";
@@ -156,6 +157,8 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   useEffect(() => { if (acct && acct.current.id !== acctId) reloadAccounts(); }, [acctId]); // eslint-disable-line react-hooks/exhaustive-deps
   const track = useRef(newTrackState()); // стабилизация слотов и пропавшие герои (конфликт пиков → бан), см. lib/draftTrack
   const loggedMatch = useRef<string | null>(null);
+  const lastMatch = useRef<string | null>(null); // матч (из GSI), к которому относится драфт на экране; null - введён без связи
+  const dismissed = useRef<Set<number>>(new Set()); // убраны руками, хотя видны на экране: экран их больше не добавляет
   const lastKey = useRef<string>("");
 
   const take = async (heroId: number) => {
@@ -165,6 +168,11 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   };
   useEffect(() => { if (picks.enemies.length === 0) setChosenId(null); }, [picks.enemies.length]); // новый драфт: прошлый пик забыт
 
+  // начальный пустой драфт не сохраняем: иначе первый проход эффекта записывал его поверх сохранённого, и драфт
+  // терялся при перезагрузке (в режиме разработки эффекты запускаются дважды). Любой setPicks даёт новый объект
+  const initialPicks = useRef(picks);
+  // восстановленный драфт сохраняется со своим исходным временем: иначе каждый перезапуск продлевал ему 2 часа жизни
+  const restored = useRef<{ obj: unknown; at: number } | null>(null);
   useEffect(() => {
     let r: Role = 2;
     try { const v = Number(localStorage.getItem(ROLE_KEY)); if ([1, 2, 3, 4, 5].includes(v)) r = v as Role; } catch {}
@@ -172,17 +180,38 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
     setOverride(loadOverride(r));
     try {
       const raw = localStorage.getItem(PICKS_KEY);
-      if (raw) { const o = JSON.parse(raw); if (o && Date.now() - (o.at ?? 0) < PICKS_TTL && o.picks) setPicks(o.picks); }
+      if (raw) {
+        const o = JSON.parse(raw);
+        if (o && Date.now() - (o.at ?? 0) < PICKS_TTL && o.picks) {
+          restored.current = { obj: o.picks, at: o.at };
+          // матч и отметка «записан в историю» тоже восстанавливаются: после перезапуска драфт матча A не записывается
+          // как матч B, а драфт текущего матча не стирается, как будто начался новый
+          lastMatch.current = typeof o.matchId === "string" ? o.matchId : null;
+          loggedMatch.current = typeof o.logged === "string" ? o.logged : null;
+          setPicks(o.picks);
+        }
+      }
     } catch {}
   }, []);
-  useEffect(() => { try { localStorage.setItem(PICKS_KEY, JSON.stringify({ at: Date.now(), picks })); } catch {} }, [picks]);
+  useEffect(() => {
+    if (picks === initialPicks.current) return;
+    const at = restored.current?.obj === picks ? restored.current.at : Date.now();
+    try { localStorage.setItem(PICKS_KEY, JSON.stringify({ at, picks, matchId: lastMatch.current, logged: loggedMatch.current })); } catch {}
+  }, [picks]);
   const saveOverride = (o: PoolOverride) => { setOverride(o); storeOverride(role, o); };
   const setRole = (r: Role) => { setRoleState(r); setOverride(loadOverride(r)); try { localStorage.setItem(ROLE_KEY, String(r)); } catch {} };
   // своя роль с экрана: значок под собственным портретом переключает роль пикера, пока она не выбрана кликом
   const ownScreenRole = gsi?.connected && gsi.teamSlot != null ? screenRoles[gsi.teamSlot] ?? null : null;
   useEffect(() => { if (ownScreenRole && ownScreenRole !== role && !roleManual.current) { setRole(ownScreenRole); setRoleFromScreen(true); } }, [ownScreenRole]); // eslint-disable-line react-hooks/exhaustive-deps
-  // союзники с ролями: заданная вручную, иначе прочитанная с экрана по номеру слота
-  const allies = useMemo(() => picks.allies.map((p) => (p.role || p.slot === undefined || !screenRoles[p.slot] ? p : { ...p, role: screenRoles[p.slot] })), [picks.allies, screenRoles]);
+  // союзники с ролями: заданная вручную, иначе прочитанная с экрана по номеру слота, если эту роль никому не задали руками
+  // (иначе две одинаковые роли ломали раскладку). Свой герой, если его сообщила Дота, в союзники не входит
+  const allies = useMemo(() => {
+    const manual = new Set(picks.allies.map((p) => p.role).filter(Boolean));
+    return picks.allies.filter((p) => p.id !== gsi?.ownHeroId).map((p) => {
+      const sr = p.slot === undefined ? undefined : screenRoles[p.slot];
+      return p.role || !sr || manual.has(sr) ? p : { ...p, role: sr };
+    });
+  }, [picks.allies, screenRoles, gsi?.ownHeroId]);
 
   const byId = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes]);
   // фокус в поиске без прокрутки: в узком окне поиск ниже полоски драфта, и autoFocus уводил страницу к нему
@@ -195,16 +224,16 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
   // Ты = союзник на твоей роли из шапки: советы для твоего места, прогноз на игру сразу, смена роли показывает другую линию
   const paper = !ownHero && !chosenId && picks.allies.length >= 5;
   const meId = paper ? paperSelf : null;
-  const taken = useMemo(() => new Set([...picks.bans, ...picks.enemies, ...picks.allies].map((p) => p.id).concat(ownHero ? [ownHero.id] : [])), [picks, ownHero]);
+  const taken = useMemo(() => new Set([...picks.bans, ...picks.enemies, ...picks.allies].map((p) => p.id).concat(ownHero ? [ownHero.id] : chosenId ? [chosenId] : [])), [picks, ownHero, chosenId]);
   // кем занят герой: подпись на погасшей плитке в сетке
   const takenBy = useMemo(() => {
     const m = new Map<number, string>();
     for (const p of picks.enemies) m.set(p.id, "враг");
     for (const p of picks.allies) m.set(p.id, p.id === meId ? "ты" : "союзник");
     for (const p of picks.bans) m.set(p.id, "забанен");
-    if (ownHero) m.set(ownHero.id, "ты");
+    if (ownHero) m.set(ownHero.id, "ты"); else if (chosenId) m.set(chosenId, "ты");
     return m;
-  }, [picks, ownHero, meId]);
+  }, [picks, ownHero, meId, chosenId]);
   const poolSet = useMemo(() => new Set([...poolIds, ...override.add].filter((id) => !override.remove.includes(id))), [poolIds, override]);
   const familiarSet = useMemo(() => new Set(familiarIds.filter((id) => !poolSet.has(id) && !override.remove.includes(id))), [familiarIds, poolSet, override]);
 
@@ -222,7 +251,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
     const active = gsi?.connected ? DRAFT_PHASES.includes(gsi.phase) : picks.enemies.length + picks.allies.length > 0;
     const pack = (c: Candidate) => ({
       heroId: c.heroId, name: c.name, short: c.short, score: Math.round(c.finalScore), pool: c.poolStatus,
-      me: c.poolStatus === "pool" && c.midGames > 0 ? `${c.midWins}-${c.midGames - c.midWins}` : null,
+      me: c.poolStatus === "pool" && c.midGames > 0 ? `${c.midWins}–${c.midGames - c.midWins}` : null,
       why: c.reasons.slice(0, 2).map((r) => `${signed(r.value)} ${r.kind === "vs" ? "против" : "с"} ${r.name}`),
     });
     push({
@@ -255,6 +284,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
       const name = byId.get(id)?.name ?? String(id);
       if (taken.has(id) || next.some((p) => p.id === id)) { dup.push(name); continue; }
       if (next.length >= max) { over.push(name); continue; }
+      dismissed.current.delete(id);
       next.push({ id, role: null });
     }
     setPicks({ ...picks, [z]: next });
@@ -269,10 +299,11 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
     setUnknown((u) => ({ ...u, [z]: parts }));
   };
   const add = (id: number) => { const r = addMany(zone, [id]); noteSkipped(zone, [], r.dup, r.over); setQuery(""); };
-  const remove = (z: UserZone, id: number) => setPicks({ ...picks, [z]: picks[z].filter((x) => x.id !== id) });
+  // герой, прочитанный с экрана, после удаления руками экран больше не возвращает (иначе ошибку распознавания не поправить)
+  const remove = (z: UserZone, id: number) => { if (picks[z].some((x) => x.id === id && x.slot !== undefined)) dismissed.current.add(id); setPicks({ ...picks, [z]: picks[z].filter((x) => x.id !== id) }); };
   // роль в команде одна на игрока: заданная одному снимается с другого
   const setPickRole = (z: UserZone, id: number, r: Role | null) => setPicks({ ...picks, [z]: picks[z].map((x) => (x.id === id ? { ...x, role: r } : r && x.role === r ? { ...x, role: null } : x)) });
-  const reset = () => { setPicks({ bans: [], enemies: [], allies: [] }); setUnknown({ enemies: [], allies: [] }); setChosenId(null); forgetScreenRoles(); };
+  const reset = () => { setPicks({ bans: [], enemies: [], allies: [] }); setUnknown({ enemies: [], allies: [] }); setChosenId(null); forgetScreenRoles(); track.current = newTrackState(); dismissed.current.clear(); lastMatch.current = null; loggedMatch.current = null; };
 
   const submitQuick = (z: UserZone) => {
     const { ids, unknown: unk } = parseHeroText(quick[z], heroes, aliases);
@@ -283,7 +314,6 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
 
   const picksRef = useRef({ ...picks, allies });
   useEffect(() => { picksRef.current = { ...picks, allies }; }, [picks, allies]);
-  const lastMatch = useRef<string | null>(null);
 
   useEffect(() => {
     if (!auto) return;
@@ -297,7 +327,8 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
       if (stop) return;
       if (r) {
         const d = r.draft;
-        setGsi({ connected: r.connected, phase: d?.phase ?? "", ownHeroId: d?.ownHeroId ?? null, matchId: d?.matchId ?? null, team: d?.team ?? null, teamSlot: d?.teamSlot ?? null, accountId: r.account?.id ?? null });
+        // свой герой только при живой связи: после закрытия Доты последний снимок ещё помнит героя прошлой игры
+        setGsi({ connected: r.connected, phase: d?.phase ?? "", ownHeroId: r.connected ? (d?.ownHeroId ?? null) : null, matchId: d?.matchId ?? null, team: d?.team ?? null, teamSlot: d?.teamSlot ?? null, accountId: r.account?.id ?? null });
         // Экран читаем только на стадии пиков и планирования, о которых сообщает Дота; в меню и в игре захвата нет.
         // Без связи с Дотой (GSI не приходит) читаем всегда, но реже.
         const CAPTURE_PHASES = ["DOTA_GAMERULES_STATE_HERO_SELECTION", "DOTA_GAMERULES_STATE_STRATEGY_TIME"];
@@ -321,7 +352,17 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
               const mySlot: number | null = r.connected && d?.team ? (d.teamSlot ?? null) : null;
               // авто-бан (конфликт пиков) только на стадии пиков или без связи с Дотой; на стратегии пики закрыты
               const picking = !r.connected || d?.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION";
-              const t = trackFrame(track.current, slots, mine, mySlot, picking);
+              // без связи с Дотой новый матч виден только по экрану: все десять слотов пусты. Тогда забываем слоты прошлого
+              // драфта (иначе его герои считались «пропавшими» и уходили в авто-бан) и его героев с экрана; введённые руками остаются
+              if (!r.connected && slots.length >= 10 && slots.every((sl) => sl.empty)) {
+                if (track.current.held.size > 0) {
+                  track.current = newTrackState(); dismissed.current.clear(); setSideSeen(null);
+                  setPicks((prev) => ({ bans: prev.bans.filter((b) => !b.auto), enemies: prev.enemies.filter((x) => x.slot === undefined), allies: prev.allies.filter((x) => x.slot === undefined) }));
+                }
+              }
+              // без связи стадию не знаем: на стратегии портреты меняются (арканы, персоны), и нечитаемый слот не значит,
+              // что герой пропал; пропажу считаем только по пустому слоту или другому герою
+              const t = trackFrame(track.current, slots, mine, mySlot, picking, !!r.connected);
               const { enemiesSeen, alliesSeen, ownSeen } = t;
               setScreen({ status: `экран: ${res.source ?? ""} ${res.w}×${res.h}, ${res.ms} мс`, found: t.stable.length });
               setPicks((prev) => {
@@ -335,7 +376,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
                 const slotOf = new Map(t.stable.map((s) => [s.heroId as number, s.idx]));
                 const merge = (cur: Pick[], seen: number[]) => {
                   const out = cur.filter((p) => !banned.has(p.id) && (seen.includes(p.id) || !slots.some((sl) => sl.heroId === p.id))).map((p) => (p.slot === undefined && slotOf.has(p.id) ? { ...p, slot: slotOf.get(p.id) } : p));
-                  for (const id of seen) if (!banned.has(id) && !out.some((p) => p.id === id)) out.push({ id, role: null, slot: slotOf.get(id) });
+                  for (const id of seen) if (!banned.has(id) && !dismissed.current.has(id) && !out.some((p) => p.id === id)) out.push({ id, role: null, slot: slotOf.get(id) });
                   return out.slice(0, 5);
                 };
                 const enemies = merge(prev.enemies, enemiesSeen);
@@ -348,11 +389,14 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
           }
         }
         if (r.connected && d) {
-          // новый матч начал стадию пиков: очищаем прошлый драфт
-          if (d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" && d.matchId && lastMatch.current !== d.matchId) {
+          // новый матч начал стадию пиков, или Дота сообщает другой матч, чем тот, к которому относится драфт
+          // (перезапуск программы посреди следующей игры): очищаем прошлый драфт
+          const otherMatch = !!d.matchId && !!lastMatch.current && lastMatch.current !== d.matchId;
+          if (d.matchId && ((d.phase === "DOTA_GAMERULES_STATE_HERO_SELECTION" && lastMatch.current !== d.matchId) || otherMatch)) {
             lastMatch.current = d.matchId;
             lastKey.current = "";
             track.current = newTrackState();
+            dismissed.current.clear();
             setPicks({ bans: [], enemies: [], allies: [] });
             forgetScreenRoles();
           }
@@ -449,7 +493,8 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
 
       {gsiRewritten && <section className="rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm">Конфиг GSI в Доте указывал на старый порт, я переписал его. Перезапусти Доту, чтобы точка «Дота» загорелась.</section>}
 
-      <DraftBar byId={byId} allies={allies} enemies={picks.enemies} ownHeroId={gsi?.ownHeroId ?? meId ?? null} team={gsi?.connected ? (gsi.team ?? null) : side} role={role} guesses={roles} />
+      <DraftBar byId={byId} allies={allies} enemies={picks.enemies} ownHeroId={gsi?.ownHeroId ?? chosenId ?? meId ?? null} team={gsi?.connected ? (gsi.team ?? null) : side} role={role} guesses={roles}
+        onSwap={gsi?.connected ? undefined : () => setSideSeen(side === "radiant" ? "dire" : "radiant")} />
 
       <section className="grid gap-4 md:grid-cols-2">
         {/* зона своей команды под своей стороной полоски драфта: за Свет союзники слева, за Тьму справа */}
@@ -458,7 +503,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
             className={`rounded-2xl border-2 bg-panel p-3 cursor-pointer transition ${zone === z.key ? z.color : "border-border hover:border-border/80"}`}
             title={zone === z.key ? "Сюда попадают герои из сетки и текстового ввода" : "Нажми, чтобы добавлять героев сюда"}>
             <div className="flex items-center justify-between mb-2">
-              <span className={`text-sm font-semibold ${z.color.split(" ")[1]}`}>{z.label} <span className="text-muted font-normal">{picks[z.key].length + (z.key === "allies" && ownHero ? 1 : 0)}/{z.max}</span>
+              <span className={`text-sm font-semibold ${z.color.split(" ")[1]}`}>{z.label} <span className="text-muted font-normal">{z.key === "allies" ? allies.length + (ownHero ? 1 : 0) : picks[z.key].length}/{z.max}</span>
                 {z.key === "allies" && paper && <span className="ml-2 text-xs text-accent font-normal" title="Все пятеро союзников на месте: драфт на бумаге. Ты играешь героем на своей роли из шапки, советы и прогноз считаются за него. Смени роль в шапке, чтобы посмотреть другую линию">драфт на бумаге</span>}
                 {z.key === "allies" && rolesHidden && <span className="ml-2 text-xs text-muted font-normal" title="Дота не показывает роли союзников на экране: фулпати или режим без выбора ролей. Задай роли у чипов сам, иначе угадаю по героям">роли на экране не видны</span>}
               </span>
@@ -471,7 +516,8 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
                 </div>
               )}
               {(z.key === "allies" ? allies : picks[z.key]).map((p) => {
-                const h = byId.get(p.id)!;
+                const h = byId.get(p.id);
+                if (!h) return null; // героя нет в списке страницы (новый герой после обновления меты): не падаем
                 const guess = roles[z.key].find((g) => g.id === p.id);
                 const fromScreen = z.key === "allies" && !!p.role && !picks.allies.find((x) => x.id === p.id)?.role;
                 if (z.key === "allies" && p.id === meId) return (
@@ -572,16 +618,17 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
                 </span>
               )}
               {picks.enemies.length < 5 && predicted.length > 0 && (
-                <span className="inline-flex items-center gap-1.5 flex-wrap" title="Самые вероятные герои врага на ещё не занятые роли: по любимым героям игрока, если он известен, иначе по популярности роли. Пока соперник по твоей линии не выбран, матчапы против вероятных считаются с небольшим весом.">
+                <span className="inline-flex items-center gap-1.5 flex-wrap" title="Самые вероятные герои врага на ещё не занятые роли: по популярности героев на роли у Immortal за 4 недели. Пока соперник по твоей линии не выбран, матчапы против вероятных считаются с небольшим весом.">
                   <span className="text-muted">Враги ещё возьмут</span>
-                  {predicted.map((p) => <Chip key={p.role} tone="enemy" title={`Роль ${ROLE_NAME[p.role]}${p.player ? `, игрок ${p.player}` : ""}: ${p.heroes.map((h) => `${h.name} ${Math.round(h.share * 100)}%`).join(", ")}`}>{ROLE_LABEL[p.role]} · {p.heroes.slice(0, 2).map((h) => h.name).join(", ")}</Chip>)}
+                  {predicted.map((p) => <Chip key={p.role} tone="enemy" title={`Роль ${ROLE_NAME[p.role]}: ${p.heroes.map((h) => `${h.name} ${Math.round(h.share * 100)}%`).join(", ")}`}>{ROLE_LABEL[p.role]} · {p.heroes.slice(0, 2).map((h) => h.name).join(", ")}</Chip>)}
                 </span>
               )}
             </Card>
           )}
           <LaneCard role={role} enemies={picks.enemies} enemyGuess={roles.enemies} predicted={predicted} allies={allies.filter((p) => p.id !== meId)} allyGuess={roles.allies} taken={taken} byId={byId} />
-          <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} hint="Герои, на которых ты играешь на этой роли (пул правится кнопкой «Мой пул»). Отсортированы по шансу победы в этом драфте." items={inPool} loading={loading} byId={byId} onTake={take} lane={laneOpp} featured canTake={!gsi?.connected && !paper} />
-          <ResultBlock title="Вне пула, но хороши в этот драфт" hint="Герои не из твоего пула на этой роли: оценка только по мете и драфту, твой счёт на них показывается, но не учитывается. «Знакомый» значит 3-9 игр за год." items={outside} loading={loading} byId={byId} onTake={take} canTake={!gsi?.connected && !paper}
+          <ResultBlock title={`Из твоего пула · ${ROLE_FULL[role]}`} hint="Герои, на которых ты играешь на этой роли (пул правится кнопкой «Мой пул»). Отсортированы по шансу победы в этом драфте." items={inPool} loading={loading} byId={byId} onTake={take} lane={laneOpp} featured canTake={!gsi?.connected && !paper}
+            emptyText={poolSet.size === 0 ? `На роли ${ROLE_NAME[role]} в пуле пока никого: загрузи историю аккаунта (Настройки → Аккаунты) или отметь героев кнопкой «Мой пул». Лучшие герои роли ниже.` : undefined} />
+          <ResultBlock title="Вне пула, но хороши в этот драфт" hint="Герои не из твоего пула на этой роли: оценка только по мете и драфту, твой счёт на них показывается, но не учитывается. «Знакомый» значит 3-9 игр за год." items={outside} loading={loading} byId={byId} onTake={take} canTake={!gsi?.connected && !paper} lane={poolSet.size === 0 ? laneOpp : undefined} featured={poolSet.size === 0}
             footer={outsideAll.length > 8 ? <button onClick={() => setShowAll(!showAll)} className="text-xs text-muted underline">{showAll ? "Показать меньше" : "Показать больше"}</button> : undefined} />
         </section>
       </div>
@@ -617,7 +664,7 @@ export default function DraftBoard({ heroes, aliases }: { heroes: Hero[]; aliase
                       <img src={portrait(h.short)} alt={h.name} loading="lazy" className={`absolute inset-0 h-full w-full object-cover ${on || fam ? "" : "opacity-60 grayscale-[.4]"}`} />
                       <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-1.5 pb-1 pt-5 text-left leading-tight">
                         <span className="block truncate text-xs text-white/90">{h.name}</span>
-                        <span className={`block text-[11px] ${r ? (wr !== null && wr >= 50 ? "text-good" : "text-bad") : "text-white/50"}`}>{r ? `${r.wins}-${r.games - r.wins} · ${wr}% · ${r.games} ${r.games % 10 === 1 && r.games % 100 !== 11 ? "игра" : r.games % 10 >= 2 && r.games % 10 <= 4 && (r.games % 100 < 10 || r.games % 100 >= 20) ? "игры" : "игр"}` : "игр на роли нет"}</span>
+                        <span className={`block text-[11px] ${r ? (wr !== null && wr >= 50 ? "text-good" : "text-bad") : "text-white/50"}`}>{r ? `${r.wins}–${r.games - r.wins} · ${wr}% · ${r.games} ${r.games % 10 === 1 && r.games % 100 !== 11 ? "игра" : r.games % 10 >= 2 && r.games % 10 <= 4 && (r.games % 100 < 10 || r.games % 100 >= 20) ? "игры" : "игр"}` : "игр на роли нет"}</span>
                       </span>
                       {on && <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-black">✓</span>}
                     </div>
@@ -692,7 +739,7 @@ function LaneCard({ role, enemies, enemyGuess, predicted, allies, allyGuess, tak
         )}
         <div className="text-xs">
           <span className="text-muted">Хорошо стоят против {whom} на линии: </span>
-          {err ? <span className="text-muted">{err === "Stratz не ответил" ? "нет данных, Stratz не ответил" : "нет данных"}</span>
+          {err ? <span className="text-muted">{err === "Stratz не ответил" ? "нет данных, Stratz не ответил" : err.startsWith("нужен токен") ? err : "нет данных"}</span>
             : counters == null ? <span className="text-muted">смотрю…</span>
             : good.length === 0 ? <span className="text-muted">явных нет, линия обычно ровная</span>
             : good.map((c, i) => (
@@ -706,20 +753,21 @@ function LaneCard({ role, enemies, enemyGuess, predicted, allies, allyGuess, tak
   );
 }
 
-function ResultBlock({ title, hint, items, loading, byId, footer, onTake, lane, featured, canTake }: { title: string; hint?: string; items: Candidate[]; loading: boolean; byId: Map<number, Hero>; footer?: React.ReactNode; onTake: (id: number) => void; lane?: LaneOpponent | null; featured?: boolean; canTake: boolean }) {
+function ResultBlock({ title, hint, items, loading, byId, footer, onTake, lane, featured, canTake, emptyText }: { title: string; hint?: string; items: Candidate[]; loading: boolean; byId: Map<number, Hero>; footer?: React.ReactNode; onTake: (id: number) => void; lane?: LaneOpponent | null; featured?: boolean; canTake: boolean; emptyText?: string }) {
   return (
     <Card className="p-3">
       <CardTitle hint={hint} right={loading ? <Crystals size={11} label="считаю" /> : <span className="text-xs text-muted" title="Оценка шанса победы с героем в этом драфте: винрейт на роли, контрпики, синергии, наигранность и твой винрейт. Нажми на строку, чтобы увидеть, из чего она сложилась.">шанс победы</span>}>{title}</CardTitle>
       <div className="flex flex-col gap-2">
         {items.map((c, i) => <Row key={c.heroId} c={c} byId={byId} onTake={canTake ? onTake : undefined} lane={lane} featured={featured && i === 0} />)}
-        {items.length === 0 && !loading && <Empty compact>Пока нечего посоветовать: добавь врагов или загрузи историю аккаунта.</Empty>}
+        {items.length === 0 && !loading && <Empty compact>{emptyText ?? "Пока нечего посоветовать: добавь врагов или загрузи историю аккаунта."}</Empty>}
       </div>
       {footer && <div className="mt-2">{footer}</div>}
     </Card>
   );
 }
 
-const signed = (v: number, digits = 0) => `${v > 0 ? "+" : v < 0 ? "-" : ""}${Math.abs(v).toFixed(digits)}`;
+// знак по округлённому значению: 0.3 печаталось как «+0»
+const signed = (v: number, digits = 0) => { const t = Math.abs(v).toFixed(digits); return Number(t) === 0 ? t : `${v > 0 ? "+" : "-"}${t}`; };
 const signTone = (v: number) => (v >= 0.5 ? "text-good" : v <= -0.5 ? "text-bad" : "text-muted");
 
 /** Строка «из чего сложилась оценка» в раскрытой карточке героя. */
@@ -746,11 +794,11 @@ function why(c: Candidate, lane?: LaneOpponent | null): string {
 
 function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<number, Hero>; onTake?: (id: number) => void; lane?: LaneOpponent | null; featured?: boolean }) {
   const [open, setOpen] = useState(false);
-  const h = byId.get(c.heroId)!;
+  const h = byId.get(c.heroId) ?? { short: c.short, name: c.name };
   const score = Math.round(c.finalScore);
   const tone = score >= 55 ? "text-good" : score <= 45 ? "text-bad" : "text-foreground";
   const bar = score >= 55 ? "bg-good" : score <= 45 ? "bg-bad" : "bg-accent";
-  const laneName = lane ? lane.name.split(" ")[0] : "";
+  const laneName = lane ? lane.name : ""; // полное имя: «против Shadow» было непонятно (Fiend, Shaman, Demon)
   // в строке не больше двух чипов: статус пула и самое важное из (матчап по линии, твой счёт, популярность); остальное в раскрытии
   const chips: React.ReactNode[] = [];
   if (c.poolStatus === "familiar") chips.push(<Chip key="fam" tone="accent" className="opacity-80" title="3-9 игр на этой роли за год; на оценку твой счёт не влияет">знакомый</Chip>);
@@ -759,7 +807,9 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
   // популярность в строке только когда больше нечего показать: четыре процента в одной строке не читаются, в раскрытии она есть всегда
   if (c.top && chips.length === 0) chips.push(<Chip key="top" title={`Популярность у Immortal на этой роли за 4 недели: ${c.top.rate}% всех пиков роли (${c.top.games} игр), винрейт ${c.top.winrate}%`}>берут {c.top.rate}%</Chip>);
   const shown = chips.slice(0, 2);
-  const top = c.reasons.slice(0, 3);
+  // матчап против соперника по линии уже в плашке: строкой ниже его не повторяем (у Void Spirit было «+4 против Invoker» дважды)
+  const laneInChip = shown.some((x) => (x as React.ReactElement)?.key === "lane");
+  const top = c.reasons.filter((r) => !(laneInChip && lane && r.kind === "vs" && r.heroId === lane.heroId)).slice(0, 3);
   return (
     <div className={`rounded-xl cursor-pointer transition animate-rise ${featured ? "bg-panel-2 p-3 ring-1 ring-accent/40" : "bg-panel-2 p-2.5"} ${open ? "ring-1 ring-border" : featured ? "" : "hover:bg-panel-2/70"}`} onClick={() => setOpen(!open)} title={open ? undefined : "Нажми, чтобы увидеть, из чего сложилась оценка"}>
       {featured ? (
@@ -813,10 +863,10 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
             {c.poolStatus === "pool" ? (
               <>
                 <Part label="Наигранность" note={`${c.midGames} игр на роли за год`} value={c.experienceAdj} />
-                <Part label="Твой винрейт" note={c.midGames === 0 ? "игр на роли нет" : `${c.midWins}-${c.midGames - c.midWins}, ${c.personalWinrate}%${c.midGames < 3 ? ", меньше 3 игр, не учитывается" : c.personalAdj === 0 ? ", ровно 50%" : ""}`} value={c.personalAdj} />
+                <Part label="Твой винрейт" note={c.midGames === 0 ? "игр на роли нет" : `${c.midWins}–${c.midGames - c.midWins}, ${c.personalWinrate}%${c.midGames < 3 ? ", меньше 3 игр, не учитывается" : c.personalAdj === 0 ? ", ровно 50%" : ""}`} value={c.personalAdj} />
               </>
             ) : (
-              <div className="flex items-baseline justify-between gap-3"><span>Наигранность и твой винрейт<span className="opacity-60"> · {c.midGames > 0 ? `${c.midWins}-${c.midGames - c.midWins}, ` : ""}не в пуле, не учитываются</span></span><b className="text-muted">0</b></div>
+              <div className="flex items-baseline justify-between gap-3"><span>Наигранность и твой винрейт<span className="opacity-60"> · {c.midGames > 0 ? `${c.midWins}–${c.midGames - c.midWins}, ` : ""}не в пуле, не учитываются</span></span><b className="text-muted">0</b></div>
             )}
             <div className="flex items-baseline justify-between gap-3 border-t border-border pt-1 mt-0.5 text-foreground"><span>Итого: шанс победы</span><b className={`tabular-nums ${tone}`}>{score}%</b></div>
             <div className="opacity-60 mt-1">Его берут на эту роль в {Math.round(c.midRate * 100)}% игр героя у Immortal{c.top ? `, это ${c.top.rate}% всех пиков роли` : ""}. Матчапы и синергии Stratz даёт только по Divine+Immortal вместе.</div>
@@ -830,7 +880,7 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
                 <b className={`tabular-nums ${signTone(r.value)}`}>{signed(r.value, 1)}</b>
               </div>
             ))}
-            {c.personalNotes.map((n) => <div key={`${n.ally}-${n.heroId}`} className="text-accent">Ты {n.ally ? "вместе с" : "против"} {n.name}: {n.wins}-{n.games - n.wins}</div>)}
+            {c.personalNotes.map((n) => <div key={`${n.ally}-${n.heroId}`} className="text-accent">Ты {n.ally ? "вместе с" : "против"} {n.name}: {n.wins}–{n.games - n.wins}</div>)}
           </div>
         </div>
       )}
@@ -839,9 +889,26 @@ function Row({ c, byId, onTake, lane, featured }: { c: Candidate; byId: Map<numb
 }
 
 
-function DraftBar({ byId, allies, enemies, ownHeroId, team, role, guesses }: { byId: Map<number, Hero>; allies: Pick[]; enemies: Pick[]; ownHeroId: number | null; team: "radiant" | "dire" | null; role: Role; guesses: { enemies: RoleGuess[]; allies: RoleGuess[] } }) {
+type BarPick = Pick | { id: number; role: Role | null; own?: true };
+// слот полоски драфта: отдельный компонент, а не функция внутри DraftBar, иначе все слоты пересоздавались на каждом
+// опросе (раз в полсекунды на пиках), и подсказки к ним не успевали появиться
+function BarSlot({ p, side, free, byId, ownHeroId, role, guesses }: { p?: BarPick; side: "ours" | "theirs"; free?: Role; byId: Map<number, Hero>; ownHeroId: number | null; role: Role; guesses: { enemies: RoleGuess[]; allies: RoleGuess[] } }) {
+  const h = p ? byId.get(p.id) : undefined;
+  const own = !!(p && (("own" in p && p.own) || p.id === ownHeroId));
+  const r = p ? (p.role ?? (side === "ours" ? guesses.allies : guesses.enemies).find((x) => x.id === p.id)?.role) : undefined;
+  return (
+    <div className={`relative flex-1 min-w-10 max-w-28 aspect-[16/9] overflow-hidden rounded-lg border ${own ? "border-accent" : side === "ours" ? "border-ally/40" : "border-enemy/40"} bg-panel-2`}
+      title={h ? `${h.name}${r ? ` · ${ROLE_NAME[r]}` : ""}` : free ? `Свободная роль: ${ROLE_NAME[free]}` : "пусто"}>
+      {h ? <img src={portrait(h.short)} alt={h.name} className="h-full w-full object-cover" /> : <div className={`flex h-full w-full items-center justify-center text-xl font-semibold ${side === "ours" ? "text-ally/50" : "text-enemy/50"}`}>{free ?? ""}</div>}
+      {h && r && !own && <div className={`absolute bottom-0 right-0 rounded-tl px-2 py-0.5 text-xs font-semibold ${side === "ours" ? "bg-ally/80 text-black" : "bg-enemy/80 text-black"}`}>{r}</div>}
+      {own && <div className="absolute bottom-0 inset-x-0 bg-accent/80 text-xs text-black text-center font-semibold">ты · {role}</div>}
+    </div>
+  );
+}
+
+function DraftBar({ byId, allies, enemies, ownHeroId, team, role, guesses, onSwap }: { byId: Map<number, Hero>; allies: Pick[]; enemies: Pick[]; ownHeroId: number | null; team: "radiant" | "dire" | null; role: Role; guesses: { enemies: RoleGuess[]; allies: RoleGuess[] }; onSwap?: () => void }) {
   const oursLeft = team !== "dire"; // Свет слева, как в игре; если команда неизвестна, свои слева
-  const ours: (Pick | { id: number; role: Role | null; own: true })[] = [...allies];
+  const ours: BarPick[] = [...allies];
   if (ownHeroId && !ours.some((p) => p.id === ownHeroId)) ours.unshift({ id: ownHeroId, role, own: true });
   // пустые слоты подписаны номерами ещё не занятых ролей: заданная вручную роль, иначе предположение пикера
   const freeRoles = (picksList: Pick[], g: RoleGuess[], extra: Role[]): Role[] => {
@@ -851,32 +918,24 @@ function DraftBar({ byId, allies, enemies, ownHeroId, team, role, guesses }: { b
   };
   const freeOurs = freeRoles(allies, guesses.allies, ownHeroId ? [role] : []);
   const freeTheirs = freeRoles(enemies, guesses.enemies, []);
-  const Slot = ({ p, side, free }: { p?: Pick | { id: number; role: Role | null; own?: true }; side: "ours" | "theirs"; free?: Role }) => {
-    const h = p ? byId.get(p.id) : undefined;
-    const own = !!(p && (("own" in p && p.own) || p.id === ownHeroId));
-    const r = p ? (p.role ?? (side === "ours" ? guesses.allies : guesses.enemies).find((x) => x.id === p.id)?.role) : undefined;
-    return (
-      <div className={`relative flex-1 min-w-10 max-w-28 aspect-[16/9] overflow-hidden rounded-lg border ${own ? "border-accent" : side === "ours" ? "border-ally/40" : "border-enemy/40"} bg-panel-2`}
-        title={h ? `${h.name}${r ? ` · ${ROLE_NAME[r]}` : ""}` : free ? `Свободная роль: ${ROLE_NAME[free]}` : "пусто"}>
-        {h ? <img src={portrait(h.short)} alt={h.name} className="h-full w-full object-cover" /> : <div className={`flex h-full w-full items-center justify-center text-xl font-semibold ${side === "ours" ? "text-ally/50" : "text-enemy/50"}`}>{free ?? ""}</div>}
-        {h && r && !own && <div className={`absolute bottom-0 right-0 rounded-tl px-2 py-0.5 text-xs font-semibold ${side === "ours" ? "bg-ally/80 text-black" : "bg-enemy/80 text-black"}`}>{r}</div>}
-        {own && <div className="absolute bottom-0 inset-x-0 bg-accent/80 text-xs text-black text-center font-semibold">ты · {role}</div>}
-      </div>
-    );
-  };
   const left = oursLeft ? ours : enemies, right = oursLeft ? enemies : ours;
   const leftSide = oursLeft ? "ours" : "theirs", rightSide = oursLeft ? "theirs" : "ours";
   const leftFree = oursLeft ? freeOurs : freeTheirs, rightFree = oursLeft ? freeTheirs : freeOurs;
   const pad = (arr: unknown[]) => Array.from({ length: 5 }, (_, i) => arr[i]);
+  const common = { byId, ownHeroId, role, guesses };
+  const sideText = team ? (team === "radiant" ? "ты за Свет" : "ты за Тьму") : "команда неизвестна";
   return (
     <section className="rounded-xl border border-border bg-panel px-3 py-2.5 flex items-center justify-between gap-3">
       <div className="flex flex-1 min-w-0 items-center gap-1.5">
         <span className={`mr-1 text-sm font-semibold ${leftSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Свет" : "Союзники"}</span>
-        {pad(left).map((p, i) => <Slot key={`l${i}`} p={p as Pick | undefined} side={leftSide} free={p ? undefined : leftFree[i - left.length]} />)}
+        {pad(left).map((p, i) => <BarSlot key={`l${i}`} p={p as BarPick | undefined} side={leftSide} free={p ? undefined : leftFree[i - left.length]} {...common} />)}
       </div>
-      <div className="hidden xl:block text-xs text-muted whitespace-nowrap px-1">{team ? (team === "radiant" ? "ты за Свет" : "ты за Тьму") : "команда неизвестна"}</div>
+      {/* без связи с Дотой сторону не знаем: надпись переключает её кликом (видна на любой ширине окна) */}
+      {onSwap
+        ? <button onClick={onSwap} title="Сторону сообщает Дота, а без связи с ней пикер считает, что ты за Свет. Нажми, если ты за Тьму, и наоборот" className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-muted whitespace-nowrap hover:text-foreground hover:border-accent/60">{sideText} ⇄</button>
+        : <div className="hidden xl:block text-xs text-muted whitespace-nowrap px-1">{sideText}</div>}
       <div className="flex flex-1 min-w-0 items-center justify-end gap-1.5">
-        {pad(right).map((p, i) => <Slot key={`r${i}`} p={p as Pick | undefined} side={rightSide} free={p ? undefined : rightFree[i - right.length]} />)}
+        {pad(right).map((p, i) => <BarSlot key={`r${i}`} p={p as BarPick | undefined} side={rightSide} free={p ? undefined : rightFree[i - right.length]} {...common} />)}
         <span className={`ml-1 text-sm font-semibold ${rightSide === "ours" ? "text-ally" : "text-enemy"}`}>{team ? "Тьма" : "Враги"}</span>
       </div>
     </section>
