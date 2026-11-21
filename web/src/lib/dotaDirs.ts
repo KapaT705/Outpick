@@ -8,11 +8,22 @@ import { execFileSync } from "node:child_process";
 function steamRootsFromRegistry(): string[] {
   const out: string[] = [];
   const read = (key: string, value: string) => {
+    let p: string | null = null;
     try {
       const txt = execFileSync("reg", ["query", key, "/v", value], { encoding: "utf8", windowsHide: true, timeout: 3000 });
       const m = new RegExp(`${value}\\s+REG_SZ\\s+(.+)`, "i").exec(txt);
-      if (m) out.push(m[1].trim().replace(/\//g, "\\"));
+      if (m) p = m[1].trim().replace(/\//g, "\\");
     } catch {}
+    // reg.exe пишет в кодовой странице консоли (на русской Windows CP866): путь с кириллицей («D:\Игры\Steam») приходит
+    // искажённым и не находится. Тогда читаем то же значение через PowerShell в UTF-8
+    if (p && !fs.existsSync(p)) {
+      const full = key.replace(/^HKCU\\/i, "HKEY_CURRENT_USER\\").replace(/^HKLM\\/i, "HKEY_LOCAL_MACHINE\\");
+      try {
+        const ps = execFileSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", `[Console]::OutputEncoding=[Text.Encoding]::UTF8; (Get-ItemProperty -Path 'Registry::${full}' -Name '${value}').'${value}'`], { encoding: "utf8", windowsHide: true, timeout: 6000 }).trim();
+        if (ps) p = ps.replace(/\//g, "\\");
+      } catch {}
+    }
+    if (p) out.push(p);
   };
   read("HKCU\\Software\\Valve\\Steam", "SteamPath");
   read("HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam", "InstallPath");

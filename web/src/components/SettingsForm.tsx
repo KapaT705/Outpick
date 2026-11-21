@@ -99,6 +99,7 @@ export default function SettingsForm() {
   };
 
   const save = async () => {
+    if (!token.trim()) { setMsg(info?.hasToken ? "Токен уже сохранён. Чтобы заменить, вставь новый в поле выше" : "Вставь токен в поле выше"); return; }
     setBusy(true); setMsg(null);
     const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stratzToken: token }) }).then((x) => x.json()).catch(() => null);
     if (r?.ok) { setMsg("Сохранено"); setToken(""); reloadInfo(); } else setMsg(r?.error ?? "Ошибка");
@@ -225,9 +226,10 @@ export default function SettingsForm() {
         </label>
         <div className={`flex flex-wrap items-center gap-x-6 gap-y-2 ${ov.enabled ? "" : "opacity-50"}`}>
           <label className="flex items-center gap-2">
-            <span className="text-muted">Прозрачность</span>
-            <input type="range" min={40} max={100} value={Math.round(ov.opacity * 100)} disabled={!ov.enabled} onChange={(e) => saveOverlay({ opacity: Number(e.target.value) / 100 }, 300)} className="w-32 accent-accent" />
-            <span className="w-10 tabular-nums text-xs text-muted">{Math.round(ov.opacity * 100)}%</span>
+            {/* показываем именно прозрачность: «Прозрачность 95%» при почти непрозрачном окне путала (хранится непрозрачность 0.4-1) */}
+            <span className="text-muted" title="0% - окно плотное, 60% - сквозь него видно Доту">Прозрачность</span>
+            <input type="range" min={0} max={60} value={100 - Math.round(ov.opacity * 100)} disabled={!ov.enabled} onChange={(e) => saveOverlay({ opacity: (100 - Number(e.target.value)) / 100 }, 300)} className="w-32 accent-accent" />
+            <span className="w-10 tabular-nums text-xs text-muted">{100 - Math.round(ov.opacity * 100)}%</span>
           </label>
           <div className="flex items-center gap-2">
             <span className="text-muted">Героев в списке</span>
@@ -304,7 +306,7 @@ export default function SettingsForm() {
         <div className="flex items-center gap-3">
           <button onClick={startRefresh} disabled={!!ref?.running} className="rounded-lg border border-border px-3.5 py-2 text-sm hover:border-accent/60 hover:bg-panel-2 disabled:opacity-50 disabled:cursor-not-allowed transition">{ref?.running ? "обновляю…" : "Обновить мету"}</button>
           {ref?.running ? <Crystals size={12} progress={stepProgress(ref.message)} label={ref.message} /> : <span className="text-xs text-muted">
-            {ref?.error ? `ошибка: ${ref.error}` : ref?.updatedAt ? `обновлено ${new Date(ref.updatedAt * 1000).toLocaleString("ru-RU")}` : "пока используются данные из сборки"}
+            {ref?.error ? `ошибка: ${ref.error}` : ref?.updatedAt ? `обновлено ${new Date(ref.updatedAt * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}` : "пока используются данные из сборки"}
           </span>}
         </div>
       </Card>

@@ -55,20 +55,26 @@ export default function Onboarding() {
     setBusy(false);
     if (r?.ok) { setToken(""); await reload(); setStep(2); } else setMsg(r?.error ?? "не удалось сохранить");
   };
-  const pollRefresh = async () => {
-    for (let i = 0; i < 90; i++) {
+  // ждём загрузку истории до 6 минут; возвращает текст ошибки, "TIMEOUT" или null (готово)
+  const pollRefresh = async (): Promise<string | null> => {
+    for (let i = 0; i < 240; i++) {
       await new Promise((r) => setTimeout(r, 1500));
       const st = await fetch("/api/refresh").then((x) => x.json()).catch(() => null);
-      if (!st?.running) { if (st?.error) setMsg(`ошибка: ${st.error}`); return; }
+      if (!st?.running) return st?.error ? String(st.error) : null;
       setMsg(st.message);
     }
+    return "TIMEOUT";
   };
   const loadAccount = async (id: number | string) => {
     setBusy(true); setMsg("загружаю историю…");
     const r = await fetch("/api/accounts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "add", id }) }).then((x) => x.json()).catch(() => null);
     if (!r?.ok) { setMsg(r?.error ?? "ошибка"); setBusy(false); return; }
-    await pollRefresh();
-    setBusy(false); setMsg(null); await reload(); setStep(3);
+    const err = await pollRefresh();
+    setBusy(false); await reload();
+    // ошибку показываем и остаёмся на шаге: раньше она тут же стиралась, и человек не понимал, почему пула нет
+    if (err === "TIMEOUT") { setMsg("История ещё грузится в фоне, можно идти дальше"); setStep(3); return; }
+    if (err) { setMsg(`ошибка: ${err}`); return; }
+    setMsg(null); setStep(3);
   };
   const installGsi = async () => {
     setBusy(true); setMsg("ставлю…");

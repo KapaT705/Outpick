@@ -13,6 +13,7 @@ export type AppConfig = {
   screenCapture?: boolean;
   onboardingDone?: boolean; // экран первого запуска пройден или пропущен
   overlay?: OverlaySettings; // окно поверх Доты с лучшими пиками (показывает desktop/main.js)
+  dotaDir?: string; // папка game\dota, указанная вручную при установке конфига GSI (когда сама не нашлась)
 };
 /** Оверлей: включён ли, появляется ли сам на стадии пиков, прозрачность 0.4-1, сколько героев (3 или 5). */
 export type OverlaySettings = { enabled: boolean; auto: boolean; opacity: number; count: 3 | 5 };
@@ -38,6 +39,7 @@ export function readConfig(): AppConfig {
     githubToken: c.githubToken || "",
     screenCapture: c.screenCapture !== false, // по умолчанию включено
     onboardingDone: c.onboardingDone === true,
+    dotaDir: typeof c.dotaDir === "string" && c.dotaDir ? c.dotaDir : undefined,
     overlay: normalizeOverlay(c.overlay),
   };
 }
@@ -47,12 +49,18 @@ export function writeConfig(c: AppConfig) {
   writeJsonAtomic(FILE, c, 2);
 }
 
-/** Нормализует Steam ID: принимает и 64-битный. */
+/** Нормализует Steam ID: число (32- или 64-битное) или ссылка на профиль Stratz, Dotabuff, OpenDota, Steam
+ *  (…/players/123456789, …/profiles/7656…). Вне диапазона 32-битного id: null. */
 export function toSteam32(v: string | number): number | null {
-  const s = String(v).trim();
-  if (!/^\d+$/.test(s)) return null;
+  let s = String(v).trim();
+  const fromUrl = /(?:players|player|profiles)\/(\d+)/i.exec(s);
+  if (fromUrl) s = fromUrl[1];
+  if (!/^\d{1,20}$/.test(s)) return null;
   const n = BigInt(s);
   if (n <= BigInt(0)) return null;
   const base = BigInt("76561197960265728");
-  return Number(n > base ? n - base : n);
+  const id = n > base ? n - base : n;
+  return id < BigInt(2) ** BigInt(32) ? Number(id) : null;
 }
+/** Текст ошибки для неверного Steam ID. */
+export const STEAM_ID_HINT = "Не похоже на Steam ID: вставь число из ссылки на профиль Stratz или Dotabuff (например 123456789) или саму ссылку";

@@ -7,7 +7,14 @@ export function writeJsonAtomic(file: string, value: unknown, pretty?: number) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(value, null, pretty));
-  fs.renameSync(tmp, file);
+  // на Windows переименование иногда падает с EPERM/EBUSY, пока антивирус держит файл: пробуем ещё несколько раз
+  for (let i = 0; ; i++) {
+    try { fs.renameSync(tmp, file); return; } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (i >= 5 || (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES")) { try { fs.rmSync(tmp, { force: true }); } catch {} throw e; }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40 * (i + 1));
+    }
+  }
 }
 
 /** Читает JSON. Нет файла: null. Битый файл: откладывается рядом как name.corrupt-<время> (данные не теряются,

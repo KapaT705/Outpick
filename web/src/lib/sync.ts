@@ -18,13 +18,14 @@ const STRATZ = (token: string, query: string) => fetch("https://api.stratz.com/g
 
 const PLAYER_FIELDS = "players { steamAccountId heroId isRadiant isVictory playerSlot }";
 
-/** Матч по номеру из Stratz; null, если Stratz его не знает (все игроки с закрытыми профилями, матч ещё не подтянут). */
-async function stratzMatch(token: string, id: string): Promise<M | null> {
+/** Матч по номеру из Stratz; null, если Stratz его не знает (все игроки с закрытыми профилями, матч ещё не подтянут),
+ *  "error", если Stratz не ответил (нет сети, сбой): такой ответ не значит, что матча не было. */
+async function stratzMatch(token: string, id: string): Promise<M | null | "error"> {
   try {
     const j = await STRATZ(token, `{ match(id: ${id}) { id startDateTime durationSeconds didRadiantWin lobbyType ${PLAYER_FIELDS} } }`);
     const m = j?.data?.match;
     return m && Array.isArray(m.players) && m.players.length ? m : null;
-  } catch { return null; }
+  } catch { return "error"; }
 }
 
 /**
@@ -32,16 +33,17 @@ async function stratzMatch(token: string, id: string): Promise<M | null> {
  * и за закрытые профили (игроки без account_id). Нужен, когда играли с аккаунта с выключенным «Expose Public Match Data»:
  * Stratz такие матчи не хранит.
  */
-async function openDotaMatch(id: string): Promise<M | null> {
+async function openDotaMatch(id: string): Promise<M | null | "error"> {
   try {
     const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 20_000);
     const r = await fetch(`https://api.opendota.com/api/matches/${id}`, { headers: { "User-Agent": "outpick" }, signal: ctrl.signal }).finally(() => clearTimeout(t));
+    if (r.status >= 500 || r.status === 429) return "error";
     if (!r.ok) return null;
     const d = await r.json() as { match_id?: number; radiant_win?: boolean; duration?: number; start_time?: number; players?: { player_slot: number; hero_id: number; account_id?: number | null }[] };
     if (!d?.match_id || !Array.isArray(d.players) || d.players.length === 0 || typeof d.radiant_win !== "boolean") return null;
     const players: P[] = d.players.map((p) => { const isRadiant = p.player_slot < 128; return { steamAccountId: p.account_id ?? null, heroId: p.hero_id, isRadiant, isVictory: isRadiant === d.radiant_win, playerSlot: p.player_slot }; });
     return { id: d.match_id, startDateTime: d.start_time ?? 0, durationSeconds: d.duration ?? 0, didRadiantWin: d.radiant_win, players };
-  } catch { return null; }
+  } catch { return "error"; }
 }
 
 /** Список матчей аккаунта из Stratz (пустой у закрытого профиля). */
@@ -75,14 +77,6 @@ function apply(rec: DraftLog, m: M, me: P, now: number, labels: MatchLabel[]) {
   rec.matchId = m.id; rec.won = me.isVictory; rec.durationSeconds = m.durationSeconds; rec.syncedAt = now;
   // старые записи без аккаунта: кто из известных аккаунтов был в матче, тот и играл
   if (!rec.accountId) { const known = readConfig().accounts.map((a) => a.id); const mine = m.players.find((p) => p.steamAccountId && known.includes(p.steamAccountId)); if (mine?.steamAccountId) rec.accountId = mine.steamAccountId; else if (me.steamAccountId) rec.accountId = me.steamAccountId; }
-  // сверка игроков из server_log.txt с матчем: те же Steam ID и тот же порядок (слот 0-4 Свет, 5-9 Тьма по playerSlot)
-  if (rec.players?.length === 10) {
-    const bySlot = [...m.players].sort((a, b) => a.playerSlot - b.playerSlot);
-    const known = bySlot.filter((p) => p.steamAccountId);
-    const sameSet = known.every((p) => rec.players!.some((x) => x.accountId === p.steamAccountId));
-    const sameOrder = known.every((p) => { const i = bySlot.indexOf(p); return rec.players![i]?.accountId === p.steamAccountId; });
-    rec.playersVerified = known.length >= 5 ? sameSet && sameOrder : undefined;
-  }
   // разметка слотов для самообучения портретов: порядок игроков в верхней панели = playerSlot
   const bySlot = (radiant: boolean) => m.players.filter((p) => p.isRadiant === radiant).sort((a, b) => a.playerSlot - b.playerSlot).map((p) => p.heroId);
   labels.push({ matchId: String(m.id), radiant: bySlot(true), dire: bySlot(false), at: now });
@@ -94,7 +88,7 @@ function apply(rec: DraftLog, m: M, me: P, now: number, labels: MatchLabel[]) {
  * матчей аккаунта, с которого играли (у каждой записи свой accountId; старые без него: аккаунт по умолчанию).
  */
 // поля записи, которые заполняет синхронизация; остальное (драфт, игроки) ей не принадлежит и при записи не трогается
-const SYNC_FIELDS = ["triedAt", "matchId", "won", "durationSeconds", "syncedAt", "accountId", "playersVerified", "details", "bench", "noMatch"] as const;
+const SYNC_FIELDS = ["triedAt", "matchId", "won", "durationSeconds", "syncedAt", "accountId", "details", "bench", "noMatch"] as const;
 let syncing: Promise<SyncResult> | null = null;
 
 /** Одна синхронизация за раз: кнопка в истории во время автосинхронизации получает её же результат. */
@@ -118,10 +112,20 @@ async function syncResultsNow(): Promise<SyncResult> {
     rec.triedAt = now;
     const ME = rec.accountId ?? DEFAULT ?? 0;
     if (rec.gsiMatchId) {
-      const m = (await stratzMatch(TOKEN, rec.gsiMatchId)) ?? (await openDotaMatch(rec.gsiMatchId));
-      if (m) { fetched++; const me = meIn(m, ME, rec.chosenHeroId); if (me) { apply(rec, m, me, now, labels); await attachDetails(rec, ME); updated++; } }
-      // двое суток ни Stratz, ни OpenDota матча не знают: игра не состоялась (кто-то не подключился), больше не ищем
-      else if (now - rec.createdAt > 48 * 3600) { rec.noMatch = true; rec.syncedAt = now; }
+      const s = await stratzMatch(TOKEN, rec.gsiMatchId);
+      const o = s && s !== "error" ? null : await openDotaMatch(rec.gsiMatchId);
+      const m = s && s !== "error" ? s : o && o !== "error" ? o : null;
+      const failed = s === "error" || o === "error";
+      const old = now - rec.createdAt > 48 * 3600;
+      if (m) {
+        fetched++; const me = meIn(m, ME, rec.chosenHeroId);
+        if (me) { apply(rec, m, me, now, labels); await attachDetails(rec, ME); updated++; }
+        // матч нашёлся, но тебя в нём не узнать (закрытый профиль и другой герой): за двое суток это не изменится
+        else if (old) { rec.noMatch = true; rec.syncedAt = now; }
+      }
+      // двое суток ни Stratz, ни OpenDota матча не знают: игра не состоялась (кто-то не подключился), больше не ищем.
+      // Если хоть один не ответил (нет сети, сбой), это не ответ «матча нет»: ждём следующей синхронизации
+      else if (old && !failed) { rec.noMatch = true; rec.syncedAt = now; }
       continue;
     }
     byList.push(rec);

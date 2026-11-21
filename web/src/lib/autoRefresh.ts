@@ -30,5 +30,8 @@ function autoRefreshTick() {
   if (!readConfig().stratzToken) return;
   const s = snapshot();
   if (s.connected && BUSY_PHASES.has(s.draft?.phase ?? "")) return; // не мешаем на пиках
-  startRefresh({ accountId: currentAccount().id, general: true });
+  // пул обновляем только аккаунту из списка: иначе аккаунт, под которым запущен Steam, добавлялся сам, даже убранный
+  const cur = currentAccount().id;
+  const listed = cur != null && readConfig().accounts.some((a) => a.id === cur);
+  startRefresh({ accountId: listed ? cur : null, general: true });
 }

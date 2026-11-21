@@ -79,6 +79,16 @@ export function addAccount(id: number, name?: string, makeDefault = false, anony
   return acc;
 }
 
+/** Имя и закрытость профиля у аккаунта из списка; аккаунт не добавляется, если его там нет. */
+export function updateAccountInfo(id: number, name?: string, anonymous?: boolean) {
+  const cfg = readConfig();
+  const acc = cfg.accounts.find((a) => a.id === id);
+  if (!acc) return;
+  if (name && !acc.name) acc.name = name;
+  if (anonymous !== undefined) acc.anonymous = anonymous;
+  writeConfig(cfg);
+}
+
 export function removeAccount(id: number) {
   const cfg = readConfig();
   cfg.accounts = cfg.accounts.filter((a) => a.id !== id);

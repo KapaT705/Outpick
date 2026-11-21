@@ -5,7 +5,8 @@ import path from "node:path";
 import { USER_DIR } from "./paths";
 import { writeJsonAtomic } from "./fsx";
 import { invalidateData } from "./data";
-import { accountDir, addAccount } from "./accounts";
+import { accountDir, updateAccountInfo } from "./accounts";
+import { readConfig } from "./config";
 
 export const USER_DATA_DIR = path.join(USER_DIR, "data");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -15,8 +16,11 @@ type Progress = (msg: string) => void;
 
 async function gql(token: string, query: string) {
   const res = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query }), signal: AbortSignal.timeout(60_000) });
-  const j = await res.json();
+  // HTTP-ошибку (страница Cloudflare, 5xx) и ответ без data превращаем в понятную ошибку, а не «Unexpected token '<'»
+  if (!res.ok) throw new Error(`Stratz HTTP ${res.status}`);
+  const j = await res.json().catch(() => { throw new Error("Stratz ответил не данными"); });
   if (j.errors) throw new Error(j.errors[0]?.message ?? "Stratz error");
+  if (!j.data) throw new Error("Stratz ответил не данными");
   return j.data;
 }
 
@@ -95,6 +99,9 @@ export async function fetchAccountInfo(token: string, me: number): Promise<{ nam
 
 /** Пул героев и личные пары аккаунта за год ранговых игр: в папку аккаунта. Аккаунт добавляется в список. */
 export async function refreshAccount(token: string, me: number, progress: Progress = () => {}) {
+  // аккаунт должен быть в списке: автообновление и «убрать» во время загрузки не должны возвращать удалённый аккаунт
+  const listed = () => readConfig().accounts.some((a) => a.id === me);
+  if (!listed()) return;
   const dir = accountDir(me);
   fs.mkdirSync(dir, { recursive: true });
   const save = (name: string, obj: unknown) => writeJsonAtomic(path.join(dir, name), obj);
@@ -102,7 +109,7 @@ export async function refreshAccount(token: string, me: number, progress: Progre
   try { for (const h of JSON.parse(fs.readFileSync(path.join(USER_DATA_DIR, "heroes.json"), "utf8")) as { id: number; name: string }[]) names.set(h.id, h.name); } catch {}
   progress("имя аккаунта");
   const { name: accName, anonymous } = await fetchAccountInfo(token, me);
-  addAccount(me, accName ?? undefined, false, anonymous);
+  updateAccountInfo(me, accName ?? undefined, anonymous);
   {
     progress(`матчи ${accName ?? me} за год`);
     const start = Math.floor(Date.now() / 1000) - 365 * 86400;
@@ -128,6 +135,9 @@ export async function refreshAccount(token: string, me: number, progress: Progre
       const pairRole = role;
       for (const o of m.players as MM["players"]) { if (o.steamAccountId === me) continue; const ally = o.isRadiant === self.isRadiant; const k = `${pairRole}-${self.heroId}-${o.heroId}-${ally}`; const e = pairs.get(k) ?? { role: pairRole, own: self.heroId, other: o.heroId, ally, games: 0, wins: 0 }; e.games++; if (self.isVictory) e.wins++; pairs.set(k, e); }
     }
+    // ни одной ранговой игры за год: пул пустой, и «пул загружен» вводил бы в заблуждение (аккаунт остаётся в общем режиме)
+    if (pool.size === 0) throw new Error(anonymous ? "NO_MATCHES_PRIVATE" : "NO_MATCHES");
+    if (!listed()) return; // убрали, пока шла загрузка
     save("player-pool.json", [...pool.values()].sort((a, b) => b.midGames - a.midGames));
     save("personal-pairs.json", [...pairs.values()]);
   }

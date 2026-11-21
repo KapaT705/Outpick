@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readConfig, toSteam32 } from "@/lib/config";
+import { readConfig, STEAM_ID_HINT, toSteam32 } from "@/lib/config";
 import { addAccount, currentAccount, listAccounts, removeAccount, setDefaultAccount } from "@/lib/accounts";
 import { loadData } from "@/lib/data";
 import { startRefresh } from "@/lib/refreshState";
@@ -35,7 +35,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as { action?: string; id?: string | number };
   const id = toSteam32(body.id ?? "");
-  if (!id) return NextResponse.json({ error: "Steam ID должен быть числом" }, { status: 400 });
+  if (!id) return NextResponse.json({ error: STEAM_ID_HINT }, { status: 400 });
   const { stratzToken } = readConfig();
   switch (body.action) {
     case "add":
