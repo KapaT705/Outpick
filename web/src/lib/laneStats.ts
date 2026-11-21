@@ -26,7 +26,7 @@ export async function fetchLaneOutcomes(heroId: number, position: number): Promi
   if (!stratzToken || position < 1 || position > 5) return [];
   const q = `{ heroStats { laneOutcome(heroId: ${heroId}, isWith: false, bracketBasicIds: [DIVINE_IMMORTAL], positionIds: [POSITION_${position}]) { heroId2 position matchCount winCount lossCount drawCount } } }`;
   try {
-    const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${stratzToken}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: q }), signal: AbortSignal.timeout(30_000) });
+    const r = await fetch("https://api.stratz.com/graphql", { method: "POST", headers: { Authorization: `Bearer ${stratzToken}`, "Content-Type": "application/json", "User-Agent": "STRATZ_API" }, body: JSON.stringify({ query: q }) });
     const j = await r.json();
     const raw: { heroId2: number; position: string | null; matchCount: number; winCount: number; lossCount: number; drawCount: number }[] = j?.data?.heroStats?.laneOutcome ?? [];
     if (!Array.isArray(raw) || !raw.length) return [];
