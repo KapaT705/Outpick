@@ -364,7 +364,7 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     else if (farmText) moments.push({ t: 600, kind: "lane", w: 3, text: `Фарм на линии выше нормы: к 10-й минуте ${farmText}.` });
   }
   // руны на миде: силовые руны до 20-й минуты против соперника
-  if ((me.position ?? 2) === 2 && opp) {
+  if (pos === 2 && opp) {
     const power = (p: MPlayer) => p.runes.filter((r, i, a) => r.t < 1200 && !["BOUNTY", "WATER", "WISDOM"].includes(r.rune) && !a.slice(0, i).some((x) => x.rune === r.rune && r.t - x.t < 60));
     const mineR = power(me), theirR = power(opp);
     if (mineR.length >= 3 && mineR.length >= theirR.length + 2) moments.push({ t: mineR[mineR.length - 1].t, kind: "runes", w: 2, text: `Контроль рун: до 20-й минуты ты забрал ${mineR.length} ${plural(mineR.length, "руну", "руны", "рун")}, соперник ${theirR.length}.` });
@@ -395,9 +395,20 @@ export function buildReport(m: MatchData, me: MPlayer, bench: Bench | null, hero
     if (healN > 100 && heal / healN >= 1.2) strengths.push({ score: heal / healN, label: "лечение", text: `Лечение союзников на ${Math.round((heal / healN - 1) * 100)}% выше нормы: держал своих живыми.` });
   }
   if (plan.style === "support" && (me.wardsPlaced >= 12 || me.wardsPlaced >= mins / 4)) strengths.push({ score: 1.2 + me.wardsPlaced / 100, label: "обзор", text: `Обзор: поставил ${me.wardsPlaced} ${plural(me.wardsPlaced, "вард", "варда", "вардов")}${me.wardsKilled ? ` и снёс ${me.wardsKilled} ${plural(me.wardsKilled, "вражеский", "вражеских", "вражеских")}` : ""}.` });
+  if (!strengths.length && bench?.avgDuration) {
+    // ярких плюсов нет: называем то, что ближе всего к норме, чтобы в разборе всегда было, на что опереться
+    const per = (v: number) => (v / bench.avgDuration) * mins;
+    const soft = [
+      { label: "дамаг по героям", r: per(bench.overall.heroDamage) > 0 ? me.heroDamage / per(bench.overall.heroDamage) : 0 },
+      { label: "участие в драках", r: per(bench.overall.kills + bench.overall.assists) > 0 ? (me.kills + me.assists) / per(bench.overall.kills + bench.overall.assists) : 0 },
+      ...(isSup ? [] : [{ label: "фарм", r: per(bench.overall.networth) > 0 ? me.networth / per(bench.overall.networth) : 0 }]),
+      ...(isSup && bench.overall.stacks ? [{ label: "стаки", r: (me.stacks[me.stacks.length - 1] ?? 0) / Math.max(0.5, per(bench.overall.stacks)) }] : []),
+    ].filter((x) => x.r > 0).sort((a, b) => b.r - a.r)[0];
+    if (soft && soft.r >= 0.6) strengths.push({ score: soft.r, label: soft.label, text: `Лучшее в этом матче: ${soft.label}, ${Math.round(soft.r * 100)}% от нормы героя. На это можно опереться в следующей игре.` });
+  }
   const top3 = strengths.sort((a, b) => b.score - a.score).filter((x, i, a) => !(x.label === "фарм на линии" && a.some((y) => y.label === "фарм"))).slice(0, 3);
   const labels = top3.slice(0, 2).map((x) => x.label);
-  if (labels.length) summary.splice(1, 0, `${labels.length > 1 ? "Сильные стороны матча" : "Сильная сторона матча"}: ${labels.join(" и ")}.`);
+  if (labels.length && top3[0].score >= 1) summary.splice(1, 0, `${labels.length > 1 ? "Сильные стороны матча" : "Сильная сторона матча"}: ${labels.join(" и ")}.`);
   const topStrengths = top3.map((x) => x.text);
 
   return { ...base, summary, deathList, windows, lane, tips: tips.slice(0, 3), moments: topMoments, strengths: topStrengths };

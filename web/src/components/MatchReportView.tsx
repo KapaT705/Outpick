@@ -77,7 +77,8 @@ export default function MatchReportView({ matchId, me, hero, heroes, draft }: { 
 
 function Header({ r, byId, draft }: { r: MatchReport; byId: Map<number, Hero>; draft: DraftLog | null }) {
   const h = byId.get(r.heroId);
-  const date = new Date(r.startDateTime * 1000).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+  // дата в том же виде, что в списке матчей Истории: 27.10, 14:49
+  const date = new Date(r.startDateTime * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   const adv = draft?.topPool[0];
   return (
     <Card tone={r.won ? "good" : "bad"} className="flex flex-col gap-3">
@@ -176,7 +177,7 @@ function DeathRow({ d }: { d: ReportDeath }) {
 
 /** Шанс на победу по минутам и смерти на одной оси времени: видно, какие смерти обрушили игру. */
 function GameCurve({ r }: { r: MatchReport }) {
-  const dur = r.durationSeconds;
+  const dur = Math.max(1, r.durationSeconds);
   const x = (sec: number) => Math.min(100, Math.max(0, (sec / dur) * 100));
   const curve = r.winCurve;
   const pts = curve?.map((v, i) => `${(x(i * 60) * 10).toFixed(1)},${100 - v}`).join(" ");
